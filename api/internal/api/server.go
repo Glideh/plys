@@ -69,6 +69,8 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/me", s.me)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
+			r.Get("/libraries/{id}/items", s.listLibraryItems)
+			r.Get("/items/{id}", s.getItem)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)

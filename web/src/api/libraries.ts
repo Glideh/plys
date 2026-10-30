@@ -2,7 +2,7 @@ import { api } from './client'
 
 export const libraryKinds = ['movies', 'series', 'other'] as const
 export type LibraryKind = (typeof libraryKinds)[number]
-export type ItemKind = 'movie' | 'series' | 'season' | 'episode' | 'video'
+export type ItemKind = 'movie' | 'part' | 'series' | 'season' | 'episode' | 'video'
 
 export interface Library {
   id: string
@@ -15,6 +15,9 @@ export interface Library {
   /** Admin only: movies, series and videos per metadata status. */
   matchCounts?: Partial<Record<'pending' | 'matched' | 'unmatched' | 'manual' | 'skipped', number>>
   lastScannedAt: string | null
+  restricted: boolean
+  /** Admin only: users allowed when the library is restricted. */
+  userIds?: string[]
   createdAt: string
 }
 
@@ -54,10 +57,11 @@ export interface BrowseResult {
 
 export const librariesApi = {
   list: () => api<{ items: Library[] }>('/libraries').then((r) => r.items),
-  create: (body: { name: string; kind: LibraryKind; paths: string[] }) =>
+  create: (body: { name: string; kind: LibraryKind; paths: string[]; restricted: boolean; userIds: string[] }) =>
     api<Library>('/libraries', { method: 'POST', body }),
-  update: (id: string, body: { name?: string; paths?: string[] }) =>
+  update: (id: string, body: { name?: string; paths?: string[]; restricted?: boolean; userIds?: string[] }) =>
     api<Library>(`/libraries/${id}`, { method: 'PATCH', body }),
+  get: (id: string) => api<Library>(`/libraries/${id}`),
   remove: (id: string) => api<void>(`/libraries/${id}`, { method: 'DELETE' }),
   browse: (path: string | null) =>
     api<BrowseResult>(`/admin/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),

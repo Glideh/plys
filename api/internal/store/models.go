@@ -51,6 +51,12 @@ type Library struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	LastScannedAt *time.Time
+	Restricted    bool
+}
+
+type LibraryAccess struct {
+	LibraryID uuid.UUID
+	UserID    uuid.UUID
 }
 
 type LibraryPath struct {

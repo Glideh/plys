@@ -60,15 +60,16 @@ onMounted(async () => {
         </template>
       </div>
       <ul v-else class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <li
-          v-for="lib in libraries"
-          :key="lib.id"
-          :class="gradients[lib.kind]"
-          class="flex aspect-video flex-col justify-end overflow-hidden rounded-xl border border-white/5 bg-gradient-to-br p-4"
-        >
-          <span class="text-xs font-medium tracking-wide text-white/60 uppercase">{{ t(`libraries.kinds.${lib.kind}`) }}</span>
-          <span class="truncate text-lg font-semibold">{{ lib.name }}</span>
-          <span class="truncate text-xs text-white/70">{{ summary(lib) }}</span>
+        <li v-for="lib in libraries" :key="lib.id">
+          <RouterLink
+            :to="{ name: 'library', params: { id: lib.id } }"
+            :class="gradients[lib.kind]"
+            class="flex aspect-video flex-col justify-end overflow-hidden rounded-xl border border-white/5 bg-gradient-to-br p-4 transition hover:-translate-y-0.5 hover:border-white/20 hover:shadow-xl hover:shadow-black/40"
+          >
+            <span class="text-xs font-medium tracking-wide text-white/60 uppercase">{{ t(`libraries.kinds.${lib.kind}`) }}</span>
+            <span class="truncate text-lg font-semibold">{{ lib.name }}</span>
+            <span class="truncate text-xs text-white/70">{{ summary(lib) }}</span>
+          </RouterLink>
         </li>
       </ul>
     </section>

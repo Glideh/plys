@@ -19,6 +19,8 @@ export const router = createRouter({
       component: () => import('@/layouts/AppLayout.vue'),
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
+        { path: 'libraries/:id', name: 'library', component: () => import('@/views/LibraryView.vue'), props: true },
+        { path: 'items/:id', name: 'item', component: () => import('@/views/ItemView.vue'), props: true },
         {
           path: 'admin',
           component: () => import('@/layouts/AdminLayout.vue'),

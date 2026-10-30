@@ -43,12 +43,27 @@ type libraryDTO struct {
 	Counts map[string]int64 `json:"counts,omitempty"`
 	// Admin only: movies, series and videos per metadata status (pending, matched, unmatched...).
 	MatchCounts   map[string]int64 `json:"matchCounts,omitempty"`
+	Restricted    bool             `json:"restricted"`
+	UserIDs       []uuid.UUID      `json:"userIds,omitempty"`
 	LastScannedAt *time.Time       `json:"lastScannedAt"`
 	CreatedAt     time.Time        `json:"createdAt"`
 }
 
 func toLibraryDTO(l store.Library, paths []string) libraryDTO {
-	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, LastScannedAt: l.LastScannedAt, CreatedAt: l.CreatedAt}
+	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, Restricted: l.Restricted, LastScannedAt: l.LastScannedAt, CreatedAt: l.CreatedAt}
+}
+
+// libraryAccess maps each restricted library to the users allowed to see it.
+func (s *Server) libraryAccess(r *http.Request) (map[uuid.UUID][]uuid.UUID, error) {
+	rows, err := s.q.ListLibraryAccess(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID][]uuid.UUID{}
+	for _, a := range rows {
+		out[a.LibraryID] = append(out[a.LibraryID], a.UserID)
+	}
+	return out, nil
 }
 
 func isAdmin(r *http.Request) bool {
@@ -100,10 +115,23 @@ func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 		byLibrary[c.LibraryID][c.Kind] = c.Count
 	}
 	out := make([]libraryDTO, 0, len(libs))
+	access, err := s.libraryAccess(r)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	p, _ := auth.PrincipalFrom(ctx)
+	admin := isAdmin(r)
 	for _, l := range libs {
+		if !admin && l.Restricted && !slices.Contains(access[l.ID], p.UserID) {
+			continue
+		}
 		dto := toLibraryDTO(l, paths[l.ID])
 		dto.Counts = byLibrary[l.ID]
 		dto.MatchCounts = matchCounts[l.ID]
+		if admin {
+			dto.UserIDs = access[l.ID]
+		}
 		out = append(out, dto)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
@@ -115,8 +143,13 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	allowed, err := s.canAccessLibrary(r, id)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
 	lib, err := s.q.GetLibrary(ctx, id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !allowed) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "library not found")
 		return
 	}
@@ -125,19 +158,30 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var paths []string
+	var users []uuid.UUID
 	if isAdmin(r) {
 		if paths, err = s.q.ListLibraryPaths(ctx, id); err != nil {
 			httpx.InternalError(w, r, err)
 			return
 		}
+		access, err := s.libraryAccess(r)
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+		users = access[id]
 	}
-	httpx.JSON(w, http.StatusOK, toLibraryDTO(lib, paths))
+	dto := toLibraryDTO(lib, paths)
+	dto.UserIDs = users
+	httpx.JSON(w, http.StatusOK, dto)
 }
 
 type createLibraryRequest struct {
-	Name  string   `json:"name"`
-	Kind  string   `json:"kind"`
-	Paths []string `json:"paths"`
+	Name       string      `json:"name"`
+	Kind       string      `json:"kind"`
+	Paths      []string    `json:"paths"`
+	Restricted bool        `json:"restricted"`
+	UserIDs    []uuid.UUID `json:"userIds"`
 }
 
 func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
@@ -167,19 +211,30 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		if lib, err = q.CreateLibrary(ctx, store.CreateLibraryParams{Name: name, Kind: req.Kind}); err != nil {
 			return err
 		}
-		return addPaths(r, q, lib.ID, paths)
+		if err := addPaths(r, q, lib.ID, paths); err != nil {
+			return err
+		}
+		if err := setLibraryAccess(r, q, lib.ID, req.Restricted, req.UserIDs); err != nil {
+			return err
+		}
+		lib, err = q.GetLibrary(ctx, lib.ID)
+		return err
 	})
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
 	s.Scanner.Enqueue(lib.ID)
-	httpx.JSON(w, http.StatusCreated, toLibraryDTO(lib, paths))
+	dto := toLibraryDTO(lib, paths)
+	dto.UserIDs = req.UserIDs
+	httpx.JSON(w, http.StatusCreated, dto)
 }
 
 // Kind is immutable: changing it would invalidate every item already matched for the library.
 type updateLibraryRequest struct {
-	Name  *string   `json:"name"`
-	Paths *[]string `json:"paths"`
+	Name       *string      `json:"name"`
+	Paths      *[]string    `json:"paths"`
+	Restricted *bool        `json:"restricted"`
+	UserIDs    *[]uuid.UUID `json:"userIds"`
 }
 
 func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -233,6 +288,24 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
+		if req.Restricted != nil || req.UserIDs != nil {
+			restricted := lib.Restricted
+			if req.Restricted != nil {
+				restricted = *req.Restricted
+			}
+			var users []uuid.UUID
+			if req.UserIDs != nil {
+				users = *req.UserIDs
+			} else if users, err = currentLibraryUsers(r, q, id); err != nil {
+				return err
+			}
+			if err := setLibraryAccess(r, q, id, restricted, users); err != nil {
+				return err
+			}
+			if lib, err = q.GetLibrary(ctx, id); err != nil {
+				return err
+			}
+		}
 		paths, err = q.ListLibraryPaths(ctx, id)
 		return err
 	})
@@ -242,7 +315,45 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 	if req.Paths != nil {
 		s.Scanner.Enqueue(id)
 	}
-	httpx.JSON(w, http.StatusOK, toLibraryDTO(lib, paths))
+	access, err := s.libraryAccess(r)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	dto := toLibraryDTO(lib, paths)
+	dto.UserIDs = access[id]
+	httpx.JSON(w, http.StatusOK, dto)
+}
+
+func currentLibraryUsers(r *http.Request, q *store.Queries, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.ListLibraryAccess(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	var out []uuid.UUID
+	for _, a := range rows {
+		if a.LibraryID == id {
+			out = append(out, a.UserID)
+		}
+	}
+	return out, nil
+}
+
+// setLibraryAccess keeps the user list even when the library is not restricted, so toggling back restores it.
+func setLibraryAccess(r *http.Request, q *store.Queries, id uuid.UUID, restricted bool, users []uuid.UUID) error {
+	ctx := r.Context()
+	if err := q.SetLibraryRestricted(ctx, store.SetLibraryRestrictedParams{ID: id, Restricted: restricted}); err != nil {
+		return err
+	}
+	if err := q.ClearLibraryAccess(ctx, id); err != nil {
+		return err
+	}
+	for _, u := range users {
+		if err := q.AddLibraryAccess(ctx, store.AddLibraryAccessParams{LibraryID: id, UserID: u}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) deleteLibrary(w http.ResponseWriter, r *http.Request) {
@@ -354,6 +465,8 @@ func writeLibraryMutationError(w http.ResponseWriter, r *http.Request, err error
 		httpx.Error(w, http.StatusConflict, "path_conflict", conflict.Error())
 	case isUniqueViolation(err):
 		httpx.Error(w, http.StatusConflict, "name_taken", "a library with this name already exists")
+	case isForeignKeyViolation(err):
+		httpx.Error(w, http.StatusBadRequest, "validation", "userIds contains an unknown user")
 	default:
 		httpx.InternalError(w, r, err)
 	}

@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import type { User } from '@/api/client'
 import { libraryKinds, librariesApi, type Library, type LibraryKind } from '@/api/libraries'
+import { usersApi } from '@/api/users'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import BaseButton from './BaseButton.vue'
 import BaseDialog from './BaseDialog.vue'
@@ -19,17 +21,30 @@ const errorMessage = useErrorMessage()
 const name = ref('')
 const kind = ref<LibraryKind>('movies')
 const paths = ref<string[]>([])
+const restricted = ref(false)
+const userIds = ref<string[]>([])
+const users = ref<User[]>([])
 const picking = ref(false)
 const loading = ref(false)
 const error = ref('')
 
-watch(open, (isOpen) => {
+// Admins always see every library, so only regular users can be granted access.
+const grantableUsers = computed(() => users.value.filter((u) => u.role !== 'admin'))
+
+watch(open, async (isOpen) => {
   if (!isOpen) return
   name.value = props.library?.name ?? ''
   kind.value = props.library?.kind ?? 'movies'
   paths.value = [...(props.library?.paths ?? [])]
+  restricted.value = props.library?.restricted ?? false
+  userIds.value = [...(props.library?.userIds ?? [])]
   picking.value = paths.value.length === 0
   error.value = ''
+  try {
+    users.value = await usersApi.list()
+  } catch (err) {
+    error.value = errorMessage(err)
+  }
 })
 
 function addPath(path: string) {
@@ -40,10 +55,11 @@ function addPath(path: string) {
 async function submit() {
   error.value = ''
   loading.value = true
+  const access = { restricted: restricted.value, userIds: userIds.value }
   try {
     const saved = props.library
-      ? await librariesApi.update(props.library.id, { name: name.value, paths: paths.value })
-      : await librariesApi.create({ name: name.value, kind: kind.value, paths: paths.value })
+      ? await librariesApi.update(props.library.id, { name: name.value, paths: paths.value, ...access })
+      : await librariesApi.create({ name: name.value, kind: kind.value, paths: paths.value, ...access })
     emit('saved', saved)
     open.value = false
   } catch (err) {
@@ -100,6 +116,26 @@ async function submit() {
 
         <FolderPicker v-if="picking" @select="addPath" @cancel="picking = false" />
         <BaseButton v-else @click="picking = true">+ {{ t('libraries.addFolder') }}</BaseButton>
+      </fieldset>
+
+      <fieldset>
+        <legend class="mb-1.5 text-sm font-medium text-slate-300">{{ t('libraries.access') }}</legend>
+        <label class="flex items-center gap-3 text-sm">
+          <input v-model="restricted" type="checkbox" class="size-4 rounded accent-accent-500" />
+          {{ t('libraries.restricted') }}
+        </label>
+        <template v-if="restricted">
+          <p class="mt-1.5 text-xs text-slate-500">{{ t('libraries.restrictedHelp') }}</p>
+          <p v-if="grantableUsers.length === 0" class="mt-3 text-sm text-slate-500">{{ t('libraries.noUsers') }}</p>
+          <ul v-else class="mt-3 grid gap-2 sm:grid-cols-2">
+            <li v-for="u in grantableUsers" :key="u.id">
+              <label class="flex items-center gap-3 rounded-lg bg-surface-800 px-3.5 py-2 text-sm">
+                <input v-model="userIds" type="checkbox" :value="u.id" class="size-4 rounded accent-accent-500" />
+                {{ u.username }}
+              </label>
+            </li>
+          </ul>
+        </template>
       </fieldset>
 
       <ErrorAlert v-if="error" :message="error" />

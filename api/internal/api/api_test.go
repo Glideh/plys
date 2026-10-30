@@ -26,6 +26,28 @@ func newTestServer(t *testing.T) http.Handler {
 
 // newTestServerWithMedia also returns the resolved temporary media root.
 func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
+	e := newTestEnv(t)
+	return e.h, e.root
+}
+
+type testEnv struct {
+	h    http.Handler
+	root string
+	scan *scanner.Scanner
+}
+
+type fakeProber struct{}
+
+func (fakeProber) Probe(context.Context, string) (scanner.ProbeResult, error) {
+	return scanner.ProbeResult{Duration: 7200, Container: "matroska,webm", Streams: []scanner.Stream{
+		{Index: 0, Type: "video", Codec: "hevc", Width: 1920, Height: 800, ColorTransfer: "smpte2084"},
+		{Index: 1, Type: "audio", Codec: "eac3", Language: "fre", Channels: 6, Default: true},
+		{Index: 2, Type: "audio", Codec: "aac", Language: "eng", Channels: 2},
+		{Index: 3, Type: "subtitle", Codec: "hdmv_pgs_subtitle", Language: "fre", Forced: true, ImageBased: true},
+	}}, nil
+}
+
+func newTestEnv(t *testing.T) testEnv {
 	t.Helper()
 	pool := testdb.New(t, "test_api")
 	issuer := auth.NewIssuer([]byte("test-secret-test-secret-test-secret"), time.Minute)
@@ -33,18 +55,19 @@ func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	scan := scanner.New(pool, nil, nil, 0)
+	scan := scanner.New(pool, fakeProber{}, nil, 0)
 	st := settings.New(store.New(pool))
 	identity, err := st.LoadOrCreateIdentity(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	cache := t.TempDir()
-	return New(Deps{
+	h := New(Deps{
 		Pool: pool, Tokens: issuer, Roots: roots, Scanner: scan, Settings: st, Identity: identity,
 		Metadata: metadata.NewService(pool, st, cache, "ffmpeg", ""),
 		Images:   metadata.NewImageCache(cache, ""),
-	}).Routes(), roots.List()[0]
+	}).Routes()
+	return testEnv{h: h, root: roots.List()[0], scan: scan}
 }
 
 type response struct {

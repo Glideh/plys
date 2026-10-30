@@ -137,6 +137,7 @@ onUnmounted(() => clearTimeout(pollTimer))
             {{ t(`libraries.kinds.${lib.kind}`) }}
           </span>
         </div>
+        <p v-if="lib.restricted" class="mt-2 text-xs text-slate-400">{{ t('libraries.restrictedBadge') }} · {{ lib.userIds?.length ?? 0 }}</p>
         <ul class="mt-4 flex-1 space-y-1">
           <li v-for="p in lib.paths" :key="p" class="truncate font-mono text-xs text-slate-400" :title="p">{{ p }}</li>
         </ul>

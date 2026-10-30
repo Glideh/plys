@@ -49,6 +49,6 @@ const auth = useAuthStore()
       </nav>
     </header>
 
-    <RouterView />
+    <RouterView :key="$route.path" />
   </div>
 </template>
