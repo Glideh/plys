@@ -3,14 +3,14 @@ SELECT id, path, size, mtime, item_id, probed_at, missing_since FROM media_files
 
 -- name: UpsertItem :one
 -- Existing titles are kept: metadata providers own them once the item is matched.
-INSERT INTO items (library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+INSERT INTO items (library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, part_number)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT ON CONSTRAINT items_identity DO UPDATE SET updated_at = now()
 RETURNING id, (xmax = 0) AS inserted;
 
--- name: UpsertProbedFile :exec
-INSERT INTO media_files (library_id, item_id, path, size, mtime, duration_seconds, container, bitrate, streams, probe_error, probed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+-- name: UpsertProbedFile :one
+INSERT INTO media_files (library_id, item_id, path, size, mtime, duration_seconds, container, bitrate, streams, probe_error, version_key, part_number, edition, probed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
 ON CONFLICT (path) DO UPDATE SET
     library_id       = EXCLUDED.library_id,
     item_id          = EXCLUDED.item_id,
@@ -21,12 +21,18 @@ ON CONFLICT (path) DO UPDATE SET
     bitrate          = EXCLUDED.bitrate,
     streams          = EXCLUDED.streams,
     probe_error      = EXCLUDED.probe_error,
+    version_key      = EXCLUDED.version_key,
+    part_number      = EXCLUDED.part_number,
+    edition          = EXCLUDED.edition,
     probed_at        = EXCLUDED.probed_at,
     missing_since    = NULL,
-    updated_at       = now();
+    updated_at       = now()
+RETURNING id;
 
 -- name: LinkFileItem :exec
-UPDATE media_files SET item_id = $2, updated_at = now() WHERE id = $1;
+UPDATE media_files
+SET item_id = $2, version_key = $3, part_number = $4, edition = $5, updated_at = now()
+WHERE id = $1;
 
 -- name: ClearFilesMissing :exec
 UPDATE media_files SET missing_since = NULL WHERE id = ANY(@ids::uuid[]) AND missing_since IS NOT NULL;
@@ -39,9 +45,11 @@ WHERE library_id = @library_id AND missing_since IS NULL AND NOT (id = ANY(@seen
 DELETE FROM media_files WHERE library_id = $1 AND missing_since < $2;
 
 -- name: DeleteOrphanLeaves :execrows
+-- A movie split into parts has no file of its own, so childless is required too. Run twice: parts, then their movie.
 DELETE FROM items i
-WHERE i.library_id = $1 AND i.kind IN ('movie', 'episode', 'video')
-  AND NOT EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id);
+WHERE i.library_id = $1 AND i.kind IN ('movie', 'part', 'episode', 'video')
+  AND NOT EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id)
+  AND NOT EXISTS (SELECT 1 FROM items c WHERE c.parent_id = i.id);
 
 -- name: DeleteEmptyContainers :execrows
 -- Run twice: empty seasons first, then series left without seasons.
@@ -52,5 +60,5 @@ WHERE i.library_id = $1 AND i.kind IN ('season', 'series')
 -- name: SetLibraryScanned :exec
 UPDATE libraries SET last_scanned_at = now() WHERE id = $1;
 
--- name: CountLibraryItems :many
-SELECT kind, count(*) FROM items WHERE library_id = $1 GROUP BY kind;
+-- name: CountItemsByLibrary :many
+SELECT library_id, kind, count(*) FROM items GROUP BY library_id, kind;

@@ -10,11 +10,16 @@ function browserLocale(): Locale {
   return (locales as readonly string[]).includes(lang) ? (lang as Locale) : 'fr'
 }
 
+const datetimeFormats = {
+  long: { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+} as const
+
 export const i18n = createI18n({
   legacy: false,
   locale: browserLocale(),
   fallbackLocale: 'en',
   messages: { fr, en },
+  datetimeFormats: { fr: datetimeFormats, en: datetimeFormats },
 })
 
 export function setLocale(locale: Locale) {

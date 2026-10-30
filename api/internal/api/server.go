@@ -12,6 +12,7 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/scanner"
 	"toto/api/internal/store"
 )
 
@@ -21,10 +22,11 @@ type Server struct {
 	tokens       *auth.Issuer
 	cookieSecure bool
 	roots        *mediafs.Roots
+	scanner      *scanner.Scanner
 }
 
-func New(pool *pgxpool.Pool, tokens *auth.Issuer, cookieSecure bool, roots *mediafs.Roots) *Server {
-	return &Server{pool: pool, q: store.New(pool), tokens: tokens, cookieSecure: cookieSecure, roots: roots}
+func New(pool *pgxpool.Pool, tokens *auth.Issuer, cookieSecure bool, roots *mediafs.Roots, scan *scanner.Scanner) *Server {
+	return &Server{pool: pool, q: store.New(pool), tokens: tokens, cookieSecure: cookieSecure, roots: roots, scanner: scan}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -63,7 +65,9 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/libraries", s.createLibrary)
 				r.Patch("/libraries/{id}", s.updateLibrary)
 				r.Delete("/libraries/{id}", s.deleteLibrary)
+				r.Post("/libraries/{id}/scan", s.scanLibrary)
 
+				r.Get("/admin/scans", s.listScans)
 				r.Get("/admin/fs/browse", s.browseFS)
 			})
 		})

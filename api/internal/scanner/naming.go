@@ -17,28 +17,45 @@ var videoExtensions = map[string]bool{
 	".flv": true, ".ogv": true, ".divx": true,
 }
 
-// NAS housekeeping folders (Synology, Windows, ext4) and release samples.
+// NAS housekeeping folders (Synology, Windows, ext4), release samples and extras.
 var ignoredDirs = map[string]bool{
 	"@eadir": true, "#recycle": true, "#snapshot": true, "$recycle.bin": true,
 	"lost+found": true, "sample": true, "samples": true,
+	"bonus": true, "extras": true, "featurettes": true, "trailers": true, "supplements": true,
 }
 
 var (
 	sitePrefixRe    = regexp.MustCompile(`(?i)^(?:www\.)?[a-z0-9-]+\.(?:shop|com|org|net|to|xyz|cc|me|club|site|ws|tv|io|in)\s*-\s*`)
 	bracketPrefixRe = regexp.MustCompile(`^\s*\[[^\]]*\]\s*`)
+	bracketGroupRe  = regexp.MustCompile(`\[[^\]]*(?:\]|$)`)
 	sampleRe        = regexp.MustCompile(`(?i)(?:^|[\W_])sample(?:[\W_]|$)`)
 	// The character following the year is checked in code because Go regexps have no lookahead.
 	yearRe = regexp.MustCompile(`[\s._\-(\[]((?:19|20)\d{2})`)
-	tagRe  = regexp.MustCompile(`(?i)[\s._\-(\[](?:2160p|1080p|720p|576p|480p|4k|uhd|hdr|hdr10|dv|multi|vff|vfq|vfi|vf|vf2|vostfr|truefrench|french|subfrench|bluray|blu-ray|bdrip|brrip|bluray[a-z]*|webrip|web-?dl|web|hdtv|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|remux|10bit|dts|ac3|eac3|aac|ddp?5\.1|atmos|proper|repack|internal|integrale|complete|extended|unrated|remastered|imax)(?:[\s._\-)\]]|$)`)
+	tagRe  = regexp.MustCompile(`(?i)[\s._\-(\[](?:2160p|1080p|720p|576p|480p|4k|uhd|hdr|hdr10|dv|multi|vff|vfq|vfi|vf|vf2|vost|vostfr|truefrench|french|subfrench|korean|japanese|chinese|german|spanish|italian|english|bluray|blu-ray|bdrip|brrip|bluray[a-z]*|webrip|web-?dl|web|hdtv|hdlight|amzn|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|remux|10bit|dts|ac3|eac3|aac|ddp?5\.1|atmos|proper|repack|internal|integrale|complete|extended|unrated|remastered|imax)(?:[\s._\-)\]]|$)`)
 
-	episodeRe      = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])s(\d{1,2})[\s._-]?e(\d{1,3})(?:(?:-?e|-)(\d{1,3}))?(?:\D|$)`)
-	crossRe        = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])(\d{1,2})x(\d{2,3})(?:\D|$)`)
-	episodeOnlyRe  = regexp.MustCompile(`(?i)(?:^|[\s._\-])(?:e|ep|episode|épisode)[\s._-]?(\d{1,3})(?:\D|$)`)
+	episodeRe     = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])s(\d{1,2})[\s._-]?e(\d{1,3})(?:(?:-?e|-)(\d{1,3}))?(?:\D|$)`)
+	crossRe       = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])(\d{1,2})x(\d{2,3})(?:\D|$)`)
+	episodeOnlyRe = regexp.MustCompile(`(?i)(?:^|[\s._\-])(?:e|ep|episode|épisode)[\s._-]?(\d{1,3})(?:\D|$)`)
+	// Fansub style "[Group] Title - 01 [1080p]", optionally "Title S2 - 05".
+	absoluteRe     = regexp.MustCompile(`(?i)^(.*?)(?:\s+s(\d{1,2}))?\s+-\s+(\d{1,4})(?:v\d)?(?:[\s\[(.]|$)`)
 	seasonDirRe    = regexp.MustCompile(`(?i)^(?:season|saison|series|staffel|s)[\s._-]*(\d{1,2})$`)
 	seasonTokenRe  = regexp.MustCompile(`(?i)(?:^|[\s._-])s(\d{1,2})(?:[\s._-]|$)`)
+	seasonWordRe   = regexp.MustCompile(`(?i)(?:^|[\s._-])(?:season|saison)[\s._-]*(\d{1,2})`)
 	spacesRe       = regexp.MustCompile(`\s+`)
 	leadingArticle = regexp.MustCompile(`(?i)^(?:the|a|an|le|la|les|un|une|des)\s+|^l'`)
+
+	// "DVDRip" is not a part: a number must follow the keyword.
+	partRe    = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])(?:cd|dvd|disc|disk|part|pt|partie)[\s._-]?(\d{1,2})(?:\D|$)`)
+	editionRe = regexp.MustCompile(`(?i)[\s._\-(\[](director'?s[\s._-]cut|extended(?:[\s._-](?:cut|edition))?|final[\s._-]cut|theatrical(?:[\s._-]cut)?|unrated|uncut|imax|remastered|special[\s._-]edition|ultimate[\s._-]edition|criterion)(?:[\s._\-)\]]|$)`)
 )
+
+var editionLabels = map[string]string{
+	"directors cut": "Director's Cut", "director's cut": "Director's Cut",
+	"extended": "Extended", "extended cut": "Extended", "extended edition": "Extended",
+	"final cut": "Final Cut", "theatrical": "Theatrical", "theatrical cut": "Theatrical",
+	"unrated": "Unrated", "uncut": "Uncut", "imax": "IMAX", "remastered": "Remastered",
+	"special edition": "Special Edition", "ultimate edition": "Ultimate Edition", "criterion": "Criterion",
+}
 
 func isVideo(name string) bool {
 	return videoExtensions[strings.ToLower(filepath.Ext(name))] && !sampleRe.MatchString(stem(name))
@@ -74,6 +91,9 @@ func parseMovieName(name string) MovieInfo {
 	s := stripPrefixes(name)
 	limit := len(s)
 	if loc := tagRe.FindStringIndex(s); loc != nil && loc[0] > 0 {
+		limit = loc[0] + 1
+	}
+	if loc := partRe.FindStringIndex(s[:limit]); loc != nil && loc[0] > 0 {
 		limit = loc[0] + 1
 	}
 	if title, year := splitTrailingYear(s[:limit]); year != 0 {
@@ -123,6 +143,7 @@ func ParseEpisode(relPath string) (EpisodeInfo, bool) {
 
 	var info EpisodeInfo
 	var titlePart string
+	preferFolderTitle := false
 	switch {
 	case episodeRe.MatchString(base):
 		m := episodeRe.FindStringSubmatchIndex(base)
@@ -137,15 +158,22 @@ func ParseEpisode(relPath string) (EpisodeInfo, bool) {
 		info.Season = atoi(base[m[2]:m[3]])
 		info.Episode = atoi(base[m[4]:m[5]])
 		titlePart = base[:m[0]]
-	case episodeOnlyRe.MatchString(base) && len(dirs) > 0:
-		season, ok := seasonOf(dirs[len(dirs)-1])
-		if !ok {
-			return info, false
-		}
+	case episodeOnlyRe.MatchString(base):
 		m := episodeOnlyRe.FindStringSubmatchIndex(base)
-		info.Season = season
+		info.Season = seasonFromDirs(dirs)
 		info.Episode = atoi(base[m[2]:m[3]])
 		titlePart = base[:m[0]]
+	case absoluteRe.MatchString(stripPrefixes(base)):
+		s := stripPrefixes(base)
+		m := absoluteRe.FindStringSubmatchIndex(s)
+		info.Season = seasonFromDirs(dirs)
+		if m[4] >= 0 {
+			info.Season = atoi(s[m[4]:m[5]])
+		}
+		info.Episode = atoi(s[m[6]:m[7]])
+		titlePart = s[m[2]:m[3]]
+		// Fansub file names often abbreviate the show ("FT - 227"); the folder name is more reliable.
+		preferFolderTitle = true
 	default:
 		return info, false
 	}
@@ -153,14 +181,32 @@ func ParseEpisode(relPath string) (EpisodeInfo, bool) {
 		info.EpisodeEnd = 0
 	}
 
-	info.SeriesTitle, info.Year = seriesTitle(titlePart)
+	if !preferFolderTitle || len(dirs) == 0 {
+		info.SeriesTitle, info.Year = seriesTitle(titlePart)
+	}
 	for i := len(dirs) - 1; info.SeriesTitle == "" && i >= 0; i-- {
 		if _, isSeason := seasonOf(dirs[i]); isSeason {
 			continue
 		}
 		info.SeriesTitle, info.Year = seriesTitle(dirs[i])
 	}
+	if info.SeriesTitle == "" {
+		info.SeriesTitle, info.Year = seriesTitle(titlePart)
+	}
 	return info, info.SeriesTitle != ""
+}
+
+// seasonFromDirs reads the season from the closest folder ("Season 2", "Fairy Tail Season 6"), defaulting to 1.
+func seasonFromDirs(dirs []string) int {
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if n, ok := seasonOf(dirs[i]); ok {
+			return n
+		}
+		if m := seasonWordRe.FindStringSubmatch(dirs[i]); m != nil {
+			return atoi(m[1])
+		}
+	}
+	return 1
 }
 
 func seasonOf(dir string) (int, bool) {
@@ -172,11 +218,10 @@ func seasonOf(dir string) (int, bool) {
 
 func seriesTitle(raw string) (string, int) {
 	s := stripPrefixes(raw)
-	if loc := seasonTokenRe.FindStringIndex(s); loc != nil {
-		s = s[:loc[0]]
-	}
-	if loc := tagRe.FindStringIndex(s); loc != nil {
-		s = s[:loc[0]]
+	for _, re := range []*regexp.Regexp{seasonTokenRe, seasonWordRe, tagRe} {
+		if loc := re.FindStringIndex(s); loc != nil {
+			s = s[:loc[0]]
+		}
 	}
 	if title, year := splitTrailingYear(s); year != 0 {
 		return title, year
@@ -190,7 +235,12 @@ func stripPrefixes(s string) string {
 }
 
 func cleanTitle(s string) string {
+	s = bracketGroupRe.ReplaceAllString(s, " ")
 	s = strings.NewReplacer(".", " ", "_", " ").Replace(s)
+	// An opening parenthesis left unbalanced by a year or tag cut, as in "Title (BBC -1995)".
+	if i := strings.LastIndex(s, "("); i >= 0 && !strings.Contains(s[i:], ")") {
+		s = s[:i]
+	}
 	s = spacesRe.ReplaceAllString(s, " ")
 	return strings.Trim(s, " -([")
 }
@@ -222,4 +272,40 @@ func SortTitle(title string) string {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// FileVersion tells apart parts of one version, played in sequence, from alternative versions of an item.
+type FileVersion struct {
+	// Key is shared by all parts of the same version.
+	Key     string
+	Part    int
+	Edition string
+}
+
+// ParseFileVersion reads the part number from the file name or its folder ("CD1", "DVD 2", "Partie 1")
+// and the edition from what follows the title, so a title such as "Loose Change Final Cut" is not an edition.
+func ParseFileVersion(path string) FileVersion {
+	dir, base := filepath.Dir(path), stem(filepath.Base(path))
+	v := FileVersion{Key: strings.ToLower(partRe.ReplaceAllString(dir, " ") + "/" + partRe.ReplaceAllString(base, " "))}
+	for _, s := range []string{base, filepath.Base(dir)} {
+		if m := partRe.FindStringSubmatch(s); m != nil {
+			v.Part = atoi(m[1])
+			break
+		}
+	}
+	for _, s := range []string{base, filepath.Base(dir)} {
+		after := s
+		if loc := yearRe.FindStringIndex(s); loc != nil {
+			after = s[loc[1]:]
+		} else if loc := tagRe.FindStringIndex(s); loc != nil {
+			after = s[loc[0]:]
+		} else {
+			continue
+		}
+		if m := editionRe.FindStringSubmatch(after); m != nil {
+			v.Edition = editionLabels[strings.ToLower(strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(m[1]))]
+			break
+		}
+	}
+	return v
 }

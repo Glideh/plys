@@ -24,6 +24,7 @@ type Item struct {
 	EpisodeNumberEnd *int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	PartNumber       *int32
 }
 
 type Library struct {
@@ -56,6 +57,9 @@ type MediaFile struct {
 	MissingSince    *time.Time
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+	VersionKey      string
+	PartNumber      *int32
+	Edition         *string
 }
 
 type RefreshToken struct {

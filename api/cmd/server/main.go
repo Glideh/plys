@@ -15,6 +15,7 @@ import (
 	"toto/api/internal/config"
 	"toto/api/internal/database"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/scanner"
 	"toto/api/internal/store"
 )
 
@@ -61,9 +62,12 @@ func run() error {
 	}
 	slog.Info("media roots", "roots", roots.List())
 
+	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, cfg.ScanInterval)
+	go scan.Run(ctx)
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(pool, auth.NewIssuer(secret, accessTokenTTL), cfg.CookieSecure, roots).Routes(),
+		Handler:           api.New(pool, auth.NewIssuer(secret, accessTokenTTL), cfg.CookieSecure, roots, scan).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

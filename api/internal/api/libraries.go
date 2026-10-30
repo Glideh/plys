@@ -36,15 +36,17 @@ func (e *pathConflictError) Error() string {
 }
 
 type libraryDTO struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Kind      string    `json:"kind"`
-	Paths     []string  `json:"paths,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID            uuid.UUID        `json:"id"`
+	Name          string           `json:"name"`
+	Kind          string           `json:"kind"`
+	Paths         []string         `json:"paths,omitempty"`
+	Counts        map[string]int64 `json:"counts,omitempty"`
+	LastScannedAt *time.Time       `json:"lastScannedAt"`
+	CreatedAt     time.Time        `json:"createdAt"`
 }
 
 func toLibraryDTO(l store.Library, paths []string) libraryDTO {
-	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, CreatedAt: l.CreatedAt}
+	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, LastScannedAt: l.LastScannedAt, CreatedAt: l.CreatedAt}
 }
 
 func isAdmin(r *http.Request) bool {
@@ -71,9 +73,23 @@ func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 			paths[p.LibraryID] = append(paths[p.LibraryID], p.Path)
 		}
 	}
+	counts, err := s.q.CountItemsByLibrary(ctx)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	byLibrary := map[uuid.UUID]map[string]int64{}
+	for _, c := range counts {
+		if byLibrary[c.LibraryID] == nil {
+			byLibrary[c.LibraryID] = map[string]int64{}
+		}
+		byLibrary[c.LibraryID][c.Kind] = c.Count
+	}
 	out := make([]libraryDTO, 0, len(libs))
 	for _, l := range libs {
-		out = append(out, toLibraryDTO(l, paths[l.ID]))
+		dto := toLibraryDTO(l, paths[l.ID])
+		dto.Counts = byLibrary[l.ID]
+		out = append(out, dto)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
 }
@@ -141,6 +157,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
+	s.scanner.Enqueue(lib.ID)
 	httpx.JSON(w, http.StatusCreated, toLibraryDTO(lib, paths))
 }
 
@@ -207,6 +224,9 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
+	if req.Paths != nil {
+		s.scanner.Enqueue(id)
+	}
 	httpx.JSON(w, http.StatusOK, toLibraryDTO(lib, paths))
 }
 
@@ -222,7 +242,25 @@ func (s *Server) deleteLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
+	s.scanner.Forget(id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "library")
+	if !ok {
+		return
+	}
+	_, err := s.q.GetLibrary(r.Context(), id)
+	if writeLibraryMutationError(w, r, err) {
+		return
+	}
+	httpx.JSON(w, http.StatusAccepted, s.scanner.Enqueue(id))
+}
+
+// Scan statuses live in memory: they reset when the API restarts, lastScannedAt persists.
+func (s *Server) listScans(w http.ResponseWriter, _ *http.Request) {
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": s.scanner.Statuses()})
 }
 
 func validateLibraryName(raw string) (string, error) {

@@ -313,6 +313,41 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
 
+  /libraries/{id}/scan:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: scanLibrary
+      summary: Queue a scan of the library (admin)
+      description: Scans run one at a time. Queuing a library that is already queued or running returns its current status.
+      responses:
+        "202":
+          description: Scan queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScanStatus" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/scans:
+    get:
+      operationId: listScans
+      summary: Status of the scans run since the API started (admin)
+      responses:
+        "200":
+          description: Scan statuses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ScanStatus" }
+
   /admin/fs/browse:
     get:
       operationId: browseFolders
@@ -405,7 +440,7 @@ components:
       enum: [movies, series, other]
     Library:
       type: object
-      required: [id, name, kind, createdAt]
+      required: [id, name, kind, lastScannedAt, createdAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -414,7 +449,31 @@ components:
           type: array
           description: Only returned to admins.
           items: { type: string }
+        counts:
+          type: object
+          description: Number of items per kind (movie, series, season, episode, video). Only returned by the list endpoint.
+          additionalProperties: { type: integer }
+        lastScannedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+    ScanStatus:
+      type: object
+      required: [libraryId, state, total, processed, added, probed, unmatched, failed, missing, incomplete]
+      properties:
+        libraryId: { type: string, format: uuid }
+        state: { type: string, enum: [queued, running, done, failed] }
+        total: { type: integer, description: Video files found }
+        processed: { type: integer }
+        added: { type: integer, description: New movies, episodes or videos }
+        probed: { type: integer, description: New or modified files analysed with ffprobe }
+        unmatched: { type: integer, description: Files whose name could not be understood }
+        failed: { type: integer, description: Files ffprobe could not read }
+        missing: { type: integer, description: Files no longer found, kept for 7 days before removal }
+        incomplete:
+          type: boolean
+          description: A folder was unreachable or empty, so no file was flagged as missing.
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        error: { type: string }
     BrowseResult:
       type: object
       required: [path, parent, entries]

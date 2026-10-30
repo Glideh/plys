@@ -2,6 +2,7 @@ import { api } from './client'
 
 export const libraryKinds = ['movies', 'series', 'other'] as const
 export type LibraryKind = (typeof libraryKinds)[number]
+export type ItemKind = 'movie' | 'series' | 'season' | 'episode' | 'video'
 
 export interface Library {
   id: string
@@ -9,7 +10,27 @@ export interface Library {
   kind: LibraryKind
   /** Only returned to admins. */
   paths?: string[]
+  /** Only returned by the list endpoint. */
+  counts?: Partial<Record<ItemKind, number>>
+  lastScannedAt: string | null
   createdAt: string
+}
+
+export interface ScanStatus {
+  libraryId: string
+  state: 'queued' | 'running' | 'done' | 'failed'
+  total: number
+  processed: number
+  added: number
+  probed: number
+  unmatched: number
+  failed: number
+  missing: number
+  /** A folder was unreachable or empty, so missing files were not flagged. */
+  incomplete: boolean
+  startedAt?: string
+  finishedAt?: string
+  error?: string
 }
 
 export interface FolderEntry {
@@ -34,4 +55,6 @@ export const librariesApi = {
   remove: (id: string) => api<void>(`/libraries/${id}`, { method: 'DELETE' }),
   browse: (path: string | null) =>
     api<BrowseResult>(`/admin/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ''}`),
+  scan: (id: string) => api<ScanStatus>(`/libraries/${id}/scan`, { method: 'POST' }),
+  scans: () => api<{ items: ScanStatus[] }>('/admin/scans').then((r) => r.items),
 }

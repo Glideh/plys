@@ -2,20 +2,17 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"toto/api/internal/auth"
-	"toto/api/internal/database"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/scanner"
+	"toto/api/internal/testdb"
 )
 
 func newTestServer(t *testing.T) http.Handler {
@@ -26,33 +23,14 @@ func newTestServer(t *testing.T) http.Handler {
 // newTestServerWithMedia also returns the resolved temporary media root.
 func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
 	t.Helper()
-	url := os.Getenv("TEST_DATABASE_URL")
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL not set")
-	}
-	ctx := context.Background()
-	pool, err := database.Connect(ctx, url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
-	resetSchema(t, pool)
-	if err := database.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
+	pool := testdb.New(t, "test_api")
 	issuer := auth.NewIssuer([]byte("test-secret-test-secret-test-secret"), time.Minute)
 	roots, errs := mediafs.NewRoots([]string{t.TempDir()})
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	return New(pool, issuer, false, roots).Routes(), roots.List()[0]
-}
-
-func resetSchema(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
-	if _, err := pool.Exec(context.Background(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
-		t.Fatal(err)
-	}
+	scan := scanner.New(pool, nil, 0)
+	return New(pool, issuer, false, roots, scan).Routes(), roots.List()[0]
 }
 
 type response struct {

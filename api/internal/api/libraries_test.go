@@ -62,6 +62,13 @@ func TestLibraryLifecycle(t *testing.T) {
 		t.Fatalf("update: %d %v", r.status, r.body)
 	}
 
+	if r = do(t, h, http.MethodPost, "/api/v1/libraries/"+id+"/scan", admin, nil); r.status != http.StatusAccepted || r.body["state"] != "queued" {
+		t.Fatalf("scan: %d %v", r.status, r.body)
+	}
+	if r = do(t, h, http.MethodGet, "/api/v1/admin/scans", admin, nil); r.status != http.StatusOK || len(r.body["items"].([]any)) != 1 {
+		t.Fatalf("scans: %d %v", r.status, r.body)
+	}
+
 	r = do(t, h, http.MethodPost, "/api/v1/users", admin, map[string]any{"username": "bob", "password": "password123"})
 	bob := do(t, h, http.MethodPost, "/api/v1/auth/login", "", map[string]any{"username": "bob", "password": "password123"}).body["accessToken"].(string)
 	r = do(t, h, http.MethodGet, "/api/v1/libraries", bob, nil)

@@ -1,0 +1,49 @@
+// Package testdb gives each test package its own PostgreSQL schema so packages can run in parallel.
+package testdb
+
+import (
+	"context"
+	"os"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"toto/api/internal/database"
+)
+
+// New recreates the schema, applies migrations and returns a pool bound to it.
+func New(t *testing.T, schema string) *pgxpool.Pool {
+	t.Helper()
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+
+	admin, err := pgx.Connect(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ident := pgx.Identifier{schema}.Sanitize()
+	_, err = admin.Exec(ctx, "DROP SCHEMA IF EXISTS "+ident+" CASCADE; CREATE SCHEMA "+ident)
+	admin.Close(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if err := database.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	return pool
+}

@@ -4,11 +4,13 @@ import { useI18n } from 'vue-i18n'
 import { librariesApi, type Library, type LibraryKind } from '@/api/libraries'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
+import { useLibrarySummary } from '@/composables/useLibrarySummary'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 const auth = useAuthStore()
 const errorMessage = useErrorMessage()
+const summary = useLibrarySummary()
 
 const libraries = ref<Library[]>([])
 const loading = ref(true)
@@ -66,6 +68,7 @@ onMounted(async () => {
         >
           <span class="text-xs font-medium tracking-wide text-white/60 uppercase">{{ t(`libraries.kinds.${lib.kind}`) }}</span>
           <span class="truncate text-lg font-semibold">{{ lib.name }}</span>
+          <span class="truncate text-xs text-white/70">{{ summary(lib) }}</span>
         </li>
       </ul>
     </section>
