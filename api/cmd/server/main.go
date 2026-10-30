@@ -15,7 +15,9 @@ import (
 	"toto/api/internal/config"
 	"toto/api/internal/database"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/metadata"
 	"toto/api/internal/scanner"
+	"toto/api/internal/settings"
 	"toto/api/internal/store"
 )
 
@@ -62,12 +64,30 @@ func run() error {
 	}
 	slog.Info("media roots", "roots", roots.List())
 
-	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, cfg.ScanInterval)
+	st := settings.New(q)
+	identity, err := st.LoadOrCreateIdentity(ctx)
+	if err != nil {
+		return err
+	}
+	meta := metadata.NewService(pool, st, cfg.CacheDir, "ffmpeg", "")
+	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, meta, cfg.ScanInterval)
 	go scan.Run(ctx)
+
+	handler := api.New(api.Deps{
+		Pool:         pool,
+		Tokens:       auth.NewIssuer(secret, accessTokenTTL),
+		CookieSecure: cfg.CookieSecure,
+		Roots:        roots,
+		Scanner:      scan,
+		Metadata:     meta,
+		Images:       metadata.NewImageCache(cfg.CacheDir, ""),
+		Settings:     st,
+		Identity:     identity,
+	}).Routes()
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(pool, auth.NewIssuer(secret, accessTokenTTL), cfg.CookieSecure, roots, scan).Routes(),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

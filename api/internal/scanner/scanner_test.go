@@ -90,7 +90,7 @@ func TestScanSeriesLibrary(t *testing.T) {
 		"1923.S02.MULTi.1080p.WEB.H265-FW/1923.S02E01.sample.mkv",
 	)
 	id := newLibrary(t, pool, "series", root)
-	s := New(pool, fakeProber{}, 0)
+	s := New(pool, fakeProber{}, nil, 0)
 	ctx := context.Background()
 
 	if err := s.ScanLibrary(ctx, id); err != nil {
@@ -130,7 +130,7 @@ func TestScanDoesNotFlagMissingWhenRootIsEmpty(t *testing.T) {
 	root := t.TempDir()
 	touch(t, root, "Alien.1979.1080p.mkv", "Aliens.1986.1080p.mkv")
 	id := newLibrary(t, pool, "movies", root)
-	s := New(pool, fakeProber{}, 0)
+	s := New(pool, fakeProber{}, nil, 0)
 	ctx := context.Background()
 
 	if err := s.ScanLibrary(ctx, id); err != nil {
@@ -165,7 +165,7 @@ func TestScanMovieParts(t *testing.T) {
 		"Loose.Change.Final.Cut.2007.VOSTFR.DVDRIP.avi/Partie 2.avi",
 	)
 	id := newLibrary(t, pool, "movies", root)
-	s := New(pool, fakeProber{}, 0)
+	s := New(pool, fakeProber{}, nil, 0)
 	ctx := context.Background()
 
 	if err := s.ScanLibrary(ctx, id); err != nil {
@@ -197,7 +197,7 @@ func TestScanMovieParts(t *testing.T) {
 }
 
 func TestEnqueueDeduplicates(t *testing.T) {
-	s := New(nil, fakeProber{}, 0)
+	s := New(nil, fakeProber{}, nil, 0)
 	id := uuid.New()
 	s.Enqueue(id)
 	s.Enqueue(id)

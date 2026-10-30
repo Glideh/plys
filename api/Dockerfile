@@ -6,8 +6,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 RUN go install github.com/air-verse/air@v1.61.7
-# Named volume inherits these permissions so any host UID can write the Go caches.
-RUN mkdir -p /go-cache && chmod 777 /go-cache
+# Named volumes inherit these permissions so any host UID can write the Go caches and the image cache.
+RUN mkdir -p /go-cache /cache && chmod 777 /go-cache /cache
 ENV GOPATH=/go-cache/gopath \
     GOCACHE=/go-cache/build \
     GOFLAGS=-buildvcs=false \
@@ -27,6 +27,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/server /usr/local/bin/server
+RUN mkdir -p /cache && chown 10001:10001 /cache
 USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/server"]

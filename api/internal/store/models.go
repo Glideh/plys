@@ -11,20 +11,37 @@ import (
 )
 
 type Item struct {
-	ID               uuid.UUID
-	LibraryID        uuid.UUID
-	ParentID         *uuid.UUID
-	Kind             string
-	MatchKey         string
-	Title            string
-	SortTitle        string
-	Year             *int32
-	SeasonNumber     *int32
-	EpisodeNumber    *int32
-	EpisodeNumberEnd *int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	PartNumber       *int32
+	ID                uuid.UUID
+	LibraryID         uuid.UUID
+	ParentID          *uuid.UUID
+	Kind              string
+	MatchKey          string
+	Title             string
+	SortTitle         string
+	Year              *int32
+	SeasonNumber      *int32
+	EpisodeNumber     *int32
+	EpisodeNumberEnd  *int32
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	PartNumber        *int32
+	TmdbID            *int32
+	ImdbID            *string
+	OriginalTitle     *string
+	Overview          *string
+	Tagline           *string
+	ReleaseDate       *time.Time
+	RuntimeMinutes    *int32
+	Rating            *float32
+	Genres            []string
+	CastMembers       []byte
+	Directors         []string
+	PosterPath        *string
+	BackdropPath      *string
+	ThumbPath         *string
+	MatchStatus       string
+	MetadataLanguage  *string
+	MetadataUpdatedAt *time.Time
 }
 
 type Library struct {

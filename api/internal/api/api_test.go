@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +12,10 @@ import (
 
 	"toto/api/internal/auth"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/metadata"
 	"toto/api/internal/scanner"
+	"toto/api/internal/settings"
+	"toto/api/internal/store"
 	"toto/api/internal/testdb"
 )
 
@@ -29,8 +33,18 @@ func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
 	if len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	scan := scanner.New(pool, nil, 0)
-	return New(pool, issuer, false, roots, scan).Routes(), roots.List()[0]
+	scan := scanner.New(pool, nil, nil, 0)
+	st := settings.New(store.New(pool))
+	identity, err := st.LoadOrCreateIdentity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := t.TempDir()
+	return New(Deps{
+		Pool: pool, Tokens: issuer, Roots: roots, Scanner: scan, Settings: st, Identity: identity,
+		Metadata: metadata.NewService(pool, st, cache, "ffmpeg", ""),
+		Images:   metadata.NewImageCache(cache, ""),
+	}).Routes(), roots.List()[0]
 }
 
 type response struct {

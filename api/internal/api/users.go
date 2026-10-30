@@ -120,7 +120,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var user store.User
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockUsers(ctx); err != nil {
 			return err
@@ -159,7 +159,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		s.writeUserMutationError(w, r, errDeleteSelf)
 		return
 	}
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockUsers(ctx); err != nil {
 			return err

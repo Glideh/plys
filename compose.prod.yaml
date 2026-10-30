@@ -31,6 +31,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ${MEDIA_DIR:?MEDIA_DIR is required}:/media:ro
+      - api-cache:/cache
     depends_on:
       db:
         condition: service_healthy
@@ -53,3 +54,4 @@ services:
 
 volumes:
   db-data:
+  api-cache:

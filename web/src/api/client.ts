@@ -13,6 +13,9 @@ export type ApiErrorCode =
   | 'name_taken'
   | 'path_conflict'
   | 'invalid_path'
+  | 'invalid_tmdb_key'
+  | 'tmdb_unreachable'
+  | 'tmdb_not_configured'
   | 'internal'
   | 'network'
 

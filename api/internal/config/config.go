@@ -18,6 +18,7 @@ type Config struct {
 	LogLevel     slog.Level
 	MediaRoots   []string
 	ScanInterval time.Duration
+	CacheDir     string
 }
 
 func Load() (Config, error) {
@@ -26,6 +27,7 @@ func Load() (Config, error) {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 		MediaRoots:  filepath.SplitList(env("MEDIA_ROOTS", "/media")),
+		CacheDir:    env("CACHE_DIR", "/cache"),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")

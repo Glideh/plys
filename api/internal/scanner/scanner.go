@@ -36,8 +36,10 @@ const (
 )
 
 type Status struct {
-	LibraryID  uuid.UUID  `json:"libraryId"`
-	State      State      `json:"state"`
+	LibraryID uuid.UUID `json:"libraryId"`
+	State     State     `json:"state"`
+	// Stage is "files" while walking and probing, then "metadata".
+	Stage      string     `json:"stage,omitempty"`
 	Total      int        `json:"total"`
 	Processed  int        `json:"processed"`
 	Added      int        `json:"added"`
@@ -46,9 +48,17 @@ type Status struct {
 	Failed     int        `json:"failed"`
 	Missing    int64      `json:"missing"`
 	Incomplete bool       `json:"incomplete"`
+	MetaTotal  int        `json:"metaTotal"`
+	MetaDone   int        `json:"metaDone"`
+	MetaError  string     `json:"metaError,omitempty"`
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Error      string     `json:"error,omitempty"`
+}
+
+// Enricher fetches metadata once files are catalogued.
+type Enricher interface {
+	RefreshLibrary(ctx context.Context, lib store.Library, progress func(done, total int)) error
 }
 
 // Scanner runs one library scan at a time so a NAS is never hit by parallel walks.
@@ -56,6 +66,7 @@ type Scanner struct {
 	pool     *pgxpool.Pool
 	q        *store.Queries
 	prober   Prober
+	enricher Enricher
 	interval time.Duration
 
 	mu       sync.Mutex
@@ -63,11 +74,12 @@ type Scanner struct {
 	queue    chan uuid.UUID
 }
 
-func New(pool *pgxpool.Pool, prober Prober, interval time.Duration) *Scanner {
+func New(pool *pgxpool.Pool, prober Prober, enricher Enricher, interval time.Duration) *Scanner {
 	return &Scanner{
 		pool:     pool,
 		q:        store.New(pool),
 		prober:   prober,
+		enricher: enricher,
 		interval: interval,
 		statuses: map[uuid.UUID]*Status{},
 		queue:    make(chan uuid.UUID, queueSize),
@@ -121,7 +133,7 @@ func (s *Scanner) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-tick:
-			s.enqueueAll(ctx)
+			s.EnqueueAll(ctx)
 		case id := <-s.queue:
 			if err := s.ScanLibrary(ctx, id); err != nil && ctx.Err() == nil {
 				slog.Error("library scan failed", "library_id", id, "err", err)
@@ -130,7 +142,8 @@ func (s *Scanner) Run(ctx context.Context) {
 	}
 }
 
-func (s *Scanner) enqueueAll(ctx context.Context) {
+// EnqueueAll schedules every library, e.g. after the metadata settings changed.
+func (s *Scanner) EnqueueAll(ctx context.Context) {
 	libs, err := s.q.ListLibraries(ctx)
 	if err != nil {
 		slog.Error("list libraries for periodic scan", "err", err)
@@ -155,7 +168,9 @@ func (s *Scanner) update(id uuid.UUID, fn func(*Status)) {
 // ScanLibrary synchronously reconciles the catalogue of a library with its folders.
 func (s *Scanner) ScanLibrary(ctx context.Context, id uuid.UUID) (err error) {
 	started := time.Now()
-	s.update(id, func(st *Status) { *st = Status{LibraryID: id, State: StateRunning, StartedAt: &started} })
+	s.update(id, func(st *Status) {
+		*st = Status{LibraryID: id, State: StateRunning, Stage: "files", StartedAt: &started}
+	})
 	defer func() {
 		finished := time.Now()
 		s.update(id, func(st *Status) {
@@ -219,7 +234,20 @@ func (s *Scanner) ScanLibrary(ctx context.Context, id uuid.UUID) (err error) {
 		}
 		s.update(id, func(st *Status) { st.Missing = n })
 	}
-	return s.cleanup(ctx, id)
+	if err := s.cleanup(ctx, id); err != nil {
+		return err
+	}
+	if s.enricher == nil {
+		return nil
+	}
+	s.update(id, func(st *Status) { st.Stage = "metadata" })
+	// Metadata failures (TMDB down, invalid key) are reported without failing the file scan.
+	if err := s.enricher.RefreshLibrary(ctx, lib, func(done, total int) {
+		s.update(id, func(st *Status) { st.MetaDone, st.MetaTotal = done, total })
+	}); err != nil && ctx.Err() == nil {
+		s.update(id, func(st *Status) { st.MetaError = err.Error() })
+	}
+	return ctx.Err()
 }
 
 func (s *Scanner) cleanup(ctx context.Context, id uuid.UUID) error {

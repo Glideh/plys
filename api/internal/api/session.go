@@ -75,7 +75,7 @@ func (s *Server) createSession(ctx context.Context, q *store.Queries, user store
 	if err != nil {
 		return session{}, err
 	}
-	access, exp, err := s.tokens.Issue(user.ID, user.Role)
+	access, exp, err := s.Tokens.Issue(user.ID, user.Role)
 	if err != nil {
 		return session{}, err
 	}
@@ -104,7 +104,7 @@ func (s *Server) refreshCookie(value string, maxAge int) *http.Cookie {
 		Path:     refreshCookiePath,
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   s.cookieSecure,
+		Secure:   s.CookieSecure,
 		SameSite: http.SameSiteStrictMode,
 	}
 }

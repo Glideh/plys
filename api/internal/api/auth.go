@@ -97,7 +97,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var sess session
-	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		rt, err := q.GetRefreshTokenForUpdate(ctx, auth.HashRefreshToken(token))
 		if errors.Is(err, pgx.ErrNoRows) {

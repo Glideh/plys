@@ -12,6 +12,8 @@ export interface Library {
   paths?: string[]
   /** Only returned by the list endpoint. */
   counts?: Partial<Record<ItemKind, number>>
+  /** Admin only: movies, series and videos per metadata status. */
+  matchCounts?: Partial<Record<'pending' | 'matched' | 'unmatched' | 'manual' | 'skipped', number>>
   lastScannedAt: string | null
   createdAt: string
 }
@@ -19,6 +21,7 @@ export interface Library {
 export interface ScanStatus {
   libraryId: string
   state: 'queued' | 'running' | 'done' | 'failed'
+  stage?: 'files' | 'metadata'
   total: number
   processed: number
   added: number
@@ -28,6 +31,9 @@ export interface ScanStatus {
   missing: number
   /** A folder was unreachable or empty, so missing files were not flagged. */
   incomplete: boolean
+  metaTotal: number
+  metaDone: number
+  metaError?: string
   startedAt?: string
   finishedAt?: string
   error?: string

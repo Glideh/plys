@@ -15,6 +15,25 @@ security:
   - bearer: []
 
 paths:
+  /server:
+    get:
+      operationId: getServerInfo
+      summary: Public identity of this server (used by clients and federated peers)
+      security: []
+      responses:
+        "200":
+          description: Server identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, version, publicKey]
+                properties:
+                  id: { type: string, format: uuid }
+                  name: { type: string }
+                  version: { type: string }
+                  publicKey: { type: string, description: Base64 Ed25519 public key }
+
   /setup/status:
     get:
       operationId: getSetupStatus
@@ -371,6 +390,138 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /admin/settings:
+    get:
+      operationId: getSettings
+      summary: Server settings (admin); the TMDB key is never returned
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+    patch:
+      operationId: updateSettings
+      summary: Update settings (admin) and rescan every library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tmdbApiKey: { type: string, description: TMDB v3 key or v4 read token; empty string removes it. Checked against TMDB before saving. }
+                metadataLanguage: { type: string, pattern: "^[a-z]{2}-[A-Z]{2}$", example: fr-FR }
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+        "400":
+          description: "`validation` or `invalid_tmdb_key`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: TMDB unreachable while checking the key (`tmdb_unreachable`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /items/{id}/match/search:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: searchItemMatch
+      summary: TMDB candidates for a movie or series (admin)
+      parameters:
+        - { name: query, in: query, required: false, schema: { type: string }, description: Defaults to the item title }
+        - { name: year, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [tmdbId, title, posterUrl]
+                      properties:
+                        tmdbId: { type: integer }
+                        title: { type: string }
+                        originalTitle: { type: string }
+                        year: { type: integer }
+                        overview: { type: string }
+                        posterUrl: { type: [string, "null"], description: Direct TMDB URL }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /items/{id}/match:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: setItemMatch
+      summary: Match a movie or series to a TMDB id (admin); the choice is locked against automatic matching
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tmdbId]
+              properties:
+                tmdbId: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: "Updated item, or `{merged: true}` when it was folded into an existing duplicate"
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: "`tmdb_not_configured` or `invalid_tmdb_key`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /items/{id}/refresh:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: refreshItem
+      summary: Fetch metadata again for a movie, series or video (admin)
+      responses:
+        "200": { description: Updated item }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /images/tmdb/{size}/{file}:
+    get:
+      operationId: getTmdbImage
+      summary: TMDB image cached by the server (public so that img tags work)
+      description: Only images referenced by the catalogue are served.
+      security: []
+      parameters:
+        - { name: size, in: path, required: true, schema: { type: string, enum: [w92, w185, w300, w342, w500, w780, w1280, original] } }
+        - { name: file, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}\\.(jpg|png)$" } }
+      responses:
+        "200": { description: Image, content: { image/jpeg: {}, image/png: {} } }
+        "404": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+
+  /images/local/{file}:
+    get:
+      operationId: getLocalImage
+      summary: Thumbnail extracted from a personal video (public)
+      security: []
+      parameters:
+        - { name: file, in: path, required: true, schema: { type: string, example: 5f1c2b3a-0000-0000-0000-000000000000.jpg } }
+      responses:
+        "200": { description: Image, content: { image/jpeg: {} } }
+        "404": { $ref: "#/components/responses/Error" }
+
 components:
   securitySchemes:
     bearer:
@@ -435,6 +586,12 @@ components:
           type: string
           description: Present only when `tokenDelivery` is `body`.
         user: { $ref: "#/components/schemas/User" }
+    Settings:
+      type: object
+      required: [tmdbConfigured, metadataLanguage]
+      properties:
+        tmdbConfigured: { type: boolean }
+        metadataLanguage: { type: string, example: fr-FR }
     LibraryKind:
       type: string
       enum: [movies, series, other]
@@ -453,6 +610,10 @@ components:
           type: object
           description: Number of items per kind (movie, series, season, episode, video). Only returned by the list endpoint.
           additionalProperties: { type: integer }
+        matchCounts:
+          type: object
+          description: Admin only. Movies, series and videos per metadata status (pending, matched, unmatched, manual, skipped).
+          additionalProperties: { type: integer }
         lastScannedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
     ScanStatus:
@@ -461,16 +622,20 @@ components:
       properties:
         libraryId: { type: string, format: uuid }
         state: { type: string, enum: [queued, running, done, failed] }
+        stage: { type: string, enum: [files, metadata] }
         total: { type: integer, description: Video files found }
         processed: { type: integer }
-        added: { type: integer, description: New movies, episodes or videos }
+        added: { type: integer, description: "New movies, episodes or videos" }
         probed: { type: integer, description: New or modified files analysed with ffprobe }
         unmatched: { type: integer, description: Files whose name could not be understood }
         failed: { type: integer, description: Files ffprobe could not read }
-        missing: { type: integer, description: Files no longer found, kept for 7 days before removal }
+        missing: { type: integer, description: "Files no longer found, kept for 7 days before removal" }
         incomplete:
           type: boolean
           description: A folder was unreachable or empty, so no file was flagged as missing.
+        metaTotal: { type: integer, description: Items needing metadata in this pass }
+        metaDone: { type: integer }
+        metaError: { type: string, description: "Metadata failure that did not stop the scan (TMDB down, invalid key)" }
         startedAt: { type: string, format: date-time }
         finishedAt: { type: string, format: date-time }
         error: { type: string }

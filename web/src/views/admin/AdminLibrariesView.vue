@@ -71,6 +71,11 @@ async function onSaved() {
   await refreshScans()
 }
 
+function progressPercent(s: ScanStatus): number {
+  const [done, total] = s.stage === 'metadata' ? [s.metaDone, s.metaTotal] : [s.processed, s.total]
+  return total ? (100 * done) / total : 0
+}
+
 function scanResult(s: ScanStatus): string {
   const parts = (['added', 'missing', 'unmatched', 'failed'] as const)
     .filter((k) => s[k] > 0)
@@ -142,12 +147,16 @@ onUnmounted(() => clearTimeout(pollTimer))
           </template>
           <template v-else-if="scans[lib.id]?.state === 'running'">
             <p class="text-slate-300">
-              {{ t('libraries.scanRunning', { processed: scans[lib.id]!.processed, total: scans[lib.id]!.total }) }}
+              {{
+                scans[lib.id]!.stage === 'metadata'
+                  ? t('libraries.metaRunning', { done: scans[lib.id]!.metaDone, total: scans[lib.id]!.metaTotal })
+                  : t('libraries.scanRunning', { processed: scans[lib.id]!.processed, total: scans[lib.id]!.total })
+              }}
             </p>
             <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
               <div
                 class="h-full rounded-full bg-accent-500 transition-[width] duration-500"
-                :style="{ width: `${scans[lib.id]!.total ? (100 * scans[lib.id]!.processed) / scans[lib.id]!.total : 0}%` }"
+                :style="{ width: `${progressPercent(scans[lib.id]!)}%` }"
               />
             </div>
           </template>
@@ -161,7 +170,16 @@ onUnmounted(() => clearTimeout(pollTimer))
             <template v-else-if="scans[lib.id]?.state === 'done'">
               <p class="mt-1 text-slate-300">{{ scanResult(scans[lib.id]!) }}</p>
               <p v-if="scans[lib.id]!.incomplete" class="mt-1 text-amber-300">{{ t('libraries.scanIncomplete') }}</p>
+              <p v-if="scans[lib.id]!.metaError" class="mt-1 text-amber-300">
+                {{ t('libraries.metaFailed', { error: scans[lib.id]!.metaError ?? '' }) }}
+              </p>
             </template>
+            <p v-if="lib.matchCounts?.unmatched" class="mt-1 text-amber-300">
+              {{ t('libraries.unmatchedItems', lib.matchCounts.unmatched) }}
+            </p>
+            <p v-if="lib.matchCounts?.pending && lib.kind !== 'other'" class="mt-1 text-slate-400">
+              {{ t('libraries.pendingItems', { n: lib.matchCounts.pending }) }}
+            </p>
           </template>
         </div>
 

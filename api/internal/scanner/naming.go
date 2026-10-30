@@ -31,7 +31,7 @@ var (
 	sampleRe        = regexp.MustCompile(`(?i)(?:^|[\W_])sample(?:[\W_]|$)`)
 	// The character following the year is checked in code because Go regexps have no lookahead.
 	yearRe = regexp.MustCompile(`[\s._\-(\[]((?:19|20)\d{2})`)
-	tagRe  = regexp.MustCompile(`(?i)[\s._\-(\[](?:2160p|1080p|720p|576p|480p|4k|uhd|hdr|hdr10|dv|multi|vff|vfq|vfi|vf|vf2|vost|vostfr|truefrench|french|subfrench|korean|japanese|chinese|german|spanish|italian|english|bluray|blu-ray|bdrip|brrip|bluray[a-z]*|webrip|web-?dl|web|hdtv|hdlight|amzn|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|remux|10bit|dts|ac3|eac3|aac|ddp?5\.1|atmos|proper|repack|internal|integrale|complete|extended|unrated|remastered|imax)(?:[\s._\-)\]]|$)`)
+	tagRe  = regexp.MustCompile(`(?i)[\s._\-(\[](?:2160p|1080p|720p|576p|480p|2160|1080|720|4k|uhd|hdr|hdr10|dv|multi|vff|vfq|vfi|vf|vf2|vost|vostfr|truefrench|french|subfrench|korean|japanese|chinese|german|spanish|italian|english|bluray|blu-ray|bdrip|brrip|bluray[a-z]*|webrip|web-?dl|web|hdtv|hdlight|amzn|dvdrip|dvd|x264|x265|h\.?264|h\.?265|hevc|avc|remux|10bit|dts|ac3|eac3|aac|ddp?5\.1|atmos|proper|repack|internal|integrale|complete|extended|unrated|remastered|imax)(?:[\s._\-)\]]|$)`)
 
 	episodeRe     = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])s(\d{1,2})[\s._-]?e(\d{1,3})(?:(?:-?e|-)(\d{1,3}))?(?:\D|$)`)
 	crossRe       = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])(\d{1,2})x(\d{2,3})(?:\D|$)`)
@@ -72,6 +72,9 @@ func stem(name string) string {
 type MovieInfo struct {
 	Title string
 	Year  int
+	// AltTitle is text found between the year and the release tags, often the translated or original
+	// title ("Alien 2 - 1986 - le retour", "John.Woo(1992).Hard.Boiled").
+	AltTitle string
 }
 
 // ParseMovie reads the file name, falling back to the parent folder when the file name carries no year.
@@ -96,14 +99,19 @@ func parseMovieName(name string) MovieInfo {
 	if loc := partRe.FindStringIndex(s[:limit]); loc != nil && loc[0] > 0 {
 		limit = loc[0] + 1
 	}
-	if title, year := splitTrailingYear(s[:limit]); year != 0 {
-		return MovieInfo{Title: title, Year: year}
+	if title, year, end := splitTrailingYear(s[:limit]); year != 0 {
+		alt := strings.TrimRight(strings.TrimLeft(cleanTitle(s[end:limit]), " -)]"), " -([")
+		if len(alt) < 3 {
+			alt = ""
+		}
+		return MovieInfo{Title: title, Year: year, AltTitle: alt}
 	}
 	return MovieInfo{Title: cleanTitle(s[:limit])}
 }
 
-// splitTrailingYear returns the last plausible year of s and the non-empty title preceding it.
-func splitTrailingYear(s string) (string, int) {
+// splitTrailingYear returns the last plausible year of s, the non-empty title preceding it and the index
+// following the year.
+func splitTrailingYear(s string) (string, int, int) {
 	maxYear := time.Now().Year() + 1
 	matches := yearRe.FindAllStringSubmatchIndex(s, -1)
 	for i := len(matches) - 1; i >= 0; i-- {
@@ -116,10 +124,10 @@ func splitTrailingYear(s string) (string, int) {
 			continue
 		}
 		if title := cleanTitle(s[:m[0]]); title != "" {
-			return title, year
+			return title, year, m[3]
 		}
 	}
-	return "", 0
+	return "", 0, 0
 }
 
 type EpisodeInfo struct {
@@ -223,7 +231,7 @@ func seriesTitle(raw string) (string, int) {
 			s = s[:loc[0]]
 		}
 	}
-	if title, year := splitTrailingYear(s); year != 0 {
+	if title, year, _ := splitTrailingYear(s); year != 0 {
 		return title, year
 	}
 	return cleanTitle(s), 0

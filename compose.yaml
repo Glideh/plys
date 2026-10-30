@@ -36,6 +36,7 @@ services:
     volumes:
       - ./api:/src
       - go-cache:/go-cache
+      - api-cache:/cache
     # Media folders are mounted under /media by compose.override.yaml (see compose.override.example.yaml).
     ports:
       - "127.0.0.1:8080:8080"
@@ -74,4 +75,5 @@ services:
 volumes:
   db-data:
   go-cache:
+  api-cache:
   web-node-modules:

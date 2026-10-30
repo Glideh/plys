@@ -36,11 +36,13 @@ func (e *pathConflictError) Error() string {
 }
 
 type libraryDTO struct {
-	ID            uuid.UUID        `json:"id"`
-	Name          string           `json:"name"`
-	Kind          string           `json:"kind"`
-	Paths         []string         `json:"paths,omitempty"`
-	Counts        map[string]int64 `json:"counts,omitempty"`
+	ID     uuid.UUID        `json:"id"`
+	Name   string           `json:"name"`
+	Kind   string           `json:"kind"`
+	Paths  []string         `json:"paths,omitempty"`
+	Counts map[string]int64 `json:"counts,omitempty"`
+	// Admin only: movies, series and videos per metadata status (pending, matched, unmatched...).
+	MatchCounts   map[string]int64 `json:"matchCounts,omitempty"`
 	LastScannedAt *time.Time       `json:"lastScannedAt"`
 	CreatedAt     time.Time        `json:"createdAt"`
 }
@@ -63,6 +65,7 @@ func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paths := map[uuid.UUID][]string{}
+	matchCounts := map[uuid.UUID]map[string]int64{}
 	if isAdmin(r) {
 		all, err := s.q.ListAllLibraryPaths(ctx)
 		if err != nil {
@@ -71,6 +74,17 @@ func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, p := range all {
 			paths[p.LibraryID] = append(paths[p.LibraryID], p.Path)
+		}
+		statuses, err := s.q.CountMatchStatusByLibrary(ctx)
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+		for _, c := range statuses {
+			if matchCounts[c.LibraryID] == nil {
+				matchCounts[c.LibraryID] = map[string]int64{}
+			}
+			matchCounts[c.LibraryID][c.MatchStatus] = c.Count
 		}
 	}
 	counts, err := s.q.CountItemsByLibrary(ctx)
@@ -89,6 +103,7 @@ func (s *Server) listLibraries(w http.ResponseWriter, r *http.Request) {
 	for _, l := range libs {
 		dto := toLibraryDTO(l, paths[l.ID])
 		dto.Counts = byLibrary[l.ID]
+		dto.MatchCounts = matchCounts[l.ID]
 		out = append(out, dto)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
@@ -143,7 +158,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var lib store.Library
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := lockAndCheckPaths(r, q, uuid.Nil, paths); err != nil {
 			return err
@@ -157,7 +172,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
-	s.scanner.Enqueue(lib.ID)
+	s.Scanner.Enqueue(lib.ID)
 	httpx.JSON(w, http.StatusCreated, toLibraryDTO(lib, paths))
 }
 
@@ -196,7 +211,7 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var lib store.Library
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		var err error
 		if req.Name != nil {
@@ -225,7 +240,7 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Paths != nil {
-		s.scanner.Enqueue(id)
+		s.Scanner.Enqueue(id)
 	}
 	httpx.JSON(w, http.StatusOK, toLibraryDTO(lib, paths))
 }
@@ -242,7 +257,7 @@ func (s *Server) deleteLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
-	s.scanner.Forget(id)
+	s.Scanner.Forget(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -255,12 +270,12 @@ func (s *Server) scanLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
-	httpx.JSON(w, http.StatusAccepted, s.scanner.Enqueue(id))
+	httpx.JSON(w, http.StatusAccepted, s.Scanner.Enqueue(id))
 }
 
 // Scan statuses live in memory: they reset when the API restarts, lastScannedAt persists.
 func (s *Server) listScans(w http.ResponseWriter, _ *http.Request) {
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": s.scanner.Statuses()})
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": s.Scanner.Statuses()})
 }
 
 func validateLibraryName(raw string) (string, error) {
@@ -278,7 +293,7 @@ func (s *Server) resolveLibraryPaths(raw []string) ([]string, error) {
 	}
 	var out []string
 	for _, p := range raw {
-		real, err := s.roots.Resolve(p)
+		real, err := s.Roots.Resolve(p)
 		if err != nil {
 			return nil, fmt.Errorf("path %q: %w", p, err)
 		}
@@ -357,13 +372,13 @@ func (s *Server) browseFS(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Query().Get("path")
 	if p == "" {
 		entries := []mediafs.Entry{}
-		for _, root := range s.roots.List() {
+		for _, root := range s.Roots.List() {
 			entries = append(entries, mediafs.Entry{Name: root, Path: root})
 		}
 		httpx.JSON(w, http.StatusOK, browseResponse{Entries: entries})
 		return
 	}
-	real, entries, err := s.roots.ListDirs(p)
+	real, entries, err := s.Roots.ListDirs(p)
 	switch {
 	case errors.Is(err, mediafs.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "not_found", "directory not found")
@@ -376,7 +391,7 @@ func (s *Server) browseFS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := browseResponse{Path: &real, Entries: entries}
-	if !s.roots.IsRoot(real) {
+	if !s.Roots.IsRoot(real) {
 		parent := filepath.Dir(real)
 		resp.Parent = &parent
 	}

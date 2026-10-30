@@ -54,7 +54,7 @@ func (s *Server) setupAdmin(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var sess session
-	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		if err := q.LockUsers(ctx); err != nil {
 			return err

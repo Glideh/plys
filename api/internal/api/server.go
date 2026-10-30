@@ -12,21 +12,31 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/metadata"
 	"toto/api/internal/scanner"
+	"toto/api/internal/settings"
 	"toto/api/internal/store"
 )
 
-type Server struct {
-	pool         *pgxpool.Pool
-	q            *store.Queries
-	tokens       *auth.Issuer
-	cookieSecure bool
-	roots        *mediafs.Roots
-	scanner      *scanner.Scanner
+type Deps struct {
+	Pool         *pgxpool.Pool
+	Tokens       *auth.Issuer
+	CookieSecure bool
+	Roots        *mediafs.Roots
+	Scanner      *scanner.Scanner
+	Metadata     *metadata.Service
+	Images       *metadata.ImageCache
+	Settings     *settings.Store
+	Identity     settings.Identity
 }
 
-func New(pool *pgxpool.Pool, tokens *auth.Issuer, cookieSecure bool, roots *mediafs.Roots, scan *scanner.Scanner) *Server {
-	return &Server{pool: pool, q: store.New(pool), tokens: tokens, cookieSecure: cookieSecure, roots: roots, scanner: scan}
+type Server struct {
+	Deps
+	q *store.Queries
+}
+
+func New(d Deps) *Server {
+	return &Server{Deps: d, q: store.New(d.Pool)}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -34,7 +44,7 @@ func (s *Server) Routes() http.Handler {
 	r.Use(middleware.RequestID, requestLogger, middleware.Recoverer)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		if err := s.pool.Ping(r.Context()); err != nil {
+		if err := s.Pool.Ping(r.Context()); err != nil {
 			httpx.Error(w, http.StatusServiceUnavailable, "db_unavailable", "database unreachable")
 			return
 		}
@@ -42,6 +52,7 @@ func (s *Server) Routes() http.Handler {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/server", s.serverInfo)
 		r.Get("/setup/status", s.setupStatus)
 		r.Post("/setup/admin", s.setupAdmin)
 
@@ -49,8 +60,12 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/refresh", s.refresh)
 		r.Post("/auth/logout", s.logout)
 
+		// Public so that <img> tags work without a bearer token; only referenced images are served.
+		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
+		r.Get("/images/local/{file}", s.localImage)
+
 		r.Group(func(r chi.Router) {
-			r.Use(s.tokens.Middleware)
+			r.Use(s.Tokens.Middleware)
 			r.Get("/me", s.me)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
@@ -69,6 +84,12 @@ func (s *Server) Routes() http.Handler {
 
 				r.Get("/admin/scans", s.listScans)
 				r.Get("/admin/fs/browse", s.browseFS)
+				r.Get("/admin/settings", s.getSettings)
+				r.Patch("/admin/settings", s.updateSettings)
+
+				r.Get("/items/{id}/match/search", s.searchMatch)
+				r.Post("/items/{id}/match", s.setMatch)
+				r.Post("/items/{id}/refresh", s.refreshItem)
 			})
 		})
 	})
