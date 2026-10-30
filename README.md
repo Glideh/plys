@@ -8,6 +8,7 @@ Only Docker (with Compose) is required on the host.
 
 ```sh
 cp .env.example .env   # set UID/GID to `id -u` / `id -g` if they are not 1000
+cp compose.override.example.yaml compose.override.yaml   # list your media folders (read-only)
 docker compose up
 ```
 

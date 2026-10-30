@@ -11,6 +11,7 @@ import (
 
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
+	"toto/api/internal/mediafs"
 	"toto/api/internal/store"
 )
 
@@ -19,10 +20,11 @@ type Server struct {
 	q            *store.Queries
 	tokens       *auth.Issuer
 	cookieSecure bool
+	roots        *mediafs.Roots
 }
 
-func New(pool *pgxpool.Pool, tokens *auth.Issuer, cookieSecure bool) *Server {
-	return &Server{pool: pool, q: store.New(pool), tokens: tokens, cookieSecure: cookieSecure}
+func New(pool *pgxpool.Pool, tokens *auth.Issuer, cookieSecure bool, roots *mediafs.Roots) *Server {
+	return &Server{pool: pool, q: store.New(pool), tokens: tokens, cookieSecure: cookieSecure, roots: roots}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -48,6 +50,8 @@ func (s *Server) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.tokens.Middleware)
 			r.Get("/me", s.me)
+			r.Get("/libraries", s.listLibraries)
+			r.Get("/libraries/{id}", s.getLibrary)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
@@ -55,6 +59,12 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/users", s.createUser)
 				r.Patch("/users/{id}", s.updateUser)
 				r.Delete("/users/{id}", s.deleteUser)
+
+				r.Post("/libraries", s.createLibrary)
+				r.Patch("/libraries/{id}", s.updateLibrary)
+				r.Delete("/libraries/{id}", s.deleteLibrary)
+
+				r.Get("/admin/fs/browse", s.browseFS)
 			})
 		})
 	})

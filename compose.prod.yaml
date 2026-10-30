@@ -29,6 +29,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-toto}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-toto}?sslmode=disable
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - ${MEDIA_DIR:?MEDIA_DIR is required}:/media:ro
     depends_on:
       db:
         condition: service_healthy

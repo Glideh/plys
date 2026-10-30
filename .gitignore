@@ -2,3 +2,4 @@
 api/tmp/
 web/node_modules/
 web/dist/
+compose.override.yaml

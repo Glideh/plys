@@ -14,6 +14,7 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/config"
 	"toto/api/internal/database"
+	"toto/api/internal/mediafs"
 	"toto/api/internal/store"
 )
 
@@ -54,9 +55,15 @@ func run() error {
 
 	go purgeStaleRefreshTokens(ctx, q)
 
+	roots, rootErrs := mediafs.NewRoots(cfg.MediaRoots)
+	for _, err := range rootErrs {
+		slog.Warn("media root ignored", "err", err)
+	}
+	slog.Info("media roots", "roots", roots.List())
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           api.New(pool, auth.NewIssuer(secret, accessTokenTTL), cfg.CookieSecure).Routes(),
+		Handler:           api.New(pool, auth.NewIssuer(secret, accessTokenTTL), cfg.CookieSecure, roots).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {

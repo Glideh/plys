@@ -15,9 +15,16 @@ import (
 
 	"toto/api/internal/auth"
 	"toto/api/internal/database"
+	"toto/api/internal/mediafs"
 )
 
 func newTestServer(t *testing.T) http.Handler {
+	h, _ := newTestServerWithMedia(t)
+	return h
+}
+
+// newTestServerWithMedia also returns the resolved temporary media root.
+func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
@@ -34,7 +41,11 @@ func newTestServer(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	issuer := auth.NewIssuer([]byte("test-secret-test-secret-test-secret"), time.Minute)
-	return New(pool, issuer, false).Routes()
+	roots, errs := mediafs.NewRoots([]string{t.TempDir()})
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+	return New(pool, issuer, false, roots).Routes(), roots.List()[0]
 }
 
 func resetSchema(t *testing.T, pool *pgxpool.Pool) {

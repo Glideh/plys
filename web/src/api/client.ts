@@ -10,6 +10,9 @@ export type ApiErrorCode =
   | 'username_taken'
   | 'last_admin'
   | 'cannot_delete_self'
+  | 'name_taken'
+  | 'path_conflict'
+  | 'invalid_path'
   | 'internal'
   | 'network'
 

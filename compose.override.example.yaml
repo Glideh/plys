@@ -1,0 +1,7 @@
+# Copy to compose.override.yaml (git-ignored) and list your media folders.
+# Each folder becomes browsable under /media when creating a library. Always mount read-only.
+services:
+  api:
+    volumes:
+      - /path/to/Films:/media/Films:ro
+      - /path/to/Series:/media/Series:ro

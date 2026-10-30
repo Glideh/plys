@@ -211,6 +211,131 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /libraries:
+    get:
+      operationId: listLibraries
+      summary: List libraries (paths are only included for admins)
+      responses:
+        "200":
+          description: Libraries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Library" }
+    post:
+      operationId: createLibrary
+      summary: Create a library (admin)
+      description: Paths must be directories inside the media roots and must not overlap paths of other libraries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind, paths]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                kind: { $ref: "#/components/schemas/LibraryKind" }
+                paths:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items: { type: string }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: "`name_taken` or `path_conflict`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /libraries/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getLibrary
+      summary: Get a library
+      responses:
+        "200":
+          description: Library
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateLibrary
+      summary: Rename a library or replace its paths (admin)
+      description: The kind cannot be changed after creation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100 }
+                paths:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items: { type: string }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Library" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: "`name_taken` or `path_conflict`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: deleteLibrary
+      summary: Delete a library (admin); media files are never touched
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/fs/browse:
+    get:
+      operationId: browseFolders
+      summary: Browse subdirectories of the media roots (admin)
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: Absolute directory to list. When omitted, the media roots are returned.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BrowseResult" }
+        "400":
+          description: Path outside the media roots or not a directory (`invalid_path`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
 components:
   securitySchemes:
     bearer:
@@ -275,6 +400,39 @@ components:
           type: string
           description: Present only when `tokenDelivery` is `body`.
         user: { $ref: "#/components/schemas/User" }
+    LibraryKind:
+      type: string
+      enum: [movies, series, other]
+    Library:
+      type: object
+      required: [id, name, kind, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { $ref: "#/components/schemas/LibraryKind" }
+        paths:
+          type: array
+          description: Only returned to admins.
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+    BrowseResult:
+      type: object
+      required: [path, parent, entries]
+      properties:
+        path:
+          type: [string, "null"]
+          description: Listed directory, null when listing the media roots.
+        parent:
+          type: [string, "null"]
+          description: Parent directory, null when going up leads back to the media roots.
+        entries:
+          type: array
+          items:
+            type: object
+            required: [name, path]
+            properties:
+              name: { type: string }
+              path: { type: string }
     Error:
       type: object
       required: [error]

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -14,6 +15,7 @@ type Config struct {
 	JWTSecret    string
 	CookieSecure bool
 	LogLevel     slog.Level
+	MediaRoots   []string
 }
 
 func Load() (Config, error) {
@@ -21,6 +23,7 @@ func Load() (Config, error) {
 		HTTPAddr:    env("HTTP_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
+		MediaRoots:  filepath.SplitList(env("MEDIA_ROOTS", "/media")),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")

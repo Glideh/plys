@@ -10,6 +10,54 @@ import (
 	"github.com/google/uuid"
 )
 
+type Item struct {
+	ID               uuid.UUID
+	LibraryID        uuid.UUID
+	ParentID         *uuid.UUID
+	Kind             string
+	MatchKey         string
+	Title            string
+	SortTitle        string
+	Year             *int32
+	SeasonNumber     *int32
+	EpisodeNumber    *int32
+	EpisodeNumberEnd *int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type Library struct {
+	ID            uuid.UUID
+	Name          string
+	Kind          string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	LastScannedAt *time.Time
+}
+
+type LibraryPath struct {
+	LibraryID uuid.UUID
+	Path      string
+}
+
+type MediaFile struct {
+	ID              uuid.UUID
+	LibraryID       uuid.UUID
+	ItemID          *uuid.UUID
+	Path            string
+	Size            int64
+	Mtime           time.Time
+	DurationSeconds *float64
+	Container       *string
+	Bitrate         *int64
+	Streams         []byte
+	ProbeError      *string
+	ProbedAt        *time.Time
+	MissingSince    *time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type RefreshToken struct {
 	ID         uuid.UUID
 	UserID     uuid.UUID

@@ -22,6 +22,14 @@ const auth = useAuthStore()
         >
           {{ t('nav.home') }}
         </RouterLink>
+        <RouterLink
+          v-if="auth.isAdmin"
+          :to="{ name: 'admin-libraries' }"
+          class="-ml-4 text-sm font-medium text-slate-400 transition hover:text-slate-100"
+          :class="{ '!text-slate-100': $route.path.startsWith('/admin') }"
+        >
+          {{ t('nav.admin') }}
+        </RouterLink>
 
         <div class="ml-auto flex items-center gap-4">
           <span class="hidden items-center gap-2 text-sm text-slate-300 sm:flex">

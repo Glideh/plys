@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"toto/api/internal/auth"
@@ -86,7 +84,7 @@ type updateUserRequest struct {
 }
 
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := userIDParam(w, r)
+	id, ok := idParam(w, r, "user")
 	if !ok {
 		return
 	}
@@ -152,7 +150,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := userIDParam(w, r)
+	id, ok := idParam(w, r, "user")
 	if !ok {
 		return
 	}
@@ -193,15 +191,6 @@ func ensureAnotherAdmin(ctx context.Context, q *store.Queries) error {
 		return errLastAdmin
 	}
 	return nil
-}
-
-func userIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "id"))
-	if err != nil {
-		httpx.Error(w, http.StatusNotFound, "not_found", "user not found")
-		return uuid.Nil, false
-	}
-	return id, true
 }
 
 // writeUserMutationError reports whether an error response was written.
