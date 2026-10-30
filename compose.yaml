@@ -1,0 +1,76 @@
+# Development environment: `docker compose up`. Production: compose.prod.yaml.
+# Distinct project name keeps dev images and volumes apart from production ones.
+name: toto-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: toto
+      POSTGRES_PASSWORD: toto
+      POSTGRES_DB: toto
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+      - "[::1]:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U toto -d toto"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: toto-api:dev
+    build:
+      context: ./api
+      target: dev
+    user: "${UID:-1000}:${GID:-1000}"
+    command: air -c .air.toml
+    environment:
+      DATABASE_URL: postgres://toto:toto@db:5432/toto?sslmode=disable
+      TEST_DATABASE_URL: postgres://toto:toto@db:5432/toto_test?sslmode=disable
+      COOKIE_SECURE: "false"
+      LOG_LEVEL: debug
+    volumes:
+      - ./api:/src
+      - go-cache:/go-cache
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "[::1]:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: toto-web:dev
+    build:
+      context: ./web
+      target: dev
+    user: "${UID:-1000}:${GID:-1000}"
+    command: sh -c "npm install && npm run dev"
+    environment:
+      API_PROXY_TARGET: http://api:8080
+    volumes:
+      - ./web:/app
+      - web-node-modules:/app/node_modules
+    # Both loopbacks: browsers resolve localhost to ::1 first.
+    ports:
+      - "127.0.0.1:5173:5173"
+      - "[::1]:5173:5173"
+    depends_on:
+      - api
+
+  sqlc:
+    image: sqlc/sqlc:1.29.0
+    profiles: [tools]
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /src
+    volumes:
+      - ./api:/src
+
+volumes:
+  db-data:
+  go-cache:
+  web-node-modules:

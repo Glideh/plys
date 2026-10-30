@@ -1,0 +1,287 @@
+openapi: 3.1.0
+info:
+  title: Toto API
+  version: 0.1.0
+  description: |
+    Media library API used by the web front-end and future mobile clients.
+
+    Authentication: short-lived JWT access token (`Authorization: Bearer`) plus a rotating
+    refresh token. Web clients request `tokenDelivery: cookie` (HttpOnly, SameSite=Strict,
+    path `/api/v1/auth`); mobile clients use `tokenDelivery: body` and store the refresh token
+    in secure storage. Presenting an already-rotated refresh token revokes the whole session.
+servers:
+  - url: /api/v1
+security:
+  - bearer: []
+
+paths:
+  /setup/status:
+    get:
+      operationId: getSetupStatus
+      summary: Tell whether the first admin account still has to be created
+      security: []
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [needsSetup]
+                properties:
+                  needsSetup: { type: boolean }
+
+  /setup/admin:
+    post:
+      operationId: setupAdmin
+      summary: Create the first admin account (only once)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Credentials"
+                - $ref: "#/components/schemas/SessionOptions"
+                - type: object
+                  properties:
+                    locale: { $ref: "#/components/schemas/Locale" }
+      responses:
+        "201": { $ref: "#/components/responses/Session" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Setup already completed (`already_initialized`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Open a session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Credentials"
+                - $ref: "#/components/schemas/SessionOptions"
+      responses:
+        "200": { $ref: "#/components/responses/Session" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401":
+          description: Invalid credentials (`invalid_credentials`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      summary: Rotate the refresh token and get a new access token
+      description: Reads the token from the body, or from the `refresh_token` cookie when the body is empty.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Session" }
+        "401":
+          description: Refresh token invalid, expired or revoked (`invalid_refresh_token`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/logout:
+    post:
+      operationId: logout
+      summary: Revoke the session bound to the refresh token
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204": { description: Logged out }
+
+  /me:
+    get:
+      operationId: getMe
+      summary: Current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /users:
+    get:
+      operationId: listUsers
+      summary: List users (admin)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createUser
+      summary: Create a user (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Credentials"
+                - type: object
+                  properties:
+                    role: { $ref: "#/components/schemas/Role" }
+                    locale: { $ref: "#/components/schemas/Locale" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Username already exists (`username_taken`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      operationId: updateUser
+      summary: Update role, locale or password (admin)
+      description: Changing the role or password revokes the user's refresh tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { $ref: "#/components/schemas/Role" }
+                locale: { $ref: "#/components/schemas/Locale" }
+                password: { type: string, minLength: 8, maxLength: 256 }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Would remove the last admin (`last_admin`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      operationId: deleteUser
+      summary: Delete a user (admin)
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: "`last_admin` or `cannot_delete_self`"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Session:
+      description: Session opened
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Session" }
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Role:
+      type: string
+      enum: [admin, user]
+    Locale:
+      type: string
+      enum: [fr, en]
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, pattern: "^[A-Za-z0-9._-]{3,32}$" }
+        password: { type: string, minLength: 8, maxLength: 256 }
+    SessionOptions:
+      type: object
+      properties:
+        deviceName: { type: string, maxLength: 100 }
+        tokenDelivery:
+          type: string
+          enum: [cookie, body]
+          default: body
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken: { type: string }
+    User:
+      type: object
+      required: [id, username, role, locale, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        locale: { $ref: "#/components/schemas/Locale" }
+        createdAt: { type: string, format: date-time }
+    Session:
+      type: object
+      required: [accessToken, tokenType, expiresAt, user]
+      properties:
+        accessToken: { type: string }
+        tokenType: { type: string, const: Bearer }
+        expiresAt: { type: string, format: date-time }
+        refreshToken:
+          type: string
+          description: Present only when `tokenDelivery` is `body`.
+        user: { $ref: "#/components/schemas/User" }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }

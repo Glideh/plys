@@ -1,0 +1,42 @@
+export default {
+  app: { name: 'Toto', tagline: 'Votre cinémathèque personnelle' },
+  common: {
+    username: "Nom d'utilisateur",
+    password: 'Mot de passe',
+    language: 'Langue',
+    logout: 'Se déconnecter',
+    loading: 'Chargement…',
+  },
+  setup: {
+    title: 'Bienvenue',
+    subtitle: "Créez le compte administrateur pour commencer. Il pourra ensuite ajouter des bibliothèques et d'autres utilisateurs.",
+    confirmPassword: 'Confirmer le mot de passe',
+    submit: 'Créer le compte administrateur',
+    passwordHint: '8 caractères minimum',
+    usernameHint: '3 à 32 caractères : lettres, chiffres, « . », « _ » ou « - »',
+  },
+  login: {
+    title: 'Connexion',
+    subtitle: 'Connectez-vous pour accéder à vos bibliothèques.',
+    submit: 'Se connecter',
+  },
+  home: {
+    continueWatching: 'Reprendre la lecture',
+    nextUp: 'Épisodes suivants',
+    libraries: 'Bibliothèques',
+    emptyLibraries: "Aucune bibliothèque pour l'instant.",
+    emptyLibrariesAdmin: 'Ajoutez une bibliothèque depuis l’administration pour lancer la découverte de vos vidéos.',
+    emptyContinue: 'Rien en cours de lecture.',
+    emptyNextUp: 'Aucun épisode à suivre.',
+  },
+  nav: { home: 'Accueil', admin: 'Administration' },
+  errors: {
+    passwordMismatch: 'Les mots de passe ne correspondent pas.',
+    invalid_credentials: 'Identifiants incorrects.',
+    username_taken: "Ce nom d'utilisateur est déjà pris.",
+    already_initialized: "L'application est déjà initialisée.",
+    validation: 'Certains champs sont invalides.',
+    network: 'Le serveur est injoignable.',
+    generic: 'Une erreur est survenue.',
+  },
+}
