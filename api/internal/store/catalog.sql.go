@@ -224,18 +224,20 @@ func (q *Queries) ListLibraryAccess(ctx context.Context) ([]LibraryAccess, error
 }
 
 const listLibraryItems = `-- name: ListLibraryItems :many
+WITH visible AS (
+    SELECT DISTINCT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id
+    FROM media_files f
+    JOIN items x ON x.id = f.item_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE f.missing_since IS NULL AND x.library_id = $1
+)
 SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
        count(*) OVER ()::int AS total
 FROM items i
 WHERE i.library_id = $1 AND i.parent_id IS NULL
   AND ($2::text = '' OR i.title ILIKE $2 OR i.original_title ILIKE $2)
-  AND EXISTS (
-      SELECT 1 FROM media_files f
-      WHERE f.missing_since IS NULL AND f.item_id IN (
-          SELECT i.id
-          UNION SELECT c.id FROM items c WHERE c.parent_id = i.id
-          UNION SELECT g.id FROM items c JOIN items g ON g.parent_id = c.id WHERE c.parent_id = i.id))
+  AND i.id IN (SELECT root_id FROM visible)
 ORDER BY
     CASE WHEN $3::text = 'year' THEN i.year END DESC NULLS LAST,
     CASE WHEN $3::text = 'added' THEN i.created_at END DESC,
@@ -266,6 +268,7 @@ type ListLibraryItemsRow struct {
 }
 
 // Top-level entries of a library; entries whose files are all missing are hidden.
+// Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
 func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsParams) ([]ListLibraryItemsRow, error) {
 	rows, err := q.db.Query(ctx, listLibraryItems,
 		arg.LibraryID,

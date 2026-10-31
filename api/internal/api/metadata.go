@@ -262,6 +262,11 @@ func (s *Server) tmdbImage(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "image not found")
 		return
 	}
+	// A cached file was referenced when downloaded: skip the database lookup on the hot path.
+	if path, ok := s.Images.Cached(size, file); ok {
+		serveImage(w, r, path)
+		return
+	}
 	// Refusing unknown paths keeps the endpoint from acting as an open proxy to TMDB.
 	known, err := s.q.IsImagePathReferenced(r.Context(), "/"+file)
 	if err != nil {

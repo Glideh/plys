@@ -315,6 +315,31 @@ func (q *Queries) ListItemsToMatch(ctx context.Context, arg ListItemsToMatchPara
 	return items, nil
 }
 
+const listTMDBPosterPaths = `-- name: ListTMDBPosterPaths :many
+SELECT DISTINCT poster_path::text FROM items
+WHERE poster_path LIKE '/%' AND kind IN ('movie', 'series', 'season')
+`
+
+func (q *Queries) ListTMDBPosterPaths(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listTMDBPosterPaths)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var poster_path string
+		if err := rows.Scan(&poster_path); err != nil {
+			return nil, err
+		}
+		items = append(items, poster_path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const moveItem = `-- name: MoveItem :exec
 UPDATE items SET parent_id = $2, updated_at = now() WHERE id = $1
 `

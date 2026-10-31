@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,9 @@ const (
 	thumbTimeout     = 60 * time.Second
 )
 
+// Prefetch the posters shown in library grids so the first visit does not wait on TMDB.
+const listPosterSize = "w342"
+
 var ErrNoAPIKey = errors.New("no TMDB API key configured")
 
 type Service struct {
@@ -44,6 +48,34 @@ type Service struct {
 	mu        sync.Mutex
 	client    *TMDB
 	clientKey string
+
+	images  *ImageCache
+	warming atomic.Bool
+}
+
+// SetImages enables poster prefetching.
+func (s *Service) SetImages(c *ImageCache) { s.images = c }
+
+// WarmImages downloads the grid posters of every library that are not cached yet.
+func (s *Service) WarmImages(ctx context.Context) {
+	if s.images == nil || !s.warming.CompareAndSwap(false, true) {
+		return
+	}
+	defer s.warming.Store(false)
+	paths, err := s.q.ListTMDBPosterPaths(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("list posters to prefetch", "err", err)
+		}
+		return
+	}
+	files := make([]string, 0, len(paths))
+	for _, p := range paths {
+		files = append(files, strings.TrimPrefix(p, "/"))
+	}
+	if n := s.images.Prefetch(ctx, listPosterSize, files); n > 0 {
+		slog.Info("posters prefetched", "count", n)
+	}
 }
 
 func NewService(pool *pgxpool.Pool, st *settings.Store, cacheDir, ffmpeg, tmdbBaseURL string) *Service {
@@ -79,6 +111,8 @@ func (s *Service) ValidateKey(ctx context.Context, key string) error {
 // RefreshLibrary fetches metadata for new items and for items whose language changed. Without an API key,
 // movies and series stay pending until one is configured; thumbnails of personal videos are still extracted.
 func (s *Service) RefreshLibrary(ctx context.Context, lib store.Library, progress func(done, total int)) error {
+	defer func() { go s.WarmImages(ctx) }()
+
 	client, lang, err := s.Client(ctx)
 	if err != nil && !errors.Is(err, ErrNoAPIKey) {
 		return err

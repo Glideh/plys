@@ -10,10 +10,14 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const DefaultImageBaseURL = "https://image.tmdb.org/t/p"
+
+const prefetchWorkers = 6
 
 // Sizes offered by TMDB; restricting them keeps the cache bounded.
 var ImageSizes = []string{"w92", "w185", "w300", "w342", "w500", "w780", "w1280", "original"}
@@ -36,6 +40,47 @@ func NewImageCache(dir, baseURL string) *ImageCache {
 
 func ValidImageRequest(size, file string) bool {
 	return slices.Contains(ImageSizes, size) && imageFileRe.MatchString(file)
+}
+
+// Cached returns the local path of an image already downloaded.
+func (c *ImageCache) Cached(size, file string) (string, bool) {
+	if !ValidImageRequest(size, file) {
+		return "", false
+	}
+	path := filepath.Join(c.dir, "tmdb", size, file)
+	_, err := os.Stat(path)
+	return path, err == nil
+}
+
+// Prefetch downloads the missing images with a few parallel requests and returns how many it fetched.
+// Failures are ignored: the image is then fetched when a browser asks for it.
+func (c *ImageCache) Prefetch(ctx context.Context, size string, files []string) int {
+	queue := make(chan string)
+	var fetched atomic.Int64
+	var wg sync.WaitGroup
+	for range prefetchWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for file := range queue {
+				if _, ok := c.Cached(size, file); ok {
+					continue
+				}
+				if _, err := c.TMDB(ctx, size, file); err == nil {
+					fetched.Add(1)
+				}
+			}
+		}()
+	}
+	for _, f := range files {
+		select {
+		case queue <- f:
+		case <-ctx.Done():
+		}
+	}
+	close(queue)
+	wg.Wait()
+	return int(fetched.Load())
 }
 
 // TMDB returns the local path of the image, downloading it on first use.

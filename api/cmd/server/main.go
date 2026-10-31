@@ -71,6 +71,9 @@ func run() error {
 		return err
 	}
 	meta := metadata.NewService(pool, st, cfg.CacheDir, "ffmpeg", "")
+	images := metadata.NewImageCache(cfg.CacheDir, "")
+	meta.SetImages(images)
+	go meta.WarmImages(ctx)
 	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, meta, cfg.ScanInterval)
 	go scan.Run(ctx)
 
@@ -91,7 +94,7 @@ func run() error {
 		Roots:        roots,
 		Scanner:      scan,
 		Metadata:     meta,
-		Images:       metadata.NewImageCache(cfg.CacheDir, ""),
+		Images:       images,
 		Settings:     st,
 		Identity:     identity,
 		Playback:     player,

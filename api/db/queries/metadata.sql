@@ -97,6 +97,10 @@ SELECT EXISTS (
        OR cast_members @> jsonb_build_array(jsonb_build_object('profilePath', @path::text))
 );
 
+-- name: ListTMDBPosterPaths :many
+SELECT DISTINCT poster_path::text FROM items
+WHERE poster_path LIKE '/%' AND kind IN ('movie', 'series', 'season');
+
 -- name: CountMatchStatusByLibrary :many
 SELECT library_id, match_status, count(*) FROM items WHERE kind IN ('movie', 'series', 'video') GROUP BY library_id, match_status;
 
