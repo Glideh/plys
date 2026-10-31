@@ -137,6 +137,8 @@ function subtitle(it: ItemCard): string | null {
           :image-url="it.posterUrl"
           :landscape="it.kind === 'video'"
           :badge="auth.isAdmin && it.matchStatus === 'unmatched' ? '?' : null"
+          :watched="it.watched"
+          :unwatched="it.kind === 'series' ? it.unwatchedCount : null"
         />
       </li>
       <template v-if="loading">

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { catalogApi, type ItemDetail, type Track } from '@/api/catalog'
+import { progressApi } from '@/api/progress'
 import BaseButton from '@/components/BaseButton.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { usePlayback } from '@/composables/usePlayback'
+import { useAuthStore } from '@/stores/auth'
 import { channelLayout, languageName } from '@/utils/format'
 import { formatClock } from '@/utils/player'
 
@@ -13,6 +15,7 @@ const props = defineProps<{ id: string }>()
 const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const errorMessage = useErrorMessage()
 
 const item = ref<ItemDetail | null>(null)
@@ -53,10 +56,73 @@ const stage = useTemplateRef<HTMLElement>('stage')
 const player = usePlayback(videoEl, {
   versionId: () => version.value?.id ?? '',
   initial: { start: startAt },
+  onEnded: finish,
 })
 const { session, status, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, subtitleLoad } = player
 
 const total = computed(() => session.value?.duration || version.value?.durationSeconds || 0)
+
+// --- progress -------------------------------------------------------------------------------------
+
+const REPORT_EVERY_MS = 10_000
+let lastReported = -1
+
+function report(keepalive = false) {
+  if (status.value !== 'ready' || !total.value || position.value < 1) return
+  if (Math.abs(position.value - lastReported) < 1) return
+  lastReported = position.value
+  void progressApi.report(props.id, position.value, total.value, keepalive).catch(() => undefined)
+}
+
+const reportTimer = setInterval(() => {
+  if (!paused.value && !waiting.value) report()
+}, REPORT_EVERY_MS)
+const onPageHide = () => report(true)
+watch(paused, (isPaused) => {
+  if (isPaused) report()
+  else ended.value = false
+})
+onMounted(() => window.addEventListener('pagehide', onPageHide))
+onBeforeUnmount(() => {
+  clearInterval(reportTimer)
+  window.removeEventListener('pagehide', onPageHide)
+  report()
+})
+
+const ended = ref(false)
+const autoplayNext = computed(() => auth.user?.autoplayNext ?? false)
+
+/** The end of the video marks the item watched; the next one starts only if the user enabled it. */
+function finish() {
+  lastReported = total.value
+  void progressApi.report(props.id, total.value, total.value).catch(() => undefined)
+  if (!item.value?.next) return
+  if (autoplayNext.value) playNext()
+  else ended.value = true
+}
+
+function playNext() {
+  const next = item.value?.next
+  if (next) void router.replace({ name: 'watch', params: { id: next.id } })
+}
+
+function toggleAutoplay() {
+  void auth.updatePreferences({ autoplayNext: !autoplayNext.value }).catch(() => undefined)
+}
+
+const nextLabel = computed(() => {
+  const n = item.value?.next
+  if (!n) return ''
+  if (n.kind === 'part') return t('catalog.part', { n: n.partNumber })
+  const code = `S${String(n.seasonNumber ?? 0).padStart(2, '0')}E${String(n.episodeNumber ?? 0).padStart(2, '0')}`
+  return [code, n.title].filter(Boolean).join(' · ')
+})
+
+// --- expected end ---------------------------------------------------------------------------------
+
+const now = ref(Date.now())
+const clockTimer = setInterval(() => (now.value = Date.now()), 15_000)
+onBeforeUnmount(() => clearInterval(clockTimer))
 
 // --- seek bar -------------------------------------------------------------------------------------
 
@@ -163,6 +229,13 @@ function trackLabel(tr: Track): string {
     .join(' · ')
 }
 
+// Assumes playback goes on from now at normal speed, including while paused.
+const endsAt = computed(() => {
+  if (!total.value) return ''
+  const end = new Date(now.value + Math.max(total.value - shown.value, 0) * 1000)
+  return new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }).format(end)
+})
+
 const mode = computed(() => {
   const s = session.value
   if (!s) return ''
@@ -201,6 +274,17 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
       <span class="size-14 animate-spin rounded-full border-4 border-white/20 border-t-accent-400" role="status" />
     </div>
 
+    <div v-if="ended && !failure" class="absolute inset-0 grid place-items-center bg-black/70 p-6">
+      <div class="max-w-md text-center">
+        <p class="text-sm tracking-wide text-slate-400 uppercase">{{ t('player.next') }}</p>
+        <p class="mt-1 text-xl font-semibold">{{ nextLabel }}</p>
+        <div class="mt-6 flex justify-center gap-3">
+          <BaseButton @click="leave">{{ t('player.back') }}</BaseButton>
+          <BaseButton variant="primary" @click="playNext">▶ {{ t('player.playNext') }}</BaseButton>
+        </div>
+      </div>
+    </div>
+
     <div v-if="failure" class="absolute inset-0 grid place-items-center bg-black/80 p-6">
       <div class="max-w-md text-center">
         <p class="text-lg">{{ failure }}</p>
@@ -220,6 +304,7 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
           <svg viewBox="0 0 24 24" class="size-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
         <h1 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ title }}</h1>
+        <span v-if="endsAt" class="text-sm whitespace-nowrap text-slate-200">{{ t('player.endsAt', { time: endsAt }) }}</span>
         <span v-if="mode" class="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">{{ mode }}</span>
       </header>
 
@@ -278,6 +363,21 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
           </div>
 
           <span class="ml-1 text-sm tabular-nums text-slate-200">{{ formatClock(shown) }} / {{ formatClock(total) }}</span>
+          <button v-if="item?.next" type="button" class="rounded-full p-2 hover:bg-white/15" :aria-label="t('player.next')" :title="t('player.next')" @click="playNext">
+            <svg viewBox="0 0 24 24" class="size-6" fill="currentColor"><path d="M6 5v14l9-7zM17 5h2v14h-2z" /></svg>
+          </button>
+          <button
+            v-if="item?.next"
+            type="button"
+            role="switch"
+            :aria-checked="autoplayNext"
+            :title="t('player.autoplayHelp')"
+            class="rounded-full px-2.5 py-1 text-xs font-semibold transition"
+            :class="autoplayNext ? 'bg-accent-500 text-surface-950' : 'bg-white/10 text-slate-300 hover:bg-white/20'"
+            @click="toggleAutoplay"
+          >
+            {{ t('player.autoplay') }}
+          </button>
           <span class="flex-1" />
 
           <div v-if="version && version.audio.length > 1" class="relative">

@@ -72,10 +72,16 @@ func (s *Server) Routes() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.Tokens.Middleware)
 			r.Get("/me", s.me)
+			r.Patch("/me", s.updateMe)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)
 			r.Get("/items/{id}", s.getItem)
+			r.Put("/items/{id}/progress", s.putProgress)
+			r.Post("/items/{id}/watched", s.setWatched(true))
+			r.Delete("/items/{id}/watched", s.setWatched(false))
+			r.Get("/me/continue-watching", s.continueWatching)
+			r.Get("/me/next-up", s.nextUp)
 			r.Post("/playback/sessions", s.startPlayback)
 			r.Delete("/playback/sessions/{id}", s.stopPlayback)
 

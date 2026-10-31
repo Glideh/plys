@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { catalogApi, type ChildItem, type ItemDetail } from '@/api/catalog'
+import { progressApi } from '@/api/progress'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
@@ -10,6 +11,7 @@ import PosterCard from '@/components/PosterCard.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { useAuthStore } from '@/stores/auth'
 import { channelLayout, formatBytes, formatRuntime, languageName } from '@/utils/format'
+import { formatClock } from '@/utils/player'
 
 const props = defineProps<{ id: string }>()
 const { t, d, locale } = useI18n()
@@ -27,7 +29,7 @@ async function load() {
   error.value = ''
   try {
     item.value = await catalogApi.get(props.id)
-    versionId.value = item.value.versions[0]?.id ?? ''
+    if (!item.value.versions.some((v) => v.id === versionId.value)) versionId.value = item.value.versions[0]?.id ?? ''
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -89,8 +91,58 @@ function trackLabel(tr: { language?: string; title?: string; codec: string; chan
     .join(' · ')
 }
 
-function play() {
-  void router.push({ name: 'watch', params: { id: props.id }, query: { v: versionId.value } })
+function play(fromStart = false) {
+  const resumeAt = fromStart ? 0 : (item.value?.positionSeconds ?? 0)
+  void router.push({
+    name: 'watch',
+    params: { id: props.id },
+    query: { v: versionId.value, ...(resumeAt ? { t: Math.floor(resumeAt) } : {}) },
+  })
+}
+
+function targetLabel(tg: { kind: string; seasonNumber?: number; episodeNumber?: number; partNumber?: number }): string {
+  if (tg.kind === 'part') return t('catalog.part', { n: tg.partNumber })
+  if (tg.kind === 'episode') return `S${String(tg.seasonNumber ?? 0).padStart(2, '0')}E${String(tg.episodeNumber ?? 0).padStart(2, '0')}`
+  return ''
+}
+
+/** Series, seasons and multi-part movies play the item chosen by the server. */
+function playTarget() {
+  const tg = item.value?.playTarget
+  if (!tg) return
+  void router.push({ name: 'watch', params: { id: tg.id }, query: tg.resume ? { t: Math.floor(tg.positionSeconds) } : {} })
+}
+
+const primaryLabel = computed(() => {
+  const it = item.value
+  if (!it) return ''
+  if (it.versions.length) {
+    if (it.positionSeconds) return t('catalog.resume', { time: formatClock(it.positionSeconds) })
+    return it.watched ? t('catalog.rewatch') : t('catalog.play')
+  }
+  const tg = it.playTarget
+  if (!tg) return ''
+  if (tg.rewatch) return t('catalog.rewatch')
+  return t(tg.resume ? 'catalog.continueEpisode' : 'catalog.playEpisode', { label: targetLabel(tg) })
+})
+
+const togglingWatched = ref(false)
+
+async function toggleWatched(id: string, watched: boolean) {
+  togglingWatched.value = true
+  try {
+    await progressApi.setWatched(id, !watched)
+    await load()
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    togglingWatched.value = false
+  }
+}
+
+/** Share of an episode already watched, for the bar on its thumbnail. */
+function childProgress(c: ChildItem): number | null {
+  return c.positionSeconds && c.runtimeMinutes ? c.positionSeconds / (c.runtimeMinutes * 60) : null
 }
 
 async function refresh() {
@@ -154,9 +206,13 @@ async function onMatched(merged: boolean) {
             <p v-if="item.overview" class="mt-3 max-w-3xl leading-relaxed text-slate-300">{{ item.overview }}</p>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
-              <BaseButton v-if="item.versions.length" variant="primary" class="px-6 py-2.5 text-base" @click="play">
-                ▶ {{ t('catalog.play') }}
+              <BaseButton v-if="item.versions.length" variant="primary" class="px-6 py-2.5 text-base" @click="play()">
+                ▶ {{ primaryLabel }}
               </BaseButton>
+              <BaseButton v-else-if="item.playTarget" variant="primary" class="px-6 py-2.5 text-base" @click="playTarget">
+                ▶ {{ primaryLabel }}
+              </BaseButton>
+              <BaseButton v-if="item.versions.length && item.positionSeconds" @click="play(true)">{{ t('catalog.fromStart') }}</BaseButton>
               <label v-if="item.versions.length > 1" class="flex items-center gap-2 text-sm text-slate-400">
                 {{ t('catalog.version') }}
                 <select
@@ -168,6 +224,9 @@ async function onMatched(merged: boolean) {
                   </option>
                 </select>
               </label>
+              <BaseButton v-if="item.versions.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
+                {{ item.watched ? t('catalog.markUnwatched') : t('catalog.markWatched') }}
+              </BaseButton>
               <template v-if="auth.isAdmin && hasOwnMetadata">
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>
                 <BaseButton :loading="refreshing" @click="refresh">{{ t('catalog.refresh') }}</BaseButton>
@@ -209,15 +268,20 @@ async function onMatched(merged: boolean) {
                 :title="childTitle(c)"
                 :subtitle="c.childCount ? t('catalog.episodeCount', c.childCount) : null"
                 :image-url="c.posterUrl ?? item.posterUrl"
+                :watched="c.watched"
+                :unwatched="c.unwatchedCount"
               />
             </li>
           </ul>
 
           <ul v-else class="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/5 bg-surface-900/60">
-            <li v-for="c in item.children" :key="c.id">
-              <RouterLink :to="{ name: 'item', params: { id: c.id } }" class="group flex gap-4 p-4 transition hover:bg-white/[0.03]">
-                <div class="aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-surface-800 sm:w-56">
+            <li v-for="c in item.children" :key="c.id" class="relative">
+              <RouterLink :to="{ name: 'item', params: { id: c.id } }" class="group flex gap-4 p-4 pr-14 transition hover:bg-white/[0.03]">
+                <div class="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-surface-800 sm:w-56">
                   <img v-if="c.thumbUrl" :src="c.thumbUrl" alt="" loading="lazy" class="size-full object-cover transition duration-500 group-hover:scale-105" />
+                  <div v-if="childProgress(c)" class="absolute inset-x-0 bottom-0 h-1.5 bg-black/60">
+                    <div class="h-full bg-accent-400" :style="{ width: Math.min(childProgress(c)!, 1) * 100 + '%' }" />
+                  </div>
                 </div>
                 <div class="min-w-0 py-1">
                   <p class="font-semibold group-hover:text-white">{{ childTitle(c) }}</p>
@@ -227,6 +291,18 @@ async function onMatched(merged: boolean) {
                   <p v-if="c.overview" class="mt-2 line-clamp-2 text-sm text-slate-400">{{ c.overview }}</p>
                 </div>
               </RouterLink>
+              <button
+                type="button"
+                class="absolute top-4 right-4 grid size-8 place-items-center rounded-full transition hover:bg-white/10"
+                :class="c.watched ? 'text-accent-300' : 'text-slate-600 hover:text-slate-300'"
+                :title="c.watched ? t('catalog.markUnwatched') : t('catalog.markWatched')"
+                :aria-label="c.watched ? t('catalog.markUnwatched') : t('catalog.markWatched')"
+                :aria-pressed="c.watched"
+                :disabled="togglingWatched"
+                @click="toggleWatched(c.id, c.watched)"
+              >
+                <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
+              </button>
             </li>
           </ul>
         </section>

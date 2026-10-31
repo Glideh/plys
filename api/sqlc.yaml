@@ -56,3 +56,8 @@ sql:
               import: time
               type: Time
               pointer: true
+          - db_type: pg_catalog.bool
+            nullable: true
+            go_type:
+              type: bool
+              pointer: true

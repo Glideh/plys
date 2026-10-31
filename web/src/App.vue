@@ -16,5 +16,8 @@ watch(
 </script>
 
 <template>
-  <RouterView />
+  <!-- Moving between videos must restart the player, which a same-route navigation would reuse. -->
+  <RouterView v-slot="{ Component, route: current }">
+    <component :is="Component" :key="current.name === 'watch' ? String(current.params.id) : undefined" />
+  </RouterView>
 </template>

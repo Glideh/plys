@@ -13,6 +13,7 @@ import (
 
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
+	"toto/api/internal/store"
 )
 
 var (
@@ -170,6 +171,29 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
 	user, err := s.q.GetUserByID(r.Context(), p.UserID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "user no longer exists")
+		return
+	}
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, toUserDTO(user))
+}
+
+type updatePreferencesRequest struct {
+	AutoplayNext *bool `json:"autoplayNext"`
+}
+
+// updateMe changes the caller's own preferences.
+func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
+	var req updatePreferencesRequest
+	if !httpx.DecodeRequired(w, r, &req) {
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	user, err := s.q.UpdateUserPreferences(r.Context(), store.UpdateUserPreferencesParams{ID: p.UserID, AutoplayNext: req.AutoplayNext})
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "user no longer exists")
 		return

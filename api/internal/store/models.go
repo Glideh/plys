@@ -85,6 +85,16 @@ type MediaFile struct {
 	Edition         *string
 }
 
+type PlaybackProgress struct {
+	UserID          uuid.UUID
+	ItemID          uuid.UUID
+	PositionSeconds float64
+	DurationSeconds *float64
+	Watched         bool
+	WatchedAt       *time.Time
+	UpdatedAt       time.Time
+}
+
 type RefreshToken struct {
 	ID         uuid.UUID
 	UserID     uuid.UUID
@@ -110,4 +120,5 @@ type User struct {
 	Locale       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	AutoplayNext bool
 }

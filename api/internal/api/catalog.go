@@ -42,6 +42,10 @@ type itemCardDTO struct {
 	Rating       *float32  `json:"rating"`
 	EpisodeCount int32     `json:"episodeCount,omitempty"`
 	MatchStatus  string    `json:"matchStatus"`
+	// Watched is set for movies and videos, and for series whose episodes are all watched.
+	Watched bool `json:"watched"`
+	// UnwatchedCount counts the episodes of a series the caller has not watched yet.
+	UnwatchedCount int32 `json:"unwatchedCount,omitempty"`
 }
 
 func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
@@ -84,8 +88,9 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 		query = "%" + likeEscaper.Replace(q) + "%"
 	}
 
+	p, _ := auth.PrincipalFrom(r.Context())
 	rows, err := s.q.ListLibraryItems(r.Context(), store.ListLibraryItemsParams{
-		LibraryID: id, Query: query, Sort: sort, Off: int32(offset), Lim: int32(limit),
+		UserID: p.UserID, LibraryID: id, Query: query, Sort: sort, Off: int32(offset), Lim: int32(limit),
 	})
 	if err != nil {
 		httpx.InternalError(w, r, err)
@@ -102,6 +107,7 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 		items = append(items, itemCardDTO{
 			ID: row.ID, Kind: row.Kind, Title: row.Title, Year: row.Year, PosterURL: poster,
 			Rating: row.Rating, EpisodeCount: row.EpisodeCount, MatchStatus: row.MatchStatus,
+			Watched: row.Watched || (row.Kind == "series" && row.UnwatchedCount == 0), UnwatchedCount: row.UnwatchedCount,
 		})
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "offset": offset, "limit": limit})
@@ -168,6 +174,11 @@ type childDTO struct {
 	EpisodeNumberEnd *int32     `json:"episodeNumberEnd,omitempty"`
 	PartNumber       *int32     `json:"partNumber,omitempty"`
 	ChildCount       int32      `json:"childCount,omitempty"`
+	Watched          bool       `json:"watched"`
+	// PositionSeconds is the resume point, 0 when none.
+	PositionSeconds float64 `json:"positionSeconds"`
+	// UnwatchedCount counts the episodes of a season the caller has not watched yet.
+	UnwatchedCount int32 `json:"unwatchedCount,omitempty"`
 }
 
 type ancestorDTO struct {
@@ -204,6 +215,14 @@ type itemDetailDTO struct {
 	Ancestors        []ancestorDTO `json:"ancestors"`
 	Versions         []versionDTO  `json:"versions"`
 	Children         []childDTO    `json:"children"`
+	// Watched covers the item itself, or everything under a series or season.
+	Watched bool `json:"watched"`
+	// PositionSeconds is the resume point of a playable item, 0 when none.
+	PositionSeconds float64 `json:"positionSeconds"`
+	// PlayTarget is what "play" starts on a series, season or multi-part movie.
+	PlayTarget *playTargetDTO `json:"playTarget"`
+	// Next follows an episode or part in viewing order.
+	Next *playTargetDTO `json:"next"`
 }
 
 func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
@@ -256,6 +275,10 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	if err := s.withProgress(r, it, &dto); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
 	httpx.JSON(w, http.StatusOK, dto)
 }
 
@@ -274,7 +297,8 @@ func (s *Server) ancestors(r *http.Request, it store.Item) ([]ancestorDTO, error
 }
 
 func (s *Server) children(r *http.Request, id uuid.UUID) ([]childDTO, error) {
-	rows, err := s.q.ListChildItems(r.Context(), &id)
+	p, _ := auth.PrincipalFrom(r.Context())
+	rows, err := s.q.ListChildItems(r.Context(), store.ListChildItemsParams{UserID: p.UserID, ParentID: &id})
 	if err != nil {
 		return nil, err
 	}
@@ -285,6 +309,8 @@ func (s *Server) children(r *http.Request, id uuid.UUID) ([]childDTO, error) {
 			RuntimeMinutes: c.RuntimeMinutes, Rating: c.Rating, PosterURL: imageURL(c.PosterPath, "w342"),
 			ThumbURL: imageURL(c.ThumbPath, "w300"), SeasonNumber: c.SeasonNumber, EpisodeNumber: c.EpisodeNumber,
 			EpisodeNumberEnd: c.EpisodeNumberEnd, PartNumber: c.PartNumber, ChildCount: c.ChildCount,
+			Watched:         c.Watched || (c.Kind == "season" && c.UnwatchedCount == 0),
+			PositionSeconds: resumePoint(c.Watched, c.PositionSeconds), UnwatchedCount: c.UnwatchedCount,
 		})
 	}
 	return out, nil

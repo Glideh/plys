@@ -27,15 +27,17 @@ const (
 )
 
 type userDTO struct {
-	ID        uuid.UUID `json:"id"`
-	Username  string    `json:"username"`
-	Role      string    `json:"role"`
-	Locale    string    `json:"locale"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
+	Role     string    `json:"role"`
+	Locale   string    `json:"locale"`
+	// AutoplayNext starts the next episode or part when one ends.
+	AutoplayNext bool      `json:"autoplayNext"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 func toUserDTO(u store.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, CreatedAt: u.CreatedAt}
+	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt}
 }
 
 func validateUsername(s string) error {

@@ -2,7 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { librariesApi, type Library, type LibraryKind } from '@/api/libraries'
+import { progressApi, type HomeItem } from '@/api/progress'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import HomeRail from '@/components/HomeRail.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { useLibrarySummary } from '@/composables/useLibrarySummary'
 import { useAuthStore } from '@/stores/auth'
@@ -22,13 +24,20 @@ const gradients: Record<LibraryKind, string> = {
   other: 'from-rose-400/25 via-pink-700/15 to-slate-700/30',
 }
 
-// Placeholder rails until the progress endpoints exist.
-const sections = [
-  { title: 'home.continueWatching', empty: 'home.emptyContinue' },
-  { title: 'home.nextUp', empty: 'home.emptyNextUp' },
-] as const
+const continueItems = ref<HomeItem[]>([])
+const nextItems = ref<HomeItem[]>([])
+const railsLoading = ref(true)
 
 onMounted(async () => {
+  // A failing rail must not hide the libraries.
+  progressApi
+    .continueWatching()
+    .then((items) => (continueItems.value = items))
+    .catch(() => undefined)
+    .then(() => progressApi.nextUp())
+    .then((items) => (nextItems.value = items))
+    .catch(() => undefined)
+    .finally(() => (railsLoading.value = false))
   try {
     libraries.value = await librariesApi.list()
   } catch (err) {
@@ -74,11 +83,7 @@ onMounted(async () => {
       </ul>
     </section>
 
-    <section v-for="s in sections" :key="s.title">
-      <h2 class="mb-4 text-lg font-semibold">{{ t(s.title) }}</h2>
-      <p class="rounded-xl border border-dashed border-white/10 px-6 py-10 text-center text-sm text-slate-500">
-        {{ t(s.empty) }}
-      </p>
-    </section>
+    <HomeRail :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="railsLoading" resume />
+    <HomeRail :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="railsLoading" />
   </main>
 </template>

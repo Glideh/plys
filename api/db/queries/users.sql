@@ -33,3 +33,10 @@ RETURNING *;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1;
+
+-- name: UpdateUserPreferences :one
+UPDATE users
+SET autoplay_next = coalesce(sqlc.narg('autoplay_next'), autoplay_next),
+    updated_at    = now()
+WHERE id = @id
+RETURNING *;

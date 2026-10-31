@@ -14,6 +14,9 @@ export interface ItemCard {
   rating: number | null
   episodeCount?: number
   matchStatus: MatchStatus
+  /** Movies and videos watched, or series whose episodes are all watched. */
+  watched: boolean
+  unwatchedCount?: number
 }
 
 export interface ItemPage {
@@ -64,6 +67,10 @@ export interface ChildItem {
   episodeNumberEnd?: number
   partNumber?: number
   childCount?: number
+  watched: boolean
+  /** Resume point in seconds, 0 when none. */
+  positionSeconds: number
+  unwatchedCount?: number
 }
 
 export interface Ancestor {
@@ -100,6 +107,24 @@ export interface ItemDetail {
   ancestors: Ancestor[]
   versions: Version[]
   children: ChildItem[]
+  watched: boolean
+  positionSeconds: number
+  /** What "play" starts on a series, season or multi-part movie. */
+  playTarget: PlayTarget | null
+  /** Follows an episode or part in viewing order. */
+  next: PlayTarget | null
+}
+
+export interface PlayTarget {
+  id: string
+  kind: ItemKind
+  title: string
+  seasonNumber?: number
+  episodeNumber?: number
+  partNumber?: number
+  positionSeconds: number
+  resume: boolean
+  rewatch: boolean
 }
 
 export interface MatchCandidate {

@@ -35,6 +35,7 @@ export interface User {
   username: string
   role: 'admin' | 'user'
   locale: 'fr' | 'en'
+  autoplayNext: boolean
   createdAt: string
 }
 

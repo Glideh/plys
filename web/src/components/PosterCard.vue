@@ -11,6 +11,11 @@ const props = defineProps<{
   /** Landscape for personal videos and episodes, portrait for posters. */
   landscape?: boolean
   badge?: string | null
+  /** Fraction already watched, shown as a bar. */
+  progress?: number | null
+  watched?: boolean
+  /** Number of items left to watch, shown instead of the check. */
+  unwatched?: number | null
 }>()
 
 const { t } = useI18n()
@@ -45,6 +50,23 @@ const initial = computed(() => props.title.trim().charAt(0).toUpperCase() || '?'
       >
         {{ badge }}
       </span>
+      <span
+        v-if="unwatched"
+        class="absolute top-2 right-2 rounded-md bg-accent-500 px-1.5 py-0.5 text-xs font-bold text-surface-950 shadow"
+        :title="t('catalog.unwatchedCount', unwatched)"
+      >
+        {{ unwatched }}
+      </span>
+      <span
+        v-else-if="watched"
+        class="absolute top-2 right-2 grid size-6 place-items-center rounded-full bg-black/60 text-accent-300 shadow"
+        :title="t('catalog.watched')"
+      >
+        <svg viewBox="0 0 24 24" class="size-4" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7" /></svg>
+      </span>
+      <div v-if="progress" class="absolute inset-x-0 bottom-0 h-1.5 bg-black/60" role="progressbar" :aria-valuenow="Math.round(progress * 100)" aria-valuemin="0" aria-valuemax="100">
+        <div class="h-full bg-accent-400" :style="{ width: Math.min(progress, 1) * 100 + '%' }" />
+      </div>
     </div>
     <p class="mt-2 truncate text-sm font-medium text-slate-200 group-hover:text-white" :title="title">{{ title }}</p>
     <p v-if="subtitle" class="truncate text-xs text-slate-500">{{ subtitle }}</p>
