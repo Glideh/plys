@@ -1,26 +1,70 @@
 @import 'tailwindcss';
 
+/*
+ * Brand colour: change --brand-hue (0-360) to retheme the whole interface, --brand-chroma for saturation.
+ * 250 with a low chroma is a soft slate blue, distinct from Plex (amber) and Jellyfin (saturated purple/blue).
+ * Examples: 150 sage green, 200 muted teal, 10 dusty rose. Keep public/favicon.* in sync when changing it.
+ */
+:root {
+  --brand-hue: 250;
+  --brand-chroma: 0.06;
+}
+
+/* inline: utilities embed the formula, so overriding --brand-hue on any element retints its subtree. */
+@theme inline {
+  --color-accent-300: oklch(0.86 calc(var(--brand-chroma) * 0.8) var(--brand-hue));
+  --color-accent-400: oklch(0.8 var(--brand-chroma) var(--brand-hue));
+  --color-accent-500: oklch(0.73 var(--brand-chroma) var(--brand-hue));
+  --color-accent-600: oklch(0.63 var(--brand-chroma) var(--brand-hue));
+}
+
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Nunito Variable', 'Nunito', ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --color-surface-950: #07080c;
-  --color-surface-900: #0d0f16;
-  --color-surface-800: #151824;
-  --color-surface-700: #1f2333;
-  --color-surface-600: #2b3045;
+  /* Slightly blue-grey surfaces: softer on the eyes than near-black. */
+  --color-surface-950: #10141b;
+  --color-surface-900: #161b24;
+  --color-surface-800: #1d2430;
+  --color-surface-700: #28303e;
+  --color-surface-600: #343e4f;
 
-  --color-accent-300: #fcd38a;
-  --color-accent-400: #f8b84e;
-  --color-accent-500: #f59e0b;
-  --color-accent-600: #d97706;
+  /* Secondary text is lifted so that hints and metadata stay readable on dark surfaces. */
+  --color-slate-400: #aab4c3;
+  --color-slate-500: #8c97a8;
+
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
 }
 
 @layer base {
   html {
-    @apply bg-surface-950 text-slate-100 antialiased;
+    /* 17px base: every rem-based size grows proportionally. */
+    font-size: 106.25%;
+    line-height: 1.6;
+    font-optical-sizing: auto;
+    @apply bg-surface-950 text-slate-200 antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply text-slate-50;
+    letter-spacing: -0.01em;
   }
 
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-accent-400;
   }
+
+  ::selection {
+    @apply bg-accent-500/30;
+  }
+}
+
+video::cue {
+  background: rgb(0 0 0 / 0.7);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 1.3em;
+  line-height: 1.3;
 }

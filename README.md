@@ -1,4 +1,4 @@
-# Toto
+# Plys
 
 Self-hosted media library: Go API, Vue front-end, PostgreSQL.
 

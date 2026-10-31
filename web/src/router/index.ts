@@ -14,6 +14,7 @@ export const router = createRouter({
   routes: [
     { path: '/setup', name: 'setup', component: () => import('@/views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/watch/:id', name: 'watch', component: () => import('@/views/PlayerView.vue'), props: true },
     {
       path: '/',
       component: () => import('@/layouts/AppLayout.vue'),

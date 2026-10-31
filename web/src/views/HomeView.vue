@@ -17,9 +17,9 @@ const loading = ref(true)
 const error = ref('')
 
 const gradients: Record<LibraryKind, string> = {
-  movies: 'from-amber-500/30 via-orange-600/20 to-rose-700/30',
-  series: 'from-indigo-500/30 via-violet-600/20 to-fuchsia-700/30',
-  other: 'from-emerald-500/30 via-teal-600/20 to-cyan-700/30',
+  movies: 'from-accent-500/30 via-sky-700/20 to-indigo-800/30',
+  series: 'from-indigo-400/30 via-violet-600/20 to-slate-700/30',
+  other: 'from-rose-400/25 via-pink-700/15 to-slate-700/30',
 }
 
 // Placeholder rails until the progress endpoints exist.

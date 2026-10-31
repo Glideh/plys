@@ -47,6 +47,11 @@ FROM items i
 WHERE i.parent_id = $1
 ORDER BY i.sort_title, i.id;
 
+-- name: GetPlaybackFile :one
+SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id
+FROM media_files f
+WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL;
+
 -- name: ListItemFiles :many
 -- Paths stay server-side: clients only see technical details.
 SELECT id, item_id, size, duration_seconds, container, streams, edition, probe_error

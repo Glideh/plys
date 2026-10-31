@@ -19,6 +19,9 @@ type Config struct {
 	MediaRoots   []string
 	ScanInterval time.Duration
 	CacheDir     string
+	// HWAccel is auto, qsv, vaapi or none.
+	HWAccel       string
+	MaxTranscodes int
 }
 
 func Load() (Config, error) {
@@ -28,6 +31,12 @@ func Load() (Config, error) {
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 		MediaRoots:  filepath.SplitList(env("MEDIA_ROOTS", "/media")),
 		CacheDir:    env("CACHE_DIR", "/cache"),
+		HWAccel:     env("HW_ACCEL", "auto"),
+	}
+	switch c.HWAccel {
+	case "auto", "qsv", "vaapi", "none":
+	default:
+		return c, fmt.Errorf("HW_ACCEL must be auto, qsv, vaapi or none, got %q", c.HWAccel)
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")
@@ -37,6 +46,9 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("COOKIE_SECURE: %w", err)
 	}
 	c.CookieSecure = secure
+	if c.MaxTranscodes, err = strconv.Atoi(env("MAX_TRANSCODES", "2")); err != nil || c.MaxTranscodes < 1 {
+		return c, errors.New("MAX_TRANSCODES must be a positive integer")
+	}
 	if c.ScanInterval, err = time.ParseDuration(env("SCAN_INTERVAL", "6h")); err != nil {
 		return c, fmt.Errorf("SCAN_INTERVAL: %w", err)
 	}

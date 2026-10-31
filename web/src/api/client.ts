@@ -16,6 +16,7 @@ export type ApiErrorCode =
   | 'invalid_tmdb_key'
   | 'tmdb_unreachable'
   | 'tmdb_not_configured'
+  | 'transcoder_busy'
   | 'internal'
   | 'network'
 
@@ -88,9 +89,11 @@ interface RequestOptions {
   body?: unknown
   /** Set to false for endpoints that must not trigger a token refresh on 401. */
   auth?: boolean
+  /** Lets the request outlive the page (tab closing). */
+  keepalive?: boolean
 }
 
-export async function api<T>(path: string, { method = 'GET', body, auth = true }: RequestOptions = {}): Promise<T> {
+export async function api<T>(path: string, { method = 'GET', body, auth = true, keepalive }: RequestOptions = {}): Promise<T> {
   const send = () => {
     const headers: Record<string, string> = {}
     if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -100,6 +103,7 @@ export async function api<T>(path: string, { method = 'GET', body, auth = true }
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
+      keepalive,
     })
   }
 

@@ -89,6 +89,10 @@ function trackLabel(tr: { language?: string; title?: string; codec: string; chan
     .join(' · ')
 }
 
+function play() {
+  void router.push({ name: 'watch', params: { id: props.id }, query: { v: versionId.value } })
+}
+
 async function refresh() {
   refreshing.value = true
   try {
@@ -150,7 +154,7 @@ async function onMatched(merged: boolean) {
             <p v-if="item.overview" class="mt-3 max-w-3xl leading-relaxed text-slate-300">{{ item.overview }}</p>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
-              <BaseButton v-if="item.versions.length" variant="primary" disabled :title="t('catalog.playSoon')" class="px-6 py-2.5 text-base">
+              <BaseButton v-if="item.versions.length" variant="primary" class="px-6 py-2.5 text-base" @click="play">
                 ▶ {{ t('catalog.play') }}
               </BaseButton>
               <label v-if="item.versions.length > 1" class="flex items-center gap-2 text-sm text-slate-400">

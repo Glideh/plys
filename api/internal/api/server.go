@@ -13,6 +13,7 @@ import (
 	"toto/api/internal/httpx"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
+	"toto/api/internal/playback"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
@@ -28,6 +29,8 @@ type Deps struct {
 	Images       *metadata.ImageCache
 	Settings     *settings.Store
 	Identity     settings.Identity
+	Playback     *playback.Manager
+	Subtitles    *playback.Subtitles
 }
 
 type Server struct {
@@ -63,6 +66,8 @@ func (s *Server) Routes() http.Handler {
 		// Public so that <img> tags work without a bearer token; only referenced images are served.
 		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
 		r.Get("/images/local/{file}", s.localImage)
+		r.Get("/stream/{sid}/subtitles/{track}", s.streamSubtitle)
+		r.Get("/stream/{sid}/{file}", s.streamFile)
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.Tokens.Middleware)
@@ -71,6 +76,8 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)
 			r.Get("/items/{id}", s.getItem)
+			r.Post("/playback/sessions", s.startPlayback)
+			r.Delete("/playback/sessions/{id}", s.stopPlayback)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
@@ -88,6 +95,7 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/admin/fs/browse", s.browseFS)
 				r.Get("/admin/settings", s.getSettings)
 				r.Patch("/admin/settings", s.updateSettings)
+				r.Get("/admin/system/transcoding", s.transcodingInfo)
 
 				r.Get("/items/{id}/match/search", s.searchMatch)
 				r.Post("/items/{id}/match", s.setMatch)

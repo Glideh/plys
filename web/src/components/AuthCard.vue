@@ -6,7 +6,7 @@ defineProps<{ title: string; subtitle: string }>()
   <main class="relative flex min-h-full items-center justify-center overflow-hidden px-4 py-12">
     <div
       aria-hidden="true"
-      class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.18),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(99,102,241,0.15),transparent_50%)]"
+      class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,color-mix(in_oklch,var(--color-accent-500)_22%,transparent),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(99,102,241,0.12),transparent_50%)]"
     />
     <div class="relative w-full max-w-md">
       <div class="mb-8 flex items-center justify-center gap-3">

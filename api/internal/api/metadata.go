@@ -33,7 +33,7 @@ var localThumbRe = regexp.MustCompile(`^[0-9a-f-]{36}\.jpg$`)
 func (s *Server) serverInfo(w http.ResponseWriter, _ *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"id":        s.Identity.ID,
-		"name":      "Toto",
+		"name":      "Plys",
 		"version":   Version,
 		"publicKey": s.Identity.PublicKey,
 	})

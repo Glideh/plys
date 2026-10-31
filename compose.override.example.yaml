@@ -5,3 +5,8 @@ services:
     volumes:
       - /path/to/Films:/media/Films:ro
       - /path/to/Series:/media/Series:ro
+    # Optional hardware transcoding (Intel/AMD): expose only the render node and its group.
+    # devices:
+    #   - /dev/dri/renderD128:/dev/dri/renderD128
+    # group_add:
+    #   - "992"   # stat -c %g /dev/dri/renderD128

@@ -16,6 +16,7 @@ import (
 	"toto/api/internal/database"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
+	"toto/api/internal/playback"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
@@ -73,6 +74,16 @@ func run() error {
 	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, meta, cfg.ScanInterval)
 	go scan.Run(ctx)
 
+	player, err := playback.NewManager("ffmpeg", "ffprobe", playback.DetectEncoder(ctx, "ffmpeg", cfg.HWAccel), cfg.CacheDir, cfg.MaxTranscodes)
+	if err != nil {
+		return err
+	}
+	go player.Run(ctx)
+	subtitles, err := playback.NewSubtitles("ffmpeg", cfg.CacheDir)
+	if err != nil {
+		return err
+	}
+
 	handler := api.New(api.Deps{
 		Pool:         pool,
 		Tokens:       auth.NewIssuer(secret, accessTokenTTL),
@@ -83,6 +94,8 @@ func run() error {
 		Images:       metadata.NewImageCache(cfg.CacheDir, ""),
 		Settings:     st,
 		Identity:     identity,
+		Playback:     player,
+		Subtitles:    subtitles,
 	}).Routes()
 
 	srv := &http.Server{

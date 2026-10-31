@@ -13,6 +13,7 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
+	"toto/api/internal/playback"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
@@ -62,10 +63,20 @@ func newTestEnv(t *testing.T) testEnv {
 		t.Fatal(err)
 	}
 	cache := t.TempDir()
+	player, err := playback.NewManager("ffmpeg", "ffprobe", playback.Encoder{Accel: playback.AccelNone}, cache, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(player.StopAll)
+	subs, err := playback.NewSubtitles("ffmpeg", cache)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h := New(Deps{
 		Pool: pool, Tokens: issuer, Roots: roots, Scanner: scan, Settings: st, Identity: identity,
 		Metadata: metadata.NewService(pool, st, cache, "ffmpeg", ""),
 		Images:   metadata.NewImageCache(cache, ""),
+		Playback: player, Subtitles: subs,
 	}).Routes()
 	return testEnv{h: h, root: roots.List()[0], scan: scan}
 }

@@ -57,6 +57,37 @@ func (q *Queries) ClearLibraryAccess(ctx context.Context, libraryID uuid.UUID) e
 	return err
 }
 
+const getPlaybackFile = `-- name: GetPlaybackFile :one
+SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id
+FROM media_files f
+WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL
+`
+
+type GetPlaybackFileRow struct {
+	ID              uuid.UUID
+	Path            string
+	Size            int64
+	DurationSeconds *float64
+	Streams         []byte
+	ItemID          *uuid.UUID
+	LibraryID       uuid.UUID
+}
+
+func (q *Queries) GetPlaybackFile(ctx context.Context, id uuid.UUID) (GetPlaybackFileRow, error) {
+	row := q.db.QueryRow(ctx, getPlaybackFile, id)
+	var i GetPlaybackFileRow
+	err := row.Scan(
+		&i.ID,
+		&i.Path,
+		&i.Size,
+		&i.DurationSeconds,
+		&i.Streams,
+		&i.ItemID,
+		&i.LibraryID,
+	)
+	return i, err
+}
+
 const listChildItems = `-- name: ListChildItems :many
 SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minutes, i.rating,
        i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end, i.part_number,

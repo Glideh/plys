@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Toto API
+  title: Plys API
   version: 0.1.0
   description: |
     Media library API used by the web front-end and future mobile clients.
@@ -547,7 +547,119 @@ paths:
         "200": { description: Updated item }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /playback/sessions:
+    post:
+      operationId: startPlayback
+      summary: Start an HLS playback session on a version (file) of an item
+      description: |
+        The server copies the video and audio streams the client can decode (`caps`) and transcodes the others,
+        on the GPU when available. The stream starts at `start` (moved back to the previous keyframe when the
+        video is copied), reported in the response: the position in the file is `session.start` plus the player time.
 
+        Image subtitles (PGS, VobSub) are burned into the picture, so changing them needs a new session.
+        Text subtitles are served as WebVTT aligned on the stream start.
+
+        A session is private to its user and expires after 5 minutes without request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId, caps]
+              properties:
+                versionId: { type: string, format: uuid, description: "Id of a version returned by `getItem`" }
+                audioIndex: { type: [integer, "null"], description: Stream index; the default track when omitted }
+                subtitleIndex: { type: [integer, "null"], description: Stream index; none when omitted }
+                start: { type: number, minimum: 0, default: 0, description: Seconds from the start of the file }
+                caps: { $ref: "#/components/schemas/ClientCaps" }
+      responses:
+        "201":
+          description: Session started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaybackSession" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503":
+          description: Too many videos are being transcoded (`transcoder_busy`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /playback/sessions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: stopPlayback
+      summary: Stop a session and free its resources
+      responses:
+        "204": { description: Stopped }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /stream/{sid}/{file}:
+    get:
+      operationId: getStreamFile
+      summary: HLS playlist (`index.m3u8`), initialisation segment (`init.mp4`) or media segment (`seg_00012.m4s`)
+      description: >
+        Public: the unguessable session id is the credential, because players cannot add a bearer token to every
+        segment request. Waits up to 20 seconds for the transcoder to produce the file.
+      security: []
+      parameters:
+        - { name: sid, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: string, example: index.m3u8 } }
+      responses:
+        "200":
+          description: Stream file
+          content:
+            application/vnd.apple.mpegurl: {}
+            video/mp4: {}
+            video/iso.segment: {}
+        "404": { $ref: "#/components/responses/Error" }
+        "503":
+          description: Not produced yet (`not_ready`), retry after the delay in `Retry-After`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /stream/{sid}/subtitles/{track}:
+    get:
+      operationId: getStreamSubtitles
+      summary: Text subtitle track of a session as WebVTT, aligned on the stream start
+      description: |
+        While the full extraction is not finished, the cues produced so far are returned with
+        `X-Subtitles-Complete: false`: fetch again later. The final file is served with `X-Subtitles-Complete: true`.
+        `202` means the extraction of another track is still running; retry after `Retry-After`.
+      security: []
+      parameters:
+        - { name: sid, in: path, required: true, schema: { type: string } }
+        - { name: track, in: path, required: true, schema: { type: string, example: "3.vtt" }, description: Stream index followed by `.vtt` }
+      responses:
+        "200":
+          description: WebVTT
+          headers:
+            X-Subtitles-Complete: { schema: { type: string, enum: ["true", "false"] } }
+          content:
+            text/vtt: {}
+        "202": { description: Extraction in progress }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/system/transcoding:
+    get:
+      operationId: getTranscodingInfo
+      summary: Hardware acceleration in use and running sessions (admin)
+      responses:
+        "200":
+          description: Transcoding state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accel, sessions]
+                properties:
+                  accel: { type: string, enum: [qsv, vaapi, none] }
+                  device: { type: string, example: /dev/dri/renderD128 }
+                  sessions: { type: integer }
   /images/tmdb/{size}/{file}:
     get:
       operationId: getTmdbImage
@@ -593,6 +705,30 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    ClientCaps:
+      type: object
+      description: What the client can decode; the server transcodes the rest.
+      required: [videoCodecs, audioCodecs]
+      properties:
+        videoCodecs: { type: array, items: { type: string, enum: [h264, hevc, av1] } }
+        audioCodecs: { type: array, items: { type: string, enum: [aac, mp3, opus, flac, ac3, eac3, alac] } }
+        hdr: { type: boolean, default: false, description: The display can show HDR; otherwise HDR video is tone mapped }
+        maxHeight: { type: integer, default: 0, description: "Largest picture height the client accepts, 0 for no limit (transcoding is capped at 1080)" }
+    PlaybackSession:
+      type: object
+      required: [id, playlistUrl, start, duration, copyVideo, copyAudio, accel, audioIndex, subtitleIndex, subtitleUrl, burnedSubtitle]
+      properties:
+        id: { type: string }
+        playlistUrl: { type: string, example: /api/v1/stream/0f3c/index.m3u8 }
+        start: { type: number, description: "Position of the stream start in the file, in seconds" }
+        duration: { type: number, description: "Duration of the whole file, in seconds" }
+        copyVideo: { type: boolean }
+        copyAudio: { type: boolean }
+        accel: { type: string, enum: [qsv, vaapi, none] }
+        audioIndex: { type: [integer, "null"] }
+        subtitleIndex: { type: [integer, "null"] }
+        subtitleUrl: { type: [string, "null"], description: WebVTT of the selected text subtitle track }
+        burnedSubtitle: { type: boolean }
     Role:
       type: string
       enum: [admin, user]
