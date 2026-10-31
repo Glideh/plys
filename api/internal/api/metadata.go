@@ -20,8 +20,10 @@ import (
 	"toto/api/internal/store"
 )
 
+// Version is set at build time with -ldflags "-X toto/api/internal/api.Version=...".
+var Version = "dev"
+
 const (
-	Version = "0.1.0"
 	// Image URLs embed the TMDB path, which changes when the image changes.
 	imageCacheControl = "public, max-age=2592000, immutable"
 	// Only the manual matching screen shows posters that are not in the catalogue yet.

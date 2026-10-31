@@ -24,11 +24,12 @@ WORKDIR /src
 EXPOSE 8080
 
 FROM golang:${GO_VERSION}-trixie AS build
+ARG VERSION=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X toto/api/internal/api.Version=${VERSION}" -o /out/server ./cmd/server
 
 FROM debian:trixie-slim AS prod
 ARG MEDIA_PACKAGES

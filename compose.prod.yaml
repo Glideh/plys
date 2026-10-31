@@ -1,13 +1,15 @@
-name: toto
+# Plys, ready to run from the published images (Docker Hub). Setup: see "Installation" in the README.
+#   docker compose -f compose.prod.yaml up -d
+name: plys
 
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-toto}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-toto}
+      POSTGRES_USER: ${POSTGRES_USER:-plys}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-plys}
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -17,30 +19,27 @@ services:
       retries: 20
 
   api:
-    image: toto-api:latest
-    build:
-      context: ./api
-      target: prod
+    image: ${PLYS_NAMESPACE:-glide}/plys-api:${PLYS_VERSION:-latest}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-toto}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-toto}?sslmode=disable
-      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      DATABASE_URL: postgres://${POSTGRES_USER:-plys}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-plys}?sslmode=disable
+      # Keep false when browsing over plain http (LAN); set true behind an HTTPS reverse proxy.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
     volumes:
-      - ${MEDIA_DIR:?MEDIA_DIR is required}:/media:ro
+      # Everything below /media is offered when creating a library. Always read-only.
+      - ${MEDIA_DIR:?Set MEDIA_DIR in .env}:/media:ro
       - api-cache:/cache
     depends_on:
       db:
         condition: service_healthy
 
   web:
-    image: toto-web:latest
-    build:
-      context: ./web
-      target: prod
+    image: ${PLYS_NAMESPACE:-glide}/plys-web:${PLYS_VERSION:-latest}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
