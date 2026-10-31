@@ -26,6 +26,15 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "The working tree has uncommitted changes: commit them first so the image matches a revision." >&2
   exit 1
 fi
+
+# The README shows the end-user compose files: its first yaml block is compose.minimal.yaml, the second compose.prod.yaml.
+readme_block() { awk -v n="$1" '/^```yaml$/{c++; f=(c==n); next} /^```$/{f=0} f' README.md; }
+for pair in "1:compose.minimal.yaml" "2:compose.prod.yaml"; do
+  if [[ "$(readme_block "${pair%%:*}")" != "$(cat "${pair#*:}")" ]]; then
+    echo "The compose file in README.md differs from ${pair#*:}: update the README." >&2
+    exit 1
+  fi
+done
 export REVISION="$(git rev-parse HEAD)"
 
 echo "About to publish ${NAMESPACE}/plys-api and ${NAMESPACE}/plys-web ${VERSION} (also tagged latest) from ${REVISION:0:8}."

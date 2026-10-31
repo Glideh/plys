@@ -1,9 +1,0 @@
-# Optional hardware transcoding (Intel QSV/VAAPI, AMD VAAPI). Needs RENDER_GID in .env:
-#   stat -c %g /dev/dri/renderD128
-#   docker compose -f compose.prod.yaml -f compose.gpu.yaml up -d
-services:
-  api:
-    devices:
-      - /dev/dri/renderD128:/dev/dri/renderD128
-    group_add:
-      - "${RENDER_GID:?Set RENDER_GID in .env}"

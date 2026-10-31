@@ -1,45 +1,57 @@
-# Plys, ready to run from the published images (Docker Hub). Setup: see "Installation" in the README.
-#   docker compose -f compose.prod.yaml up -d
+# Plys, a self-hosted media library.
+# Save this file as compose.yaml next to a .env file (see the README), then run: docker compose up -d
 name: plys
 
 services:
+  # Stores users, libraries, metadata and watch progress.
   db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-plys}
+      POSTGRES_USER: plys
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: ${POSTGRES_DB:-plys}
+      POSTGRES_DB: plys
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U plys -d plys"]
       interval: 5s
       timeout: 3s
       retries: 20
 
+  # Scans the videos, serves the API and converts what a browser cannot play (ffmpeg).
   api:
-    image: ${PLYS_NAMESPACE:-glide}/plys-api:${PLYS_VERSION:-latest}
+    image: glide/plys-api:${PLYS_VERSION:-latest}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-plys}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-plys}?sslmode=disable
-      # Keep false when browsing over plain http (LAN); set true behind an HTTPS reverse proxy.
+      DATABASE_URL: postgres://plys:${POSTGRES_PASSWORD}@db:5432/plys?sslmode=disable
+      # Keep false when browsing over plain http (home network).
+      # Set true if a reverse proxy serves Plys over HTTPS, otherwise browsers drop the session cookie.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # How many videos may be converted at the same time.
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # Everything below /media is offered when creating a library. Always read-only.
+      # The videos, read-only: Plys never modifies them. Every folder below is offered when creating a library.
       - ${MEDIA_DIR:?Set MEDIA_DIR in .env}:/media:ro
+      # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
+    # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
+    # (stat -c %g /dev/dri/renderD128). Without a GPU, conversions run on the CPU.
+    # devices:
+    #   - /dev/dri/renderD128:/dev/dri/renderD128
+    # group_add:
+    #   - "${RENDER_GID}"
     depends_on:
       db:
         condition: service_healthy
 
+  # The web interface; also forwards /api to the API. This is the only service opened in a browser.
   web:
-    image: ${PLYS_NAMESPACE:-glide}/plys-web:${PLYS_VERSION:-latest}
+    image: glide/plys-web:${PLYS_VERSION:-latest}
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -47,6 +59,7 @@ services:
     tmpfs:
       - /tmp
     ports:
+      # Plys is then reachable at http://<this machine>:8096
       - "${HTTP_PORT:-8096}:8080"
     depends_on:
       - api

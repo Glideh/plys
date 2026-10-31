@@ -1,0 +1,38 @@
+# Smallest working setup. Set the videos folder below, then run: docker compose up -d
+name: plys
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plys
+      POSTGRES_PASSWORD: plys
+      POSTGRES_DB: plys
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  api:
+    image: glide/plys-api:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://plys:plys@db:5432/plys?sslmode=disable
+      COOKIE_SECURE: "false"
+    volumes:
+      # The videos, read-only. Change the left part.
+      - /path/to/the/videos:/media:ro
+      - api-cache:/cache
+    depends_on:
+      - db
+
+  web:
+    image: glide/plys-web:latest
+    restart: unless-stopped
+    ports:
+      - "8096:8080"
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  api-cache:
