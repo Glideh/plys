@@ -95,7 +95,7 @@ async function submit() {
         <p v-if="library" class="mt-2 text-xs text-slate-500">{{ t('libraries.kindLocked') }}</p>
       </fieldset>
 
-      <fieldset>
+      <fieldset class="min-w-0">
         <legend class="mb-1.5 text-sm font-medium text-slate-300">{{ t('libraries.folders') }}</legend>
         <ul v-if="paths.length" class="mb-3 space-y-2">
           <li v-for="p in paths" :key="p" class="flex items-center gap-3 rounded-lg bg-surface-800 px-3.5 py-2">

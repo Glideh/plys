@@ -2,14 +2,10 @@
 
 Plys is a self-hosted media library for personal video collections.
 
-- **Libraries** of movies, series and other videos, built by scanning media folders (never modified).
+- **Libraries** of movies, series and other videos, built by scanning media folders.
 - **Metadata** from TMDB: posters, synopses, cast; matches can be corrected by hand.
-- **Playback in any browser**, with audio and subtitle selection; whatever the browser cannot play is converted on the fly, on the GPU when there is one.
-- **Android TV client**: native Kotlin MVP for remote-controlled library browsing, playback and resume. See [build and installation instructions](android-tv/README.md).
-- **Versions and parts**: several qualities or editions of a movie, and multi-part movies.
-- **Progress**: resume where playback stopped, next episodes, watched marks, optional autoplay of the next episode.
-- **Users**: an administrator, other accounts, and libraries restricted to chosen users.
-- **Multilingual**: (French and English for now) interface, and a documented API (`docs/openapi.yaml`).
+- **Web playback**, with audio and subtitle selection; whatever the browser cannot play is converted on the fly, on the GPU when there is one.
+- **Android TV client**: native Kotlin MVP for library browsing, playback and resume. See [build and installation instructions](android-tv/README.md).
 
 ## Installation
 
@@ -20,7 +16,6 @@ Docker (with Docker Compose) is needed on the host.
 Save this as `compose.yaml` in an empty folder and replace `/path/to/the/videos` with the folder holding the videos:
 
 ```yaml
-# Smallest working setup. Set the videos folder below, then run: docker compose up -d
 name: plys
 
 services:
@@ -41,7 +36,7 @@ services:
       DATABASE_URL: postgres://plys:plys@db:5432/plys?sslmode=disable
       COOKIE_SECURE: "false"
     volumes:
-      # The videos, read-only. Change the left part.
+      # The videos, must be mounted from this /media path.
       - /path/to/the/videos:/media:ro
       - api-cache:/cache
     depends_on:
@@ -60,7 +55,7 @@ volumes:
   api-cache:
 ```
 
-Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account, so do it right away.
+Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account.
 
 This setup keeps the defaults simple: the database password is `plys`. The complete installation below adds a chosen password, hardening, options and hardware transcoding.
 
@@ -69,12 +64,9 @@ This setup keeps the defaults simple: the database password is `plys`. The compl
 **1. Create a folder for Plys** and, inside it, a `compose.yaml` file with the content below.
 
 ```yaml
-# Plys, a self-hosted media library.
-# Save this file as compose.yaml next to a .env file (see the README), then run: docker compose up -d
 name: plys
 
 services:
-  # Stores users, libraries, metadata and watch progress.
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -90,7 +82,6 @@ services:
       timeout: 3s
       retries: 20
 
-  # Scans the videos, serves the API and converts what the client cannot play (ffmpeg).
   api:
     image: glide/plys-api:${PLYS_VERSION:-latest}
     restart: unless-stopped
@@ -107,7 +98,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
-      - ${MEDIA_DIR:?Set MEDIA_DIR in .env}:/media:ro
+      - /video/path:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
     # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
@@ -131,7 +122,7 @@ services:
       - /tmp
     ports:
       # Plys is then reachable at http://<this machine>:8096
-      - "${HTTP_PORT:-8096}:8080"
+      - "8096:8080"
     depends_on:
       - api
 
@@ -145,8 +136,6 @@ volumes:
 ```sh
 # A long random password for the database; it never has to be typed.
 POSTGRES_PASSWORD=choose-a-long-random-password
-# The folder holding the videos on this machine.
-MEDIA_DIR=/path/to/the/videos
 ```
 
 **3. Start it:**
@@ -163,7 +152,6 @@ Set these in `.env` when needed (complete installation):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `HTTP_PORT` | `8096` | Port of the web interface |
 | `COOKIE_SECURE` | `false` | `true` behind an HTTPS reverse proxy; keep `false` over plain http |
 | `PLYS_VERSION` | `latest` | Image version, e.g. `0.1.0` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
@@ -217,7 +205,7 @@ docker compose exec web npm install <package>  # add a front-end dependency
 
 ## Publishing the images
 
-Maintainers only. Log in to Docker Hub (`docker login`), commit the changes, then:
+For maintainers. Log in to Docker Hub (`docker login`), commit the changes, then:
 
 ```sh
 ./release.sh 0.1.0     # builds both images and pushes 0.1.0, 0.1 and latest (plus the major tag from 1.0.0), after confirmation
