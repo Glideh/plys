@@ -5,6 +5,7 @@ Plys is a self-hosted media library for personal video collections.
 - **Libraries** of movies, series and other videos, built by scanning media folders (never modified).
 - **Metadata** from TMDB: posters, synopses, cast; matches can be corrected by hand.
 - **Playback in any browser**, with audio and subtitle selection; whatever the browser cannot play is converted on the fly, on the GPU when there is one.
+- **Android TV client**: native Kotlin MVP for remote-controlled library browsing, playback and resume. See [build and installation instructions](android-tv/README.md).
 - **Versions and parts**: several qualities or editions of a movie, and multi-part movies.
 - **Progress**: resume where playback stopped, next episodes, watched marks, optional autoplay of the next episode.
 - **Users**: an administrator, other accounts, and libraries restricted to chosen users.
@@ -61,11 +62,11 @@ volumes:
 
 Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account, so do it right away.
 
-This setup keeps the defaults simple: the database password is `plys` (the database port is not published, so only the containers of this project can reach it) and the containers are not hardened. The complete installation below adds a chosen password, hardening, options and hardware transcoding. To move from one to the other, keep `POSTGRES_PASSWORD=plys` in `.env`: PostgreSQL only applies the password at the first start.
+This setup keeps the defaults simple: the database password is `plys`. The complete installation below adds a chosen password, hardening, options and hardware transcoding.
 
 ### Complete installation
 
-**1. Create a folder for Plys** and, inside it, a file named `compose.yaml` with the content below. It uses the published images, so there is nothing to build.
+**1. Create a folder for Plys** and, inside it, a `compose.yaml` file with the content below.
 
 ```yaml
 # Plys, a self-hosted media library.
@@ -89,7 +90,7 @@ services:
       timeout: 3s
       retries: 20
 
-  # Scans the videos, serves the API and converts what a browser cannot play (ffmpeg).
+  # Scans the videos, serves the API and converts what the client cannot play (ffmpeg).
   api:
     image: glide/plys-api:${PLYS_VERSION:-latest}
     restart: unless-stopped
@@ -105,7 +106,7 @@ services:
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # The videos, read-only: Plys never modifies them. Every folder below is offered when creating a library.
+      # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
       - ${MEDIA_DIR:?Set MEDIA_DIR in .env}:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache

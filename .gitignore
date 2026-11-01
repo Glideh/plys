@@ -3,3 +3,7 @@ api/tmp/
 web/node_modules/
 web/dist/
 compose.override.yaml
+android-tv/.gradle/
+android-tv/.kotlin/
+android-tv/**/build/
+android-tv/local.properties

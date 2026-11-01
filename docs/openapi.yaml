@@ -3,7 +3,7 @@ info:
   title: Plys API
   version: 0.1.0
   description: |
-    Media library API used by the web front-end and future mobile clients.
+    Media library API used by the web front-end and the native Android TV client.
 
     Authentication: short-lived JWT access token (`Authorization: Bearer`) plus a rotating
     refresh token. Web clients request `tokenDelivery: cookie` (HttpOnly, SameSite=Strict,

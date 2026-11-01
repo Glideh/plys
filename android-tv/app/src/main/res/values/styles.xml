@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Plys" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#A5B4FC</item>
+        <item name="android:windowBackground">#111827</item>
+    </style>
+</resources>
