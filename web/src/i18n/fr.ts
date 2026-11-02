@@ -38,7 +38,18 @@ export default {
     remaining: 'reste {time}',
     emptyNextUp: 'Aucun épisode à suivre.',
   },
-  nav: { admin: 'Administration' },
+  nav: { admin: 'Administration', profile: 'Mon profil' },
+  profile: {
+    title: 'Mon profil',
+    subtitle: 'Réglages de votre compte.',
+    language: "Langue de l'interface",
+    languageHelp: 'Ce réglage ne concerne que votre compte.',
+  },
+  setupMetadata: {
+    title: 'Métadonnées',
+    subtitle: 'Affiches, résumés et distributions viennent de TMDB. Vous pouvez saisir la clé maintenant ou plus tard dans les réglages.',
+    skip: 'Passer cette étape',
+  },
   player: {
     back: 'Retour',
     play: 'Lecture',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { metadataLanguages, settingsApi, type ServerSettings } from '@/api/settings'
+import { metadataLanguageNames, metadataLanguages, settingsApi, type ServerSettings } from '@/api/settings'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
@@ -14,14 +14,6 @@ const newKey = ref('')
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
-
-const languageNames: Record<string, string> = {
-  'fr-FR': 'Français',
-  'en-US': 'English (US)',
-  'de-DE': 'Deutsch',
-  'es-ES': 'Español',
-  'it-IT': 'Italiano',
-}
 
 async function save(body: Parameters<typeof settingsApi.update>[0]) {
   saving.value = true
@@ -111,7 +103,7 @@ onMounted(async () => {
           class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 text-slate-100 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none sm:w-64"
           @change="save({ metadataLanguage: ($event.target as HTMLSelectElement).value })"
         >
-          <option v-for="l in metadataLanguages" :key="l" :value="l">{{ languageNames[l] }}</option>
+          <option v-for="l in metadataLanguages" :key="l" :value="l">{{ metadataLanguageNames[l] }}</option>
         </select>
         <p class="mt-1.5 text-xs text-slate-500">{{ t('settings.languageHelp') }}</p>
       </div>

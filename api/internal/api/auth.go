@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -183,7 +184,8 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 }
 
 type updatePreferencesRequest struct {
-	AutoplayNext *bool `json:"autoplayNext"`
+	AutoplayNext *bool   `json:"autoplayNext"`
+	Locale       *string `json:"locale"`
 }
 
 // updateMe changes the caller's own preferences.
@@ -192,8 +194,12 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeRequired(w, r, &req) {
 		return
 	}
+	if req.Locale != nil && !slices.Contains(supportedLocales, *req.Locale) {
+		httpx.Error(w, http.StatusBadRequest, "validation", "locale must be one of: fr, en")
+		return
+	}
 	p, _ := auth.PrincipalFrom(r.Context())
-	user, err := s.q.UpdateUserPreferences(r.Context(), store.UpdateUserPreferencesParams{ID: p.UserID, AutoplayNext: req.AutoplayNext})
+	user, err := s.q.UpdateUserPreferences(r.Context(), store.UpdateUserPreferencesParams{ID: p.UserID, AutoplayNext: req.AutoplayNext, Locale: req.Locale})
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.Error(w, http.StatusUnauthorized, "unauthorized", "user no longer exists")
 		return

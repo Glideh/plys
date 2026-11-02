@@ -40,7 +40,18 @@ export default {
     remaining: '{time} left',
     emptyNextUp: 'No episodes to watch next.',
   },
-  nav: { admin: 'Administration' },
+  nav: { admin: 'Administration', profile: 'Profile' },
+  profile: {
+    title: 'My profile',
+    subtitle: 'Settings for your account.',
+    language: 'Interface language',
+    languageHelp: 'This only applies to your account.',
+  },
+  setupMetadata: {
+    title: 'Metadata',
+    subtitle: 'Posters, plots and cast come from TMDB. You can enter the key now or later in the settings.',
+    skip: 'Skip this step',
+  },
   player: {
     back: 'Back',
     play: 'Play',

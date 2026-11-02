@@ -6,7 +6,7 @@ import AuthCard from '@/components/AuthCard.vue'
 import SubmitButton from '@/components/SubmitButton.vue'
 import TextField from '@/components/TextField.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
-import { locales, setLocale, type Locale } from '@/i18n'
+import { localeLabels, locales, setLocale, type Locale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 
 const { t, locale: currentLocale } = useI18n()
@@ -21,8 +21,6 @@ const locale = ref(currentLocale.value as Locale)
 const loading = ref(false)
 const error = ref('')
 
-const localeLabels: Record<Locale, string> = { fr: 'Français', en: 'English' }
-
 async function submit() {
   error.value = ''
   if (password.value !== confirm.value) {
@@ -32,7 +30,7 @@ async function submit() {
   loading.value = true
   try {
     await auth.setupAdmin(username.value.trim(), password.value, locale.value)
-    await router.replace({ name: 'home' })
+    await router.replace({ name: 'setup-metadata' })
   } catch (err) {
     error.value = errorMessage(err)
   } finally {

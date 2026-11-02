@@ -200,18 +200,20 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 const updateUserPreferences = `-- name: UpdateUserPreferences :one
 UPDATE users
 SET autoplay_next = coalesce($1, autoplay_next),
+    locale        = coalesce($2, locale),
     updated_at    = now()
-WHERE id = $2
+WHERE id = $3
 RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next
 `
 
 type UpdateUserPreferencesParams struct {
 	AutoplayNext *bool
+	Locale       *string
 	ID           uuid.UUID
 }
 
 func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPreferencesParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUserPreferences, arg.AutoplayNext, arg.ID)
+	row := q.db.QueryRow(ctx, updateUserPreferences, arg.AutoplayNext, arg.Locale, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,

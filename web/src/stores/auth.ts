@@ -66,8 +66,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** Saves a preference of the signed-in user; the UI follows the server's answer. */
-  async function updatePreferences(patch: { autoplayNext?: boolean }) {
-    user.value = await api<User>('/me', { method: 'PATCH', body: patch })
+  async function updatePreferences(patch: { autoplayNext?: boolean; locale?: Locale }) {
+    const updated = await api<User>('/me', { method: 'PATCH', body: patch })
+    user.value = updated
+    setLocale(updated.locale)
   }
 
   return { user, needsSetup, isAdmin, init, setupAdmin, login, logout, updatePreferences }

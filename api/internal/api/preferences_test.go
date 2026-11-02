@@ -31,3 +31,24 @@ func TestAutoplayPreference(t *testing.T) {
 		t.Errorf("preferences need authentication: %d", r.status)
 	}
 }
+
+func TestLocalePreference(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/me", admin, map[string]any{"locale": "en"}); r.status != http.StatusOK || r.body["locale"] != "en" {
+		t.Fatalf("switch to en: %d %v", r.status, r.body)
+	}
+	if me := e.get(t, admin, "/api/v1/me"); me["locale"] != "en" {
+		t.Errorf("the locale must persist: %v", me)
+	}
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/me", admin, map[string]any{"locale": "de"}); r.status != http.StatusBadRequest {
+		t.Errorf("unsupported locale must be rejected: %d %v", r.status, r.body)
+	}
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/me", admin, map[string]any{"locale": ""}); r.status != http.StatusBadRequest {
+		t.Errorf("empty locale must be rejected: %d %v", r.status, r.body)
+	}
+	if me := e.get(t, admin, "/api/v1/me"); me["locale"] != "en" {
+		t.Errorf("a rejected update must not change the locale: %v", me)
+	}
+}

@@ -4,6 +4,7 @@ import fr from './fr'
 
 export const locales = ['fr', 'en'] as const
 export type Locale = (typeof locales)[number]
+export const localeLabels: Record<Locale, string> = { fr: 'Français', en: 'English' }
 
 function browserLocale(): Locale {
   const lang = navigator.language.slice(0, 2)

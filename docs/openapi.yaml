@@ -151,6 +151,7 @@ paths:
               type: object
               properties:
                 autoplayNext: { type: boolean, description: Start the next episode or part when one ends }
+                locale: { $ref: "#/components/schemas/Locale" }
       responses:
         "200":
           description: Updated user

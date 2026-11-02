@@ -57,6 +57,13 @@ onUnmounted(() => {
             @click="menuOpen = false"
           >
             <RouterLink
+              :to="{ name: 'profile' }"
+              role="menuitem"
+              class="block rounded-md px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100"
+            >
+              {{ t('nav.profile') }}
+            </RouterLink>
+            <RouterLink
               v-if="auth.isAdmin"
               :to="{ name: 'admin-libraries' }"
               role="menuitem"

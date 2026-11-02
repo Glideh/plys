@@ -14,6 +14,7 @@ export const router = createRouter({
   routes: [
     { path: '/setup', name: 'setup', component: () => import('@/views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/setup/metadata', name: 'setup-metadata', component: () => import('@/views/SetupMetadataView.vue'), meta: { admin: true } },
     { path: '/watch/:id', name: 'watch', component: () => import('@/views/PlayerView.vue'), props: true },
     {
       path: '/',
@@ -22,6 +23,7 @@ export const router = createRouter({
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         { path: 'libraries/:id', name: 'library', component: () => import('@/views/LibraryView.vue'), props: true },
         { path: 'items/:id', name: 'item', component: () => import('@/views/ItemView.vue'), props: true },
+        { path: 'profile', name: 'profile', component: () => import('@/views/ProfileView.vue') },
         {
           path: 'admin',
           component: () => import('@/layouts/AdminLayout.vue'),
