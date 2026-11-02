@@ -19,7 +19,7 @@ services:
       DATABASE_URL: postgres://plys:plys@db:5432/plys?sslmode=disable
       COOKIE_SECURE: "false"
     volumes:
-      # The videos, read-only. Change the left part.
+      # The videos, must be mounted from this /media path.
       - /path/to/the/videos:/media:ro
       - api-cache:/cache
     depends_on:

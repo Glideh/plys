@@ -50,9 +50,9 @@ onMounted(async () => {
 
 <template>
   <main class="mx-auto max-w-screen-2xl space-y-12 px-4 py-10 sm:px-8">
-    <div class="grid gap-12 lg:grid-cols-2">
-      <HomeRail :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="railsLoading" resume />
-      <HomeRail :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="railsLoading" />
+    <div v-if="!railsLoading && (continueItems.length > 0 || nextItems.length > 0)" class="grid gap-12 lg:grid-cols-2">
+      <HomeRail v-if="continueItems.length > 0" :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="false" resume />
+      <HomeRail v-if="nextItems.length > 0" :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="false" />
     </div>
 
     <section>
