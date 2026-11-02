@@ -36,7 +36,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # The videos, read-only: Plys never modifies them. Every folder below is offered when creating a library.
-      - ${MEDIA_DIR:?Set MEDIA_DIR in .env}:/media:ro
+      - /path/to/the/videos:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
     # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
@@ -60,7 +60,7 @@ services:
       - /tmp
     ports:
       # Plys is then reachable at http://<this machine>:8096
-      - "${HTTP_PORT:-8096}:8080"
+      - "8096:8080"
     depends_on:
       - api
 

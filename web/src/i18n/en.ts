@@ -187,7 +187,7 @@ export default {
     up: 'Parent folder',
     choose: 'Choose this folder',
     empty: 'No subfolders.',
-    noRoots: 'No media folder is mounted in the container (MEDIA_DIR variable).',
+    noRoots: 'No media folder is mounted in the container.',
   },
   users: {
     new: 'New user',

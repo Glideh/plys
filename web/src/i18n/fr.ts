@@ -185,7 +185,7 @@ export default {
     up: 'Dossier parent',
     choose: 'Choisir ce dossier',
     empty: 'Aucun sous-dossier.',
-    noRoots: "Aucun dossier de médias n'est monté dans le conteneur (variable MEDIA_DIR).",
+    noRoots: "Aucun dossier de médias n'est monté dans le conteneur.",
   },
   users: {
     new: 'Nouvel utilisateur',

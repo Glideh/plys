@@ -1,1 +1,0 @@
-CREATE DATABASE toto_test;
