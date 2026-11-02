@@ -50,10 +50,15 @@ onMounted(async () => {
 
 <template>
   <main class="mx-auto max-w-screen-2xl space-y-12 px-4 py-10 sm:px-8">
+    <div class="grid gap-12 lg:grid-cols-2">
+      <HomeRail :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="railsLoading" resume />
+      <HomeRail :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="railsLoading" />
+    </div>
+
     <section>
       <h2 class="mb-4 text-lg font-semibold">{{ t('home.libraries') }}</h2>
       <ErrorAlert v-if="error" :message="error" />
-      <div v-else-if="loading" class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div v-else-if="loading" class="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-4">
         <div v-for="i in 3" :key="i" class="aspect-video animate-pulse rounded-xl bg-surface-800/60" />
       </div>
       <div v-else-if="libraries.length === 0" class="rounded-xl border border-dashed border-white/10 px-6 py-10 text-center">
@@ -68,7 +73,7 @@ onMounted(async () => {
           </RouterLink>
         </template>
       </div>
-      <ul v-else class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <ul v-else class="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-4">
         <li v-for="lib in libraries" :key="lib.id">
           <RouterLink
             :to="{ name: 'library', params: { id: lib.id } }"
@@ -82,8 +87,5 @@ onMounted(async () => {
         </li>
       </ul>
     </section>
-
-    <HomeRail :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="railsLoading" resume />
-    <HomeRail :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="railsLoading" />
   </main>
 </template>
