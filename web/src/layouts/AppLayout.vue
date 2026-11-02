@@ -1,9 +1,31 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 const auth = useAuthStore()
+
+const menuOpen = ref(false)
+const menu = ref<HTMLElement | null>(null)
+
+function closeOnOutsideClick(event: PointerEvent) {
+  if (menu.value && !menu.value.contains(event.target as Node)) menuOpen.value = false
+}
+
+function closeOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') menuOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', closeOnOutsideClick)
+  document.addEventListener('keydown', closeOnEscape)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', closeOnOutsideClick)
+  document.removeEventListener('keydown', closeOnEscape)
+})
 </script>
 
 <template>
@@ -15,36 +37,42 @@ const auth = useAuthStore()
           <span class="text-lg font-bold tracking-tight">{{ t('app.name') }}</span>
         </RouterLink>
 
-        <RouterLink
-          :to="{ name: 'home' }"
-          class="text-sm font-medium text-slate-400 transition hover:text-slate-100"
-          exact-active-class="!text-slate-100"
-        >
-          {{ t('nav.home') }}
-        </RouterLink>
-        <RouterLink
-          v-if="auth.isAdmin"
-          :to="{ name: 'admin-libraries' }"
-          class="-ml-4 text-sm font-medium text-slate-400 transition hover:text-slate-100"
-          :class="{ '!text-slate-100': $route.path.startsWith('/admin') }"
-        >
-          {{ t('nav.admin') }}
-        </RouterLink>
-
-        <div class="ml-auto flex items-center gap-4">
-          <span class="hidden items-center gap-2 text-sm text-slate-300 sm:flex">
+        <div ref="menu" class="relative ml-auto">
+          <button
+            type="button"
+            class="flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-slate-300 transition hover:bg-white/5"
+            aria-haspopup="menu"
+            :aria-expanded="menuOpen"
+            @click="menuOpen = !menuOpen"
+          >
             <span class="grid size-8 place-items-center rounded-full bg-surface-700 font-semibold uppercase">
               {{ auth.user?.username.charAt(0) }}
             </span>
-            {{ auth.user?.username }}
-          </span>
-          <button
-            type="button"
-            class="rounded-lg px-3 py-1.5 text-sm text-slate-400 transition hover:bg-white/5 hover:text-slate-100"
-            @click="auth.logout()"
-          >
-            {{ t('common.logout') }}
+            <span class="hidden sm:inline">{{ auth.user?.username }}</span>
           </button>
+          <div
+            v-if="menuOpen"
+            role="menu"
+            class="absolute right-0 mt-2 w-48 rounded-lg bg-surface-800 p-1 shadow-lg ring-1 ring-white/10"
+            @click="menuOpen = false"
+          >
+            <RouterLink
+              v-if="auth.isAdmin"
+              :to="{ name: 'admin-libraries' }"
+              role="menuitem"
+              class="block rounded-md px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100"
+            >
+              {{ t('nav.admin') }}
+            </RouterLink>
+            <button
+              type="button"
+              role="menuitem"
+              class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100"
+              @click="auth.logout()"
+            >
+              {{ t('common.logout') }}
+            </button>
+          </div>
         </div>
       </nav>
     </header>

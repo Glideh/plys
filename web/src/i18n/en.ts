@@ -40,7 +40,7 @@ export default {
     remaining: '{time} left',
     emptyNextUp: 'No episodes to watch next.',
   },
-  nav: { home: 'Home', admin: 'Administration' },
+  nav: { admin: 'Administration' },
   player: {
     back: 'Back',
     play: 'Play',

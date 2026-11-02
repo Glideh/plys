@@ -6,8 +6,8 @@
  * Examples: 150 sage green, 200 muted teal, 10 dusty rose. Keep public/favicon.* in sync when changing it.
  */
 :root {
-  --brand-hue: 250;
-  --brand-chroma: 0.06;
+  --brand-hue: 230;
+  --brand-chroma: 0.1;
 }
 
 /* inline: utilities embed the formula, so overriding --brand-hue on any element retints its subtree. */
@@ -39,7 +39,7 @@
 @layer base {
   html {
     /* 17px base: every rem-based size grows proportionally. */
-    font-size: 106.25%;
+    font-size: 125%;
     line-height: 1.6;
     font-optical-sizing: auto;
     @apply bg-surface-950 text-slate-200 antialiased;

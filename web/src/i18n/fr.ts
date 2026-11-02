@@ -38,7 +38,7 @@ export default {
     remaining: 'reste {time}',
     emptyNextUp: 'Aucun épisode à suivre.',
   },
-  nav: { home: 'Accueil', admin: 'Administration' },
+  nav: { admin: 'Administration' },
   player: {
     back: 'Retour',
     play: 'Lecture',
