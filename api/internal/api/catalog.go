@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -64,29 +65,11 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	qs := r.URL.Query()
-	sort := qs.Get("sort")
-	if sort == "" {
-		sort = "title"
-	}
-	if !slices.Contains(itemSorts, sort) {
-		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating")
+	params, ok := parseItemListParams(w, r)
+	if !ok {
 		return
 	}
-	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxPageSize)
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "validation", "limit "+err.Error())
-		return
-	}
-	offset, err := intParam(qs.Get("offset"), 0, 0, 1<<30)
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "validation", "offset "+err.Error())
-		return
-	}
-	query := ""
-	if q := strings.TrimSpace(qs.Get("query")); q != "" {
-		query = "%" + likeEscaper.Replace(q) + "%"
-	}
+	sort, limit, offset, query := params.sort, params.limit, params.offset, params.query
 
 	p, _ := auth.PrincipalFrom(r.Context())
 	rows, err := s.q.ListLibraryItems(r.Context(), store.ListLibraryItemsParams{
@@ -111,6 +94,86 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "offset": offset, "limit": limit})
+}
+
+func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	if !slices.Contains(libraryKinds, kind) {
+		httpx.Error(w, http.StatusBadRequest, "validation", "kind must be one of: movies, series, other")
+		return
+	}
+	var libraryID *uuid.UUID
+	if raw := r.URL.Query().Get("library"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			httpx.Error(w, http.StatusBadRequest, "validation", "library must be a uuid")
+			return
+		}
+		libraryID = &id
+	}
+	params, ok := parseItemListParams(w, r)
+	if !ok {
+		return
+	}
+
+	p, _ := auth.PrincipalFrom(r.Context())
+	rows, err := s.q.ListKindItems(r.Context(), store.ListKindItemsParams{
+		UserID: p.UserID, IsAdmin: p.Role == auth.RoleAdmin, Kind: kind, LibraryID: libraryID,
+		Query: params.query, Sort: params.sort, Off: int32(params.offset), Lim: int32(params.limit),
+	})
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	total := int32(0)
+	items := make([]itemCardDTO, 0, len(rows))
+	for _, row := range rows {
+		total = row.Total
+		poster := imageURL(row.PosterPath, "w342")
+		if poster == nil {
+			poster = imageURL(row.ThumbPath, "w342")
+		}
+		items = append(items, itemCardDTO{
+			ID: row.ID, Kind: row.Kind, Title: row.Title, Year: row.Year, PosterURL: poster,
+			Rating: row.Rating, EpisodeCount: row.EpisodeCount, MatchStatus: row.MatchStatus,
+			Watched: row.Watched || (row.Kind == "series" && row.UnwatchedCount == 0), UnwatchedCount: row.UnwatchedCount,
+		})
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "offset": params.offset, "limit": params.limit})
+}
+
+type itemListParams struct {
+	sort, query   string
+	limit, offset int
+}
+
+// parseItemListParams reads the sort, pagination and search query parameters shared by the item listings.
+func parseItemListParams(w http.ResponseWriter, r *http.Request) (itemListParams, bool) {
+	qs := r.URL.Query()
+	var p itemListParams
+	p.sort = qs.Get("sort")
+	if p.sort == "" {
+		p.sort = "title"
+	}
+	if !slices.Contains(itemSorts, p.sort) {
+		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating")
+		return p, false
+	}
+	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxPageSize)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "limit "+err.Error())
+		return p, false
+	}
+	offset, err := intParam(qs.Get("offset"), 0, 0, 1<<30)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "offset "+err.Error())
+		return p, false
+	}
+	p.limit, p.offset = limit, offset
+	if q := strings.TrimSpace(qs.Get("query")); q != "" {
+		p.query = "%" + likeEscaper.Replace(q) + "%"
+	}
+	return p, true
 }
 
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)

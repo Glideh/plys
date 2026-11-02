@@ -76,6 +76,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)
+			r.Get("/kinds/{kind}/items", s.listKindItems)
 			r.Get("/items/{id}", s.getItem)
 			r.Put("/items/{id}/progress", s.putProgress)
 			r.Post("/items/{id}/watched", s.setWatched(true))

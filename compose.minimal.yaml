@@ -1,4 +1,3 @@
-# Smallest working setup. Set the videos folder below, then run: docker compose up -d
 name: plys
 
 services:

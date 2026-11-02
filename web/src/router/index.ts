@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { libraryKinds, type LibraryKind } from '@/api/libraries'
 import { safeRedirect } from './redirect'
 
 declare module 'vue-router' {
@@ -22,6 +23,13 @@ export const router = createRouter({
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
         { path: 'libraries/:id', name: 'library', component: () => import('@/views/LibraryView.vue'), props: true },
+        {
+          path: 'kinds/:kind',
+          name: 'kind',
+          component: () => import('@/views/KindView.vue'),
+          props: true,
+          beforeEnter: (to) => (libraryKinds.includes(to.params.kind as LibraryKind) ? true : { name: 'home' }),
+        },
         { path: 'items/:id', name: 'item', component: () => import('@/views/ItemView.vue'), props: true },
         { path: 'profile', name: 'profile', component: () => import('@/views/ProfileView.vue') },
         {

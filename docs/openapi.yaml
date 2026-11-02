@@ -385,6 +385,33 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /kinds/{kind}/items:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [movies, series, other] } }
+    get:
+      operationId: listKindItems
+      summary: Top-level entries of every readable library of one kind
+      parameters:
+        - { name: library, in: query, required: false, schema: { type: string, format: uuid }, description: Restrict to one library of this kind }
+        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
+      responses:
+        "200":
+          description: Page of items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, limit]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/ItemCard" } }
+                  total: { type: integer }
+                  offset: { type: integer }
+                  limit: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+
   /items/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }

@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { ItemKind } from './libraries'
+import type { ItemKind, LibraryKind } from './libraries'
 
 export const itemSorts = ['title', 'year', 'added', 'rating'] as const
 export type ItemSort = (typeof itemSorts)[number]
@@ -141,6 +141,11 @@ export const catalogApi = {
     const qs = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
     return api<ItemPage>(`/libraries/${libraryId}/items?${qs}`)
+  },
+  listKind: (kind: LibraryKind, params: { library?: string; query?: string; sort?: ItemSort; offset?: number; limit?: number }) => {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
+    return api<ItemPage>(`/kinds/${kind}/items?${qs}`)
   },
   get: (id: string) => api<ItemDetail>(`/items/${id}`),
   searchMatch: (id: string, query: string, year?: number) => {

@@ -217,6 +217,121 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 	return items, nil
 }
 
+const listKindItems = `-- name: ListKindItems :many
+WITH libs AS (
+    SELECT l.id FROM libraries l
+    WHERE l.kind = $6
+      AND ($7::uuid IS NULL OR l.id = $7::uuid)
+      AND ($8::bool OR NOT l.restricted
+           OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = $1))
+),
+visible AS (
+    SELECT DISTINCT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id
+    FROM media_files f
+    JOIN items x ON x.id = f.item_id
+    JOIN libs ON libs.id = x.library_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE f.missing_since IS NULL
+),
+unwatched AS (
+    SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
+    FROM media_files f
+    JOIN items x ON x.id = f.item_id AND x.kind = 'episode'
+    JOIN libs ON libs.id = x.library_id
+    JOIN items sn ON sn.id = x.parent_id
+    LEFT JOIN playback_progress pr ON pr.item_id = x.id AND pr.user_id = $1
+    WHERE f.missing_since IS NULL AND pr.watched IS NOT TRUE
+    GROUP BY sn.parent_id
+)
+SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+       (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
+       COALESCE(u.n, 0)::int AS unwatched_count,
+       COALESCE(pw.watched, false) AS watched,
+       count(*) OVER ()::int AS total
+FROM items i
+JOIN libs ON libs.id = i.library_id
+LEFT JOIN unwatched u ON u.series_id = i.id
+LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
+WHERE i.parent_id IS NULL
+  AND ($2::text = '' OR i.title ILIKE $2 OR i.original_title ILIKE $2)
+  AND i.id IN (SELECT root_id FROM visible)
+ORDER BY
+    CASE WHEN $3::text = 'year' THEN i.year END DESC NULLS LAST,
+    CASE WHEN $3::text = 'added' THEN i.created_at END DESC,
+    CASE WHEN $3::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    i.sort_title, i.id
+LIMIT $5 OFFSET $4
+`
+
+type ListKindItemsParams struct {
+	UserID    uuid.UUID
+	Query     string
+	Sort      string
+	Off       int32
+	Lim       int32
+	Kind      string
+	LibraryID *uuid.UUID
+	IsAdmin   bool
+}
+
+type ListKindItemsRow struct {
+	ID             uuid.UUID
+	Kind           string
+	Title          string
+	Year           *int32
+	PosterPath     *string
+	ThumbPath      *string
+	Rating         *float32
+	MatchStatus    string
+	EpisodeCount   int32
+	UnwatchedCount int32
+	Watched        bool
+	Total          int32
+}
+
+// Top-level entries of every library of one kind readable by the caller, optionally narrowed to one library.
+func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([]ListKindItemsRow, error) {
+	rows, err := q.db.Query(ctx, listKindItems,
+		arg.UserID,
+		arg.Query,
+		arg.Sort,
+		arg.Off,
+		arg.Lim,
+		arg.Kind,
+		arg.LibraryID,
+		arg.IsAdmin,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListKindItemsRow
+	for rows.Next() {
+		var i ListKindItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Title,
+			&i.Year,
+			&i.PosterPath,
+			&i.ThumbPath,
+			&i.Rating,
+			&i.MatchStatus,
+			&i.EpisodeCount,
+			&i.UnwatchedCount,
+			&i.Watched,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLibraryAccess = `-- name: ListLibraryAccess :many
 SELECT library_id, user_id FROM library_access
 `

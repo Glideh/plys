@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { libraryKinds } from '@/api/libraries'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
@@ -36,6 +37,18 @@ onUnmounted(() => {
           <span class="grid size-8 place-items-center rounded-lg bg-accent-500 text-sm font-black text-surface-950">▶</span>
           <span class="text-lg font-bold tracking-tight">{{ t('app.name') }}</span>
         </RouterLink>
+
+        <div class="flex items-center gap-6 text-sm font-medium">
+          <RouterLink
+            v-for="kind in libraryKinds"
+            :key="kind"
+            :to="{ name: 'kind', params: { kind } }"
+            class="text-slate-400 transition hover:text-slate-100"
+            active-class="text-slate-100"
+          >
+            {{ t(`libraries.kinds.${kind}`) }}
+          </RouterLink>
+        </div>
 
         <div ref="menu" class="relative ml-auto">
           <button
