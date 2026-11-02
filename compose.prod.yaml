@@ -1,9 +1,6 @@
-# Plys, a self-hosted media library.
-# Save this file as compose.yaml next to a .env file (see the README), then run: docker compose up -d
 name: plys
 
 services:
-  # Stores users, libraries, metadata and watch progress.
   db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -19,7 +16,6 @@ services:
       timeout: 3s
       retries: 20
 
-  # Scans the videos, serves the API and converts what a browser cannot play (ffmpeg).
   api:
     image: glide/plys-api:${PLYS_VERSION:-latest}
     restart: unless-stopped
@@ -35,8 +31,8 @@ services:
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # The videos, read-only: Plys never modifies them. Every folder below is offered when creating a library.
-      - /path/to/the/videos:/media:ro
+      # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
+      - /video/path:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
     # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
