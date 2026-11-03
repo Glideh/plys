@@ -36,7 +36,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, password_hash, role, locale)
 VALUES ($1, $2, $3, $4)
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
 `
 
 type CreateUserParams struct {
@@ -63,6 +63,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }
@@ -77,7 +78,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next FROM users WHERE id = $1
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -92,12 +93,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next FROM users WHERE lower(username) = lower($1)
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users WHERE lower(username) = lower($1)
 `
 
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
@@ -112,12 +114,13 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next FROM users ORDER BY lower(username)
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users ORDER BY lower(username)
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -138,6 +141,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AutoplayNext,
+			&i.AvatarUpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -166,7 +170,7 @@ SET role          = coalesce($1, role),
     password_hash = coalesce($3, password_hash),
     updated_at    = now()
 WHERE id = $4
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
 `
 
 type UpdateUserParams struct {
@@ -193,6 +197,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }
@@ -203,7 +208,7 @@ SET autoplay_next = coalesce($1, autoplay_next),
     locale        = coalesce($2, locale),
     updated_at    = now()
 WHERE id = $3
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
 `
 
 type UpdateUserPreferencesParams struct {
@@ -224,6 +229,7 @@ func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPrefe
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
 	)
 	return i, err
 }

@@ -113,12 +113,18 @@ type Setting struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	Username     string
-	PasswordHash string
-	Role         string
-	Locale       string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	AutoplayNext bool
+	ID              uuid.UUID
+	Username        string
+	PasswordHash    string
+	Role            string
+	Locale          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	AutoplayNext    bool
+	AvatarUpdatedAt *time.Time
+}
+
+type UserAvatar struct {
+	UserID uuid.UUID
+	Data   []byte
 }

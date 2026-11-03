@@ -37,6 +37,8 @@ export interface User {
   locale: 'fr' | 'en'
   autoplayNext: boolean
   createdAt: string
+  /** Present only when the user has an avatar; used as a cache-busting version. */
+  avatarUpdatedAt?: string
 }
 
 export interface Session {
@@ -85,8 +87,15 @@ export function refreshSession(): Promise<Session | null> {
   return refreshing
 }
 
+/** URL of the signed-in user's avatar, or null when there is none. */
+export function avatarUrl(user: Pick<User, 'id' | 'avatarUpdatedAt'> | null | undefined): string | null {
+  if (!user?.avatarUpdatedAt) return null
+  return `${BASE}/images/avatars/${user.id}?v=${encodeURIComponent(user.avatarUpdatedAt)}`
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
+  /** A Blob is sent as the raw request body with its own content type. */
   body?: unknown
   /** Set to false for endpoints that must not trigger a token refresh on 401. */
   auth?: boolean
@@ -97,12 +106,13 @@ interface RequestOptions {
 export async function api<T>(path: string, { method = 'GET', body, auth = true, keepalive }: RequestOptions = {}): Promise<T> {
   const send = () => {
     const headers: Record<string, string> = {}
-    if (body !== undefined) headers['Content-Type'] = 'application/json'
+    const raw = body instanceof Blob
+    if (body !== undefined) headers['Content-Type'] = raw ? body.type : 'application/json'
     if (auth && accessToken) headers.Authorization = `Bearer ${accessToken}`
     return fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
       credentials: 'same-origin',
       keepalive,
     })

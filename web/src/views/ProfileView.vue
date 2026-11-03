@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { localeLabels, locales, type Locale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -12,6 +16,8 @@ const errorMessage = useErrorMessage()
 
 const saving = ref(false)
 const error = ref('')
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarBusy = ref(false)
 
 async function changeLocale(event: Event) {
   error.value = ''
@@ -24,6 +30,38 @@ async function changeLocale(event: Event) {
     saving.value = false
   }
 }
+
+async function onAvatarPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  error.value = ''
+  if (file.size > MAX_AVATAR_BYTES) {
+    error.value = t('profile.avatarTooLarge')
+    return
+  }
+  avatarBusy.value = true
+  try {
+    await auth.setAvatar(file)
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    avatarBusy.value = false
+  }
+}
+
+async function removeAvatar() {
+  error.value = ''
+  avatarBusy.value = true
+  try {
+    await auth.removeAvatar()
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    avatarBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -34,6 +72,27 @@ async function changeLocale(event: Event) {
     </div>
 
     <ErrorAlert v-if="error" :message="error" />
+
+    <div class="flex items-center gap-5 rounded-2xl border border-white/5 bg-surface-900 p-6">
+      <UserAvatar :user="auth.user" class="size-20 text-2xl" />
+      <div class="min-w-0 flex-1 space-y-3">
+        <p class="text-sm font-medium text-slate-300">{{ t('profile.avatar') }}</p>
+        <p class="text-xs text-slate-500">{{ t('profile.avatarHelp') }}</p>
+        <div class="flex flex-wrap gap-2">
+          <BaseButton :loading="avatarBusy" @click="avatarInput?.click()">{{ t('profile.avatarUpload') }}</BaseButton>
+          <BaseButton v-if="auth.user?.avatarUpdatedAt" :disabled="avatarBusy" variant="danger" @click="removeAvatar">
+            {{ t('profile.avatarRemove') }}
+          </BaseButton>
+        </div>
+        <input
+          ref="avatarInput"
+          type="file"
+          accept="image/jpeg,image/png"
+          class="hidden"
+          @change="onAvatarPicked"
+        />
+      </div>
+    </div>
 
     <div class="space-y-3 rounded-2xl border border-white/5 bg-surface-900 p-6">
       <label for="profile-locale" class="block text-sm font-medium text-slate-300">{{ t('profile.language') }}</label>

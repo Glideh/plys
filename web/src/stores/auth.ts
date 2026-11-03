@@ -72,5 +72,14 @@ export const useAuthStore = defineStore('auth', () => {
     setLocale(updated.locale)
   }
 
-  return { user, needsSetup, isAdmin, init, setupAdmin, login, logout, updatePreferences }
+  /** Uploads a JPEG or PNG avatar for the signed-in user. */
+  async function setAvatar(file: Blob) {
+    user.value = await api<User>('/me/avatar', { method: 'PUT', body: file })
+  }
+
+  async function removeAvatar() {
+    user.value = await api<User>('/me/avatar', { method: 'DELETE' })
+  }
+
+  return { user, needsSetup, isAdmin, init, setupAdmin, login, logout, updatePreferences, setAvatar, removeAvatar }
 })

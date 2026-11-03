@@ -44,6 +44,11 @@ export default {
     subtitle: 'Réglages de votre compte.',
     language: "Langue de l'interface",
     languageHelp: 'Ce réglage ne concerne que votre compte.',
+    avatar: 'Photo de profil',
+    avatarHelp: 'JPEG ou PNG, 2 Mo maximum. La photo est recadrée en carré.',
+    avatarUpload: 'Changer la photo',
+    avatarRemove: 'Supprimer',
+    avatarTooLarge: 'La photo ne doit pas dépasser 2 Mo.',
   },
   setupMetadata: {
     title: 'Métadonnées',

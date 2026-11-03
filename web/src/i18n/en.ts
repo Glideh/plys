@@ -46,6 +46,11 @@ export default {
     subtitle: 'Settings for your account.',
     language: 'Interface language',
     languageHelp: 'This only applies to your account.',
+    avatar: 'Profile picture',
+    avatarHelp: 'JPEG or PNG, 2 MB maximum. The picture is cropped to a square.',
+    avatarUpload: 'Change picture',
+    avatarRemove: 'Remove',
+    avatarTooLarge: 'The picture must not exceed 2 MB.',
   },
   setupMetadata: {
     title: 'Metadata',

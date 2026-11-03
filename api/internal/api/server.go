@@ -66,6 +66,7 @@ func (s *Server) Routes() http.Handler {
 		// Public so that <img> tags work without a bearer token; only referenced images are served.
 		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
 		r.Get("/images/local/{file}", s.localImage)
+		r.Get("/images/avatars/{id}", s.userAvatar)
 		r.Get("/stream/{sid}/subtitles/{track}", s.streamSubtitle)
 		r.Get("/stream/{sid}/{file}", s.streamFile)
 
@@ -73,6 +74,8 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.Tokens.Middleware)
 			r.Get("/me", s.me)
 			r.Patch("/me", s.updateMe)
+			r.Put("/me/avatar", s.putAvatar)
+			r.Delete("/me/avatar", s.deleteAvatar)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)

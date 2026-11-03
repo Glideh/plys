@@ -160,6 +160,36 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "401": { $ref: "#/components/responses/Error" }
 
+  /me/avatar:
+    put:
+      operationId: setMyAvatar
+      summary: Upload the caller's avatar (JPEG or PNG, max 2 MB; stored as a 256x256 PNG center crop)
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: removeMyAvatar
+      summary: Remove the caller's avatar
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Error" }
+
   /users:
     get:
       operationId: listUsers
@@ -802,6 +832,17 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "502": { $ref: "#/components/responses/Error" }
 
+  /images/avatars/{id}:
+    get:
+      operationId: getUserAvatar
+      summary: Avatar of a user (public)
+      security: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Avatar, content: { image/png: {} } }
+        "404": { $ref: "#/components/responses/Error" }
+
   /images/local/{file}:
     get:
       operationId: getLocalImage
@@ -890,6 +931,7 @@ components:
         role: { $ref: "#/components/schemas/Role" }
         locale: { $ref: "#/components/schemas/Locale" }
         autoplayNext: { type: boolean, default: false }
+        avatarUpdatedAt: { type: string, format: date-time, description: Present only when the user has an avatar; used as cache-buster }
         createdAt: { type: string, format: date-time }
     Session:
       type: object

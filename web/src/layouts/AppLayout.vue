@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { libraryKinds } from '@/api/libraries'
 import { useAuthStore } from '@/stores/auth'
 
@@ -58,9 +59,7 @@ onUnmounted(() => {
             :aria-expanded="menuOpen"
             @click="menuOpen = !menuOpen"
           >
-            <span class="grid size-8 place-items-center rounded-full bg-surface-700 font-semibold uppercase">
-              {{ auth.user?.username.charAt(0) }}
-            </span>
+            <UserAvatar :user="auth.user" class="size-8" />
             <span class="hidden sm:inline">{{ auth.user?.username }}</span>
           </button>
           <div

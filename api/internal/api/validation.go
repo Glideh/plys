@@ -34,10 +34,12 @@ type userDTO struct {
 	// AutoplayNext starts the next episode or part when one ends.
 	AutoplayNext bool      `json:"autoplayNext"`
 	CreatedAt    time.Time `json:"createdAt"`
+	// AvatarUpdatedAt is set when an avatar exists; the client uses it as a cache-busting version.
+	AvatarUpdatedAt *time.Time `json:"avatarUpdatedAt,omitempty"`
 }
 
 func toUserDTO(u store.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt}
+	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt, AvatarUpdatedAt: u.AvatarUpdatedAt}
 }
 
 func validateUsername(s string) error {
