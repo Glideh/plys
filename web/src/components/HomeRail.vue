@@ -23,7 +23,7 @@ function subtitle(it: HomeItem, resume: boolean): string | null {
 </script>
 
 <template>
-  <section>
+  <section class="min-w-0">
     <h2 class="mb-4 text-lg font-semibold">{{ title }}</h2>
     <div v-if="loading" class="flex gap-4 overflow-hidden">
       <div v-for="i in 6" :key="i" class="aspect-[2/3] w-36 shrink-0 animate-pulse rounded-xl bg-surface-800/60" />

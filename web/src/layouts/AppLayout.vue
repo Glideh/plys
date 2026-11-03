@@ -38,13 +38,13 @@ onUnmounted(() => {
           <span class="text-lg font-bold tracking-tight">{{ t('app.name') }}</span>
         </RouterLink>
 
-        <div class="flex items-center gap-6 text-sm font-medium">
+        <div class="hidden items-center gap-6 text-sm font-medium md:flex">
           <RouterLink
             v-for="kind in libraryKinds"
             :key="kind"
             :to="{ name: 'kind', params: { kind } }"
             class="text-slate-400 transition hover:text-slate-100"
-            active-class="text-slate-100"
+            active-class="text-slate-100!"
           >
             {{ t(`libraries.kinds.${kind}`) }}
           </RouterLink>
@@ -69,6 +69,17 @@ onUnmounted(() => {
             class="absolute right-0 mt-2 w-48 rounded-lg bg-surface-800 p-1 shadow-lg ring-1 ring-white/10"
             @click="menuOpen = false"
           >
+            <RouterLink
+              v-for="kind in libraryKinds"
+              :key="kind"
+              :to="{ name: 'kind', params: { kind } }"
+              role="menuitem"
+              class="block rounded-md px-3 py-2 text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100 md:hidden"
+              active-class="text-slate-100!"
+            >
+              {{ t(`libraries.kinds.${kind}`) }}
+            </RouterLink>
+            <div class="my-1 h-px bg-white/10 md:hidden" role="separator" />
             <RouterLink
               :to="{ name: 'profile' }"
               role="menuitem"
