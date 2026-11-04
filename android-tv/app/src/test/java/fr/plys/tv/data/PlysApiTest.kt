@@ -166,6 +166,72 @@ class PlysApiTest {
         }
     }
 
+    @Test fun `kind catalog encodes filters and normalizes local sources`() = runBlocking {
+        login()
+        json("""{"id":"origin"}""")
+        json("""{"items":[{"id":"film","kind":"movie","title":"Alien","sources":[{"serverId":"origin","serverName":"Home","serverUrl":"${server.url("/")}","itemId":"film"}]}],"total":1,"offset":0,"limit":40,"unavailableServers":1}""")
+        val page = api.catalog(CatalogQuery(CatalogKind.MOVIES, libraryId = "library", query = "Alien & space", sort = "rating", filters = CatalogFilters(genres = listOf(878), ratingMin = 7.0)))
+        assertNull(page.items.single().sources.single().serverUrl)
+        assertEquals(1, page.unavailableServers)
+        assertEquals("/api/v1/server", server.takeRequest().requestUrl?.encodedPath)
+        val request = server.takeRequest()
+        assertEquals("/api/v1/kinds/movies/items", request.requestUrl?.encodedPath)
+        assertEquals("Alien & space", request.requestUrl?.queryParameter("query"))
+        assertEquals("library", request.requestUrl?.queryParameter("library"))
+        assertEquals("rating", request.requestUrl?.queryParameter("sort"))
+        assertEquals("""{"genres":[878],"ratingMin":7.0}""", request.requestUrl?.queryParameter("filters"))
+        assertEquals("Bearer access-1", request.getHeader("Authorization"))
+    }
+
+    @Test fun `filter suggestions preserve selection and locale`() = runBlocking {
+        login()
+        json("""{"options":{"actors":[{"id":"10205","label":"Sigourney Weaver"}]},"unavailableServers":0}""")
+        assertEquals("Sigourney Weaver", api.filterOptions(CatalogKind.MOVIES, "actors", "Weaver & co", "library", listOf("10205"), "fr").options["actors"]?.single()?.label)
+        val url = server.takeRequest().requestUrl!!
+        assertEquals("/api/v1/kinds/movies/filters", url.encodedPath)
+        assertEquals("Weaver & co", url.queryParameter("query"))
+        assertEquals("10205", url.queryParameter("selected"))
+        assertEquals("fr", url.queryParameter("locale"))
+    }
+
+    @Test fun `peer transport renews only federated token and never exposes origin credentials`() = runBlocking {
+        login()
+        MockWebServer().use { peer ->
+            peer.start()
+            val source = ServerRef("peer", "Other server", peer.url("/").toString(), "film")
+            json("""{"token":"peer-1","expiresAt":"2099-01-01T00:00:00Z"}""")
+            json("""{"token":"peer-2","expiresAt":"2099-01-01T00:00:00Z"}""")
+            peer.enqueue(MockResponse().setResponseCode(401))
+            peer.enqueue(MockResponse().setBody("""{"id":"film","kind":"movie","title":"Alien","versions":[],"children":[]}"""))
+            assertEquals("Alien", api.item("film", source).title)
+            repeat(2) {
+                val originRequest = server.takeRequest()
+                assertEquals("/api/v1/me/federation-token", originRequest.path)
+                assertEquals("Bearer access-1", originRequest.getHeader("Authorization"))
+                assertEquals("""{"audience":"peer"}""", originRequest.body.readUtf8())
+            }
+            assertEquals("Bearer peer-1", peer.takeRequest().getHeader("Authorization"))
+            assertEquals("Bearer peer-2", peer.takeRequest().getHeader("Authorization"))
+            assertTrue(api.signedIn)
+            assertTrue(api.mediaUrl("/api/v1/stream/session/index.m3u8", source).startsWith(peer.url("/").toString()))
+            assertEquals(Failure.RESPONSE, assertThrows(ClientException::class.java) { api.mediaUrl("https://third.example/stream", source) }.failure)
+            peer.enqueue(MockResponse().setResponseCode(403))
+            try { api.item("film", source); fail("Expected peer rejection") } catch (failure: ClientException) { assertEquals(Failure.SERVER, failure.failure) }
+            assertTrue(api.signedIn)
+            assertEquals("refresh-1", store.value?.refreshToken)
+        }
+    }
+
+    @Test fun `advanced filters reject contradictory and invalid bounds`() {
+        assertTrue(CatalogFilters(genres = listOf(878), yearMin = 2000, ratingMin = 7.0).valid)
+        assertFalse(CatalogFilters(genres = listOf(27), excludeGenres = listOf(27)).valid)
+        assertFalse(CatalogFilters(yearMin = 2020, yearMax = 2000).valid)
+        assertFalse(CatalogFilters(runtimeMin = 120, runtimeMax = 90).valid)
+        assertFalse(CatalogFilters(ratingMin = Double.NaN).valid)
+        assertFalse(CatalogFilters(languages = listOf("english")).valid)
+        assertEquals(2, CatalogFilters(genres = listOf(27, 878), ratingMin = 0.0).count)
+    }
+
     private class MemoryStore : SessionStore {
         var value: StoredSession? = null
         var failWrites = false

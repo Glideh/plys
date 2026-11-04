@@ -15,6 +15,7 @@ import fr.plys.tv.data.ClientException
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlaybackSession
 import fr.plys.tv.data.PlysApi
+import fr.plys.tv.data.ServerRef
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ class PlayerController(
     private val api: PlysApi,
     item: ItemDetail,
     initialPosition: Double,
+    private val source: ServerRef? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val player = ExoPlayer.Builder(application).build().apply {
@@ -159,7 +161,7 @@ class PlayerController(
                 attempt {
                     attempt(notify = true) { report(ended = mutableState.value.ended) }
                     stopSession()
-                    val nextItem = api.item(next.id)
+                    val nextItem = api.item(next.id, source)
                     mutableState.value = PlayerState(
                         nextItem, next.positionSeconds, nextItem.playableVersion?.durationSeconds ?: 0.0,
                     )
@@ -206,7 +208,7 @@ class PlayerController(
     private suspend fun openSession(position: Double) {
         val version = mutableState.value.item.playableVersion
             ?: throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
-        val opened = api.start(version.id, position, caps)
+        val opened = api.start(version.id, position, caps, source)
         player.clearMediaItems()
         session = opened
         ready = false
@@ -218,7 +220,7 @@ class PlayerController(
             position = position, duration = opened.duration, ended = false,
         )
         val item = MediaItem.Builder()
-            .setUri(api.mediaUrl(opened.playlistUrl))
+            .setUri(api.mediaUrl(opened.playlistUrl, source))
             .setMimeType(MimeTypes.APPLICATION_M3U8)
             .build()
         val source = HlsMediaSource.Factory(DefaultHttpDataSource.Factory()
@@ -244,13 +246,13 @@ class PlayerController(
         if (session == null || current.duration <= 0 || (!ready && !ended)) return
         val position = if (ended) current.duration else mutableState.value.position
         if (position < 1 || kotlin.math.abs(position - lastReported) < 1) return
-        api.progress(current.item.id, position, current.duration)
+        api.progress(current.item.id, position, current.duration, source)
         lastReported = position
     }
 
     private suspend fun stopSession() {
         val current = session ?: return
-        api.stop(current.id)
+        api.stop(current.id, source)
         session = null
     }
 

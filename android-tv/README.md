@@ -1,18 +1,30 @@
 # Plys TV
 
-Native Android TV / Google TV MVP, written in Kotlin with Jetpack Compose for TV
-and Media3/ExoPlayer. Uses the existing [Plys API](../docs/openapi.yaml); no extra
-server service or API migration is needed.
+Native Android TV / Google TV client, written in Kotlin with Jetpack Compose for TV
+and Media3/ExoPlayer. Requires the matching [Plys API](../docs/openapi.yaml), including
+the aggregated `/me/home` endpoint. No additional service or database migration is needed.
 
 ## Included
 
 - TV launcher entry, landscape interface, D-pad/OK/Back navigation, visible focus.
+- A single dark theme, independent of the Android theme, with shared content colors
+  for TV controls and text fields.
+- Home with continue-watching and next-episode rows when available, followed by
+  Movies, Series and Other videos. The home rows include compatible paired servers.
 - Server address and username/password sign-in using an existing Plys account.
 - Refresh-token rotation, session restoration, encrypted refresh-token storage
   using AES-GCM and Android Keystore. Passwords and access tokens are not persisted;
   application backups are disabled.
-- Accessible libraries, paginated posters (40 items/page), film details, seasons,
-  episodes, videos and multi-part films.
+- Kind catalogs with an optional local-library filter, paginated posters (40 items/page),
+  film details, seasons, episodes, videos and multi-part films.
+- Title search, title/year/added/rating sort, and TMDB filters: included/excluded genres,
+  any/all genre matching, years, minimum rating and vote count, original language,
+  countries, actors, directors/series creators and keywords. Movie runtime ranges are
+  available; personal videos have no TMDB filter panel.
+- Searchable multi-selection dialogs, apply/cancel/reset, individual criterion removal,
+  and restoration of applied catalog criteria and the focused title on navigation.
+- Federated details and playback with audience-specific, renewable tokens. Account
+  credentials and the origin server's session tokens are never sent to a peer.
 - HLS playback, resume, play from the beginning, pause, 30-second skips, stop and
   a manual next episode/part button when playback ends.
 - Progress reporting every 10 seconds during playback, at pause/stop/background
@@ -20,8 +32,8 @@ server service or API migration is needed.
 - English and French strings, selected using the TV's system language.
 - Explicit connection, authentication, storage and playback errors, with retry.
 
-This MVP uses the first readable file version, the server's default audio track,
-and no subtitles. Version/audio/subtitle selectors, search, automatic next
+The client uses the first readable file version, the server's default audio track,
+and no subtitles. Version/audio/subtitle selectors, automatic next
 episode playback, home recommendations, pairing codes, HDR/4K and Google Play
 publication are outside this version. Video targets SDR at a maximum height of
 1080p; codecs reported by Android are copied when the server can copy them,
@@ -84,7 +96,9 @@ permission to install unknown applications. Open **Plys TV** in the TV launcher.
 2. Enter the server's root address, for example `http://192.168.1.20:8096` or
    `https://plys.example.net`. A trailing `/api/v1` is also accepted. Reverse
    proxies must expose `/api/v1` at the origin root; subpath hosting is not supported.
-3. Sign in, select a library, then a film or series/season/episode.
+3. Sign in and resume a title from home, or choose Movies, Series or Other videos.
+  Select a local library only when needed: All libraries includes compatible peers,
+  whereas a selected library restricts results to that local library.
 4. Select **Play** or **Resume**. In playback, OK/arrows reveal the controls;
    Back first hides active controls, then leaves the player. Pause/error/end
    screens can be exited directly with Back.
@@ -107,13 +121,21 @@ periodic report remains the resume point.
 
 Unit tests cover URL validation, body-based login, first-run setup, serialized
 refresh rotation, revocation, storage/network failures, pagination, playback
-requests, progress reporting and source/HLS time conversion.
+requests, progress reporting, kind/filter query encoding, federated-token isolation
+and renewal, filter validation, and source/HLS time conversion.
 
-**Implementation status:** Kotlin compilation, unit tests, Android lint and APK
-generation have not been run in the implementation environment: JDK/Gradle/SDK
-were absent and their installation was denied. XML/resources and the diff were
-checked statically. A build and a real TV/emulator playback check are still needed
-before considering this MVP validated or distributing an APK.
+An instrumented Android TV journey uses an isolated MockWebServer fixture to cover
+login, home, D-pad focus, kinds, filter search focus, applying filters, details and
+back navigation. With an emulator or test TV connected, run:
+
+```sh
+gradle -p android-tv :app:connectedDebugAndroidTest
+```
+
+Compilation, unit tests, Android lint and the instrumented journey have been run
+using Gradle 8.11.1 and Android SDK 35, with an Android TV API 34 emulator. Visual
+captures use fixture data, not a real account. Real-media playback, hardware codec
+behavior and long-running federated playback still need validation on the target TV.
 
 After a successful build, check at least:
 

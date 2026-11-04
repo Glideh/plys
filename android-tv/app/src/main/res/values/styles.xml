@@ -4,6 +4,6 @@
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">#A5B4FC</item>
-        <item name="android:windowBackground">#111827</item>
+        <item name="android:windowBackground">#111315</item>
     </style>
 </resources>

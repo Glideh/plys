@@ -76,6 +76,7 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/images/avatars/{id}", s.userAvatar)
 		r.Post("/federation/handshake", s.handshake)
 		r.Get("/federation/users", s.peerUsers)
+		r.Get("/federation/home", s.peerHome)
 		r.Get("/federation/catalog/kinds/{kind}/items", s.peerKindItems)
 		r.Get("/federation/catalog/kinds/{kind}/filters", s.peerCatalogFilterOptions)
 		r.Get("/federation/catalog/titles/{kind}/{tmdbId}", s.peerTitleIDs)
@@ -117,6 +118,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/kinds/{kind}/titles/{tmdbId}/sources", s.listTitleSources)
 			r.Get("/me/continue-watching", s.continueWatching)
 			r.Get("/me/next-up", s.nextUp)
+			r.Get("/me/home", s.home)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)

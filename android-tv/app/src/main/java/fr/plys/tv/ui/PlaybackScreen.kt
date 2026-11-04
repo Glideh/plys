@@ -44,15 +44,16 @@ import fr.plys.tv.PlysApplication
 import fr.plys.tv.R
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlysApi
+import fr.plys.tv.data.ServerRef
 import kotlinx.coroutines.delay
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onClosed: () -> Unit) {
+fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onClosed: () -> Unit, source: ServerRef? = null) {
     val context = LocalContext.current
     val activity = context as MainActivity
-    val model = remember(item.id) {
-        PlayerController(context.applicationContext as PlysApplication, api, item, initialPosition)
+    val model = remember(source?.serverId, item.id) {
+        PlayerController(context.applicationContext as PlysApplication, api, item, initialPosition, source)
     }
     DisposableEffect(model) { onDispose { model.dispose() } }
     val state by model.state.collectAsStateWithLifecycle()
@@ -128,13 +129,13 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             modifier = Modifier.fillMaxSize(),
         )
         if (visible) Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xDC111827)).padding(24.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(androidx.tv.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(state.item.title)
             Text("${clock(state.position)} / ${clock(state.duration)}")
-            state.error?.let { Text(it, color = Color(0xFFFCA5A5)) }
-            if (state.loading) CircularProgressIndicator(color = Color(0xFFA5B4FC))
+            state.error?.let { Text(it, color = androidx.tv.material3.MaterialTheme.colorScheme.error) }
+            if (state.loading) CircularProgressIndicator(color = androidx.tv.material3.MaterialTheme.colorScheme.primary)
             if (state.ended) Text(stringResource(R.string.ended))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 when {

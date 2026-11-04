@@ -583,6 +583,32 @@ paths:
         "204": { description: Unmarked }
         "404": { $ref: "#/components/responses/Error" }
 
+  /me/home:
+    get:
+      operationId: getHome
+      summary: Continue-watching and next-episode rows aggregated across compatible servers
+      description: Each row is sorted by last progress update and limited to 20 items globally. Source identity is retained; positions of different copies are never merged. Excluded peers do not prevent local results. Existing individual home-row endpoints remain local-only.
+      responses:
+        "200":
+          description: Local and federated home rows with their source
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Home" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /federation/home:
+    get:
+      operationId: getPeerHome
+      summary: Local home rows for the shadow user named by a compatible peer's federated token
+      description: Does not query or re-export other peers. Library access rules apply to the authenticated shadow user.
+      responses:
+        "200":
+          description: Local home rows only
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Home" }
+        "401": { $ref: "#/components/responses/Error" }
+
   /me/continue-watching:
     get:
       operationId: listContinueWatching
@@ -1232,6 +1258,28 @@ components:
         positionSeconds: { type: number }
         resume: { type: boolean, description: The target was started and resumes at positionSeconds }
         rewatch: { type: boolean, description: Everything was already watched; the target is the first item }
+    MediaSource:
+      type: object
+      required: [serverId, serverName, itemId]
+      properties:
+        serverId: { type: string, format: uuid }
+        serverName: { type: string }
+        serverUrl: { type: string, format: uri, description: Omitted for items on the origin server }
+        itemId: { type: string, format: uuid }
+    SourcedHomeItem:
+      allOf:
+        - $ref: "#/components/schemas/HomeItem"
+        - type: object
+          required: [source]
+          properties:
+            source: { $ref: "#/components/schemas/MediaSource" }
+    Home:
+      type: object
+      required: [continueWatching, nextUp, unavailableServers]
+      properties:
+        continueWatching: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
+        nextUp: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
+        unavailableServers: { type: integer, minimum: 0 }
     HomeItem:
       type: object
       required: [id, kind, title, posterUrl, positionSeconds, durationSeconds, updatedAt]

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/http"
@@ -261,12 +262,20 @@ type homeItemDTO struct {
 
 func (s *Server) continueWatching(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
-	rows, err := s.q.ListContinueWatching(r.Context(), store.ListContinueWatchingParams{
-		UserID: p.UserID, MinSeconds: resumeMinSeconds, IsAdmin: p.Role == auth.RoleAdmin, Lim: homeRailSize,
-	})
+	items, err := s.localContinueWatching(r.Context(), p.UserID, p.Role == auth.RoleAdmin)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) localContinueWatching(ctx context.Context, userID uuid.UUID, isAdmin bool) ([]homeItemDTO, error) {
+	rows, err := s.q.ListContinueWatching(ctx, store.ListContinueWatchingParams{
+		UserID: userID, MinSeconds: resumeMinSeconds, IsAdmin: isAdmin, Lim: homeRailSize,
+	})
+	if err != nil {
+		return nil, err
 	}
 	items := make([]homeItemDTO, 0, len(rows))
 	for _, row := range rows {
@@ -280,17 +289,25 @@ func (s *Server) continueWatching(w http.ResponseWriter, r *http.Request) {
 			PositionSeconds: row.PositionSeconds, DurationSeconds: ptrValue(row.DurationSeconds), UpdatedAt: row.UpdatedAt,
 		})
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+	return items, nil
 }
 
 func (s *Server) nextUp(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
-	rows, err := s.q.ListNextUp(r.Context(), store.ListNextUpParams{
-		UserID: p.UserID, MinSeconds: resumeMinSeconds, IsAdmin: p.Role == auth.RoleAdmin, Lim: homeRailSize,
-	})
+	items, err := s.localNextUp(r.Context(), p.UserID, p.Role == auth.RoleAdmin)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) localNextUp(ctx context.Context, userID uuid.UUID, isAdmin bool) ([]homeItemDTO, error) {
+	rows, err := s.q.ListNextUp(ctx, store.ListNextUpParams{
+		UserID: userID, MinSeconds: resumeMinSeconds, IsAdmin: isAdmin, Lim: homeRailSize,
+	})
+	if err != nil {
+		return nil, err
 	}
 	items := make([]homeItemDTO, 0, len(rows))
 	for _, row := range rows {
@@ -303,5 +320,5 @@ func (s *Server) nextUp(w http.ResponseWriter, r *http.Request) {
 			EpisodeNumber: row.EpisodeNumber, PartNumber: row.PartNumber, PosterURL: poster, UpdatedAt: row.UpdatedAt,
 		})
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+	return items, nil
 }
