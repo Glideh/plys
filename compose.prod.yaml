@@ -27,6 +27,8 @@ services:
       # Keep false when browsing over plain http (home network).
       # Set true if a reverse proxy serves Plys over HTTPS, otherwise browsers drop the session cookie.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Paired servers must be reached over https by default; set false only on a trusted home network with plain http.
+      PLYS_FEDERATION_REQUIRE_HTTPS: ${PLYS_FEDERATION_REQUIRE_HTTPS:-true}
       # How many videos may be converted at the same time.
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}

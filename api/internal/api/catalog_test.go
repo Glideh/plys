@@ -25,7 +25,7 @@ func writeFiles(t *testing.T, root string, files ...string) {
 
 func (e testEnv) createScannedLibrary(t *testing.T, token, name, kind, dir string, extra map[string]any) string {
 	t.Helper()
-	body := map[string]any{"name": name, "kind": kind, "paths": []string{filepath.Join(e.root, dir)}}
+	body := map[string]any{"name": name, "kind": kind, "paths": []string{filepath.Join(e.root, dir)}, "restricted": false}
 	for k, v := range extra {
 		body[k] = v
 	}
@@ -135,7 +135,7 @@ func TestLibraryAccessControl(t *testing.T) {
 	bob := do(t, e.h, http.MethodPost, "/api/v1/auth/login", "", map[string]any{"username": "bob", "password": "password123"}).body["accessToken"].(string)
 	carol := do(t, e.h, http.MethodPost, "/api/v1/auth/login", "", map[string]any{"username": "carol", "password": "password123"}).body["accessToken"].(string)
 
-	e.createScannedLibrary(t, admin, "Enfants", "movies", "kids", nil)
+	e.createScannedLibrary(t, admin, "Enfants", "movies", "kids", map[string]any{"restricted": false})
 	adults := e.createScannedLibrary(t, admin, "Adultes", "movies", "adults", map[string]any{"restricted": true, "userIds": []string{bobID}})
 
 	visible := func(token string) int {

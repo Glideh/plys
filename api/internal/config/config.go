@@ -15,10 +15,12 @@ type Config struct {
 	DatabaseURL  string
 	JWTSecret    string
 	CookieSecure bool
-	LogLevel     slog.Level
-	MediaRoots   []string
-	ScanInterval time.Duration
-	CacheDir     string
+	// FederationRequireHTTPS refuses peer URLs that are not https. Development may disable it.
+	FederationRequireHTTPS bool
+	LogLevel               slog.Level
+	MediaRoots             []string
+	ScanInterval           time.Duration
+	CacheDir               string
 	// HWAccel is auto, qsv, vaapi or none.
 	HWAccel       string
 	MaxTranscodes int
@@ -46,6 +48,11 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("COOKIE_SECURE: %w", err)
 	}
 	c.CookieSecure = secure
+	federationHTTPS, err := strconv.ParseBool(env("PLYS_FEDERATION_REQUIRE_HTTPS", "true"))
+	if err != nil {
+		return c, fmt.Errorf("PLYS_FEDERATION_REQUIRE_HTTPS: %w", err)
+	}
+	c.FederationRequireHTTPS = federationHTTPS
 	if c.MaxTranscodes, err = strconv.Atoi(env("MAX_TRANSCODES", "2")); err != nil || c.MaxTranscodes < 1 {
 		return c, errors.New("MAX_TRANSCODES must be a positive integer")
 	}

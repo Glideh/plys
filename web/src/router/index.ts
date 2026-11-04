@@ -40,6 +40,7 @@ export const router = createRouter({
             { path: '', redirect: { name: 'admin-libraries' } },
             { path: 'libraries', name: 'admin-libraries', component: () => import('@/views/admin/AdminLibrariesView.vue') },
             { path: 'users', name: 'admin-users', component: () => import('@/views/admin/AdminUsersView.vue') },
+            { path: 'servers', name: 'admin-servers', component: () => import('@/views/admin/AdminServersView.vue') },
             { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/AdminSettingsView.vue') },
           ],
         },

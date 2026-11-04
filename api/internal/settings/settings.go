@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,14 +22,35 @@ const (
 	keyTMDB             = "tmdb_api_key"
 	keyMetadataLanguage = "metadata_language"
 	keyServerIdentity   = "server_identity"
+	keyServerName       = "server_name"
+	keyServerPublicURL  = "server_public_url"
 
 	DefaultLanguage = "fr-FR"
+
+	maxServerNameLength = 64
 )
 
 var languageRe = regexp.MustCompile(`^[a-z]{2}-[A-Z]{2}$`)
 
 func ValidLanguage(s string) bool {
 	return languageRe.MatchString(s)
+}
+
+// ValidServerName reports whether a name can be shown to peers and admins.
+func ValidServerName(s string) bool {
+	return s != "" && utf8.RuneCountInString(s) <= maxServerNameLength
+}
+
+// NormalizePublicURL returns the URL without trailing slash, or false when it is not a bare absolute http(s) URL.
+func NormalizePublicURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", false
+	}
+	if u.RawQuery != "" || u.Fragment != "" || u.User != nil || (u.Path != "" && u.Path != "/") {
+		return "", false
+	}
+	return u.Scheme + "://" + u.Host, true
 }
 
 type Store struct {
@@ -59,6 +82,27 @@ func (s *Store) SetMetadataLanguage(ctx context.Context, lang string) error {
 		return fmt.Errorf("invalid language %q", lang)
 	}
 	return s.setString(ctx, keyMetadataLanguage, lang)
+}
+
+// ServerName is empty until the admin sets it; pairing requires it.
+func (s *Store) ServerName(ctx context.Context) (string, error) {
+	return s.getString(ctx, keyServerName, "")
+}
+
+func (s *Store) SetServerName(ctx context.Context, name string) error {
+	return s.setString(ctx, keyServerName, name)
+}
+
+func (s *Store) ServerPublicURL(ctx context.Context) (string, error) {
+	return s.getString(ctx, keyServerPublicURL, "")
+}
+
+// SetServerPublicURL removes the URL when empty.
+func (s *Store) SetServerPublicURL(ctx context.Context, raw string) error {
+	if raw == "" {
+		return s.q.DeleteSetting(ctx, keyServerPublicURL)
+	}
+	return s.setString(ctx, keyServerPublicURL, raw)
 }
 
 func (s *Store) getString(ctx context.Context, key, fallback string) (string, error) {

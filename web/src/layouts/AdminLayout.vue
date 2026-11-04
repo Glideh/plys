@@ -5,6 +5,7 @@ const { t } = useI18n()
 const tabs = [
   { name: 'admin-libraries', label: 'admin.libraries' },
   { name: 'admin-users', label: 'admin.users' },
+  { name: 'admin-servers', label: 'admin.servers' },
   { name: 'admin-settings', label: 'admin.settings' },
 ] as const
 </script>

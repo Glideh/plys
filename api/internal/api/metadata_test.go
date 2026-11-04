@@ -17,6 +17,29 @@ func TestServerInfoIsPublic(t *testing.T) {
 	}
 }
 
+func TestServerIdentitySettings(t *testing.T) {
+	h := newTestServer(t)
+	admin := setupAdmin(t, h).body["accessToken"].(string)
+
+	if r := do(t, h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"publicUrl": "ftp://plys.example.org"}); r.status != http.StatusBadRequest {
+		t.Fatalf("non-http URL: expected 400, got %d", r.status)
+	}
+	if r := do(t, h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"publicUrl": "https://plys.example.org/library"}); r.status != http.StatusBadRequest {
+		t.Fatalf("URL with path: expected 400, got %d", r.status)
+	}
+	if r := do(t, h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"serverName": "   "}); r.status != http.StatusBadRequest {
+		t.Fatalf("blank name: expected 400, got %d", r.status)
+	}
+
+	r := do(t, h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"serverName": " Salon ", "publicUrl": "https://plys.example.org/"})
+	if r.status != http.StatusOK || r.body["serverName"] != "Salon" || r.body["publicUrl"] != "https://plys.example.org" {
+		t.Fatalf("update identity: %d %v", r.status, r.body)
+	}
+	if info := do(t, h, http.MethodGet, "/api/v1/server", "", nil); info.body["name"] != "Salon" {
+		t.Fatalf("server info name: %v", info.body)
+	}
+}
+
 func TestSettings(t *testing.T) {
 	h := newTestServer(t)
 	admin := setupAdmin(t, h).body["accessToken"].(string)

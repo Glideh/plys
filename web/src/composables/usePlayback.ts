@@ -1,6 +1,6 @@
 import Hls from 'hls.js'
 import { onBeforeUnmount, ref, shallowRef, type Ref } from 'vue'
-import { playbackApi, type PlaybackSession } from '@/api/playback'
+import { playbackApi, type PlaybackSession, type PlaybackTransport } from '@/api/playback'
 import { audioFallbackActive, detectCaps, enableAudioFallback } from '@/utils/caps'
 import { canSeekInStream } from '@/utils/player'
 import { parseVTT } from '@/utils/vtt'
@@ -13,6 +13,7 @@ interface Options {
   /** Selection used for the first session. */
   initial?: { start?: number; audioIndex?: number | null; subtitleIndex?: number | null }
   onEnded?: () => void
+  transport?: PlaybackTransport
 }
 
 const VOLUME_KEY = 'plys.volume'
@@ -48,6 +49,7 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   let subtitleAbort: AbortController | null = null
   let subtitleTimer: ReturnType<typeof setTimeout> | undefined
 
+  const transport = options.transport ?? playbackApi
   const duration = () => session.value?.duration ?? 0
 
   function storedVolume() {
@@ -198,12 +200,12 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
 
     const previous = session.value
     session.value = null
-    if (previous) await playbackApi.stop(previous.id).catch(() => undefined)
+    if (previous) await transport.stop(previous.id).catch(() => undefined)
     if (my !== seq) return
 
     let s: PlaybackSession
     try {
-      s = await playbackApi.start({
+      s = await transport.start({
         versionId: options.versionId(),
         audioIndex: audioIndex.value,
         subtitleIndex: subtitleIndex.value,
@@ -215,7 +217,7 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
       return
     }
     if (my !== seq) {
-      void playbackApi.stop(s.id).catch(() => undefined)
+      void transport.stop(s.id).catch(() => undefined)
       return
     }
     session.value = s
@@ -346,7 +348,7 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   }
 
   function onPageHide() {
-    if (session.value) void playbackApi.stop(session.value.id, true).catch(() => undefined)
+    if (session.value) void transport.stop(session.value.id, true).catch(() => undefined)
   }
 
   /** Binds the element and starts the first session. */
@@ -367,7 +369,7 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
     if (el) for (const [name, fn] of Object.entries(handlers)) el.removeEventListener(name, fn)
     window.removeEventListener('pagehide', onPageHide)
     detach()
-    if (session.value) void playbackApi.stop(session.value.id).catch(() => undefined)
+    if (session.value) void transport.stop(session.value.id).catch(() => undefined)
     session.value = null
   }
 

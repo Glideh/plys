@@ -11,6 +11,8 @@ const errorMessage = useErrorMessage()
 
 const current = ref<ServerSettings | null>(null)
 const newKey = ref('')
+const nameDraft = ref('')
+const urlDraft = ref('')
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -22,6 +24,8 @@ async function save(body: Parameters<typeof settingsApi.update>[0]) {
   try {
     current.value = await settingsApi.update(body)
     newKey.value = ''
+    nameDraft.value = current.value.serverName
+    urlDraft.value = current.value.publicUrl
     notice.value = t('settings.saved')
   } catch (err) {
     error.value = errorMessage(err)
@@ -33,6 +37,8 @@ async function save(body: Parameters<typeof settingsApi.update>[0]) {
 onMounted(async () => {
   try {
     current.value = await settingsApi.get()
+    nameDraft.value = current.value.serverName
+    urlDraft.value = current.value.publicUrl
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -49,7 +55,42 @@ onMounted(async () => {
     <div v-if="!current" class="h-64 animate-pulse rounded-2xl bg-surface-800/60" />
 
     <div v-else class="space-y-6 rounded-2xl border border-white/5 bg-surface-900 p-6">
-      <div>
+      <form class="space-y-4" @submit.prevent="save({ serverName: nameDraft.trim(), publicUrl: urlDraft.trim() })">
+        <div>
+          <h2 class="text-lg font-semibold">{{ t('settings.serverIdentity') }}</h2>
+          <p class="mt-1 text-sm leading-relaxed text-slate-400">{{ t('settings.serverIdentityHelp') }}</p>
+        </div>
+        <div>
+          <label for="server-name" class="block text-sm font-medium text-slate-300">{{ t('settings.serverName') }}</label>
+          <input
+            id="server-name"
+            v-model="nameDraft"
+            type="text"
+            maxlength="64"
+            class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+          />
+          <p class="mt-1.5 text-xs text-slate-500">{{ t('settings.serverNameHelp') }}</p>
+        </div>
+        <div>
+          <label for="server-public-url" class="block text-sm font-medium text-slate-300">{{ t('settings.publicUrl') }}</label>
+          <input
+            id="server-public-url"
+            v-model="urlDraft"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://plys.example.org"
+            class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 font-mono text-sm text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+          />
+          <p class="mt-1.5 text-xs text-slate-500">{{ t('settings.publicUrlHelp') }}</p>
+        </div>
+        <BaseButton type="submit" variant="primary" :loading="saving" :disabled="!nameDraft.trim()">
+          {{ t('settings.saveIdentity') }}
+        </BaseButton>
+      </form>
+
+      <div class="border-t border-white/5 pt-6">
         <h2 class="text-lg font-semibold">{{ t('settings.metadata') }}</h2>
         <p class="mt-1 text-sm leading-relaxed text-slate-400">{{ t('settings.metadataHelp') }}</p>
         <a

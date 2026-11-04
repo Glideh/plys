@@ -5,6 +5,15 @@ export const itemSorts = ['title', 'year', 'added', 'rating'] as const
 export type ItemSort = (typeof itemSorts)[number]
 export type MatchStatus = 'pending' | 'matched' | 'unmatched' | 'manual' | 'skipped'
 
+/** A server holding a version of a grouped title; the first source of a card is its primary one. */
+export interface CardSource {
+  serverId: string
+  serverName: string
+  /** Absolute URL of a paired server; absent for the local one. */
+  serverUrl?: string
+  itemId: string
+}
+
 export interface ItemCard {
   id: string
   kind: ItemKind
@@ -17,6 +26,8 @@ export interface ItemCard {
   /** Movies and videos watched, or series whose episodes are all watched. */
   watched: boolean
   unwatchedCount?: number
+  /** Only set on the kind listings, which merge the servers of the federation. */
+  sources?: CardSource[]
 }
 
 export interface ItemPage {
@@ -113,6 +124,8 @@ export interface ItemDetail {
   playTarget: PlayTarget | null
   /** Follows an episode or part in viewing order. */
   next: PlayTarget | null
+  /** Other servers holding a version of this title; only set on local top-level titles. */
+  sources: CardSource[]
 }
 
 export interface PlayTarget {
@@ -148,6 +161,8 @@ export const catalogApi = {
     return api<ItemPage>(`/kinds/${kind}/items?${qs}`)
   },
   get: (id: string) => api<ItemDetail>(`/items/${id}`),
+  titleSources: (kind: ItemKind, tmdbId: number) =>
+    api<{ sources: CardSource[] }>(`/kinds/${kind}/titles/${tmdbId}/sources`).then((r) => r.sources),
   searchMatch: (id: string, query: string, year?: number) => {
     const qs = new URLSearchParams({ query })
     if (year) qs.set('year', String(year))

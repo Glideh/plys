@@ -33,6 +33,7 @@ func newTestServerWithMedia(t *testing.T) (http.Handler, string) {
 
 type testEnv struct {
 	h    http.Handler
+	srv  *Server
 	root string
 	scan *scanner.Scanner
 }
@@ -49,6 +50,11 @@ func (fakeProber) Probe(context.Context, string) (scanner.ProbeResult, error) {
 }
 
 func newTestEnv(t *testing.T) testEnv {
+	t.Helper()
+	return newTestEnvWith(t, nil)
+}
+
+func newTestEnvWith(t *testing.T, mutate func(*Deps)) testEnv {
 	t.Helper()
 	pool := testdb.New(t, "test_api")
 	issuer := auth.NewIssuer([]byte("test-secret-test-secret-test-secret"), time.Minute)
@@ -72,13 +78,17 @@ func newTestEnv(t *testing.T) testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(Deps{
+	deps := Deps{
 		Pool: pool, Tokens: issuer, Roots: roots, Scanner: scan, Settings: st, Identity: identity,
 		Metadata: metadata.NewService(pool, st, cache, "ffmpeg", ""),
 		Images:   metadata.NewImageCache(cache, ""),
 		Playback: player, Subtitles: subs,
-	}).Routes()
-	return testEnv{h: h, root: roots.List()[0], scan: scan}
+	}
+	if mutate != nil {
+		mutate(&deps)
+	}
+	srv := New(deps)
+	return testEnv{h: srv.Routes(), srv: srv, root: roots.List()[0], scan: scan}
 }
 
 type response struct {

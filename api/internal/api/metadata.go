@@ -32,10 +32,15 @@ const (
 
 var localThumbRe = regexp.MustCompile(`^[0-9a-f-]{36}\.jpg$`)
 
-func (s *Server) serverInfo(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) serverInfo(w http.ResponseWriter, r *http.Request) {
+	name, err := s.Settings.ServerName(r.Context())
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"id":        s.Identity.ID,
-		"name":      "Plys",
+		"name":      name,
 		"version":   Version,
 		"publicKey": s.Identity.PublicKey,
 	})
@@ -44,15 +49,26 @@ func (s *Server) serverInfo(w http.ResponseWriter, _ *http.Request) {
 type settingsDTO struct {
 	TMDBConfigured   bool   `json:"tmdbConfigured"`
 	MetadataLanguage string `json:"metadataLanguage"`
+	ServerName       string `json:"serverName"`
+	PublicURL        string `json:"publicUrl"`
 }
 
 func (s *Server) currentSettings(r *http.Request) (settingsDTO, error) {
-	key, err := s.Settings.TMDBKey(r.Context())
+	ctx := r.Context()
+	key, err := s.Settings.TMDBKey(ctx)
 	if err != nil {
 		return settingsDTO{}, err
 	}
-	lang, err := s.Settings.MetadataLanguage(r.Context())
-	return settingsDTO{TMDBConfigured: key != "", MetadataLanguage: lang}, err
+	lang, err := s.Settings.MetadataLanguage(ctx)
+	if err != nil {
+		return settingsDTO{}, err
+	}
+	name, err := s.Settings.ServerName(ctx)
+	if err != nil {
+		return settingsDTO{}, err
+	}
+	publicURL, err := s.Settings.ServerPublicURL(ctx)
+	return settingsDTO{TMDBConfigured: key != "", MetadataLanguage: lang, ServerName: name, PublicURL: publicURL}, err
 }
 
 // The TMDB key is write-only: it is never sent back to clients.
@@ -68,6 +84,8 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 type updateSettingsRequest struct {
 	TMDBAPIKey       *string `json:"tmdbApiKey"`
 	MetadataLanguage *string `json:"metadataLanguage"`
+	ServerName       *string `json:"serverName"`
+	PublicURL        *string `json:"publicUrl"`
 }
 
 func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +97,19 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if req.MetadataLanguage != nil && !settings.ValidLanguage(*req.MetadataLanguage) {
 		httpx.Error(w, http.StatusBadRequest, "validation", "metadataLanguage must look like fr-FR")
 		return
+	}
+	if req.ServerName != nil && !settings.ValidServerName(strings.TrimSpace(*req.ServerName)) {
+		httpx.Error(w, http.StatusBadRequest, "validation", "serverName must be 1 to 64 characters")
+		return
+	}
+	var publicURL string
+	if req.PublicURL != nil && *req.PublicURL != "" {
+		normalized, ok := settings.NormalizePublicURL(*req.PublicURL)
+		if !ok {
+			httpx.Error(w, http.StatusBadRequest, "validation", "publicUrl must be an absolute http(s) URL without path")
+			return
+		}
+		publicURL = normalized
 	}
 	if req.TMDBAPIKey != nil {
 		key := strings.TrimSpace(*req.TMDBAPIKey)
@@ -104,8 +135,21 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Rescans are cheap when files are unchanged and run the metadata pass with the new settings.
-	s.Scanner.EnqueueAll(ctx)
+	if req.ServerName != nil {
+		if err := s.Settings.SetServerName(ctx, strings.TrimSpace(*req.ServerName)); err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+	}
+	if req.PublicURL != nil {
+		if err := s.Settings.SetServerPublicURL(ctx, publicURL); err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+	}
+	if req.TMDBAPIKey != nil || req.MetadataLanguage != nil {
+		s.Scanner.EnqueueAll(ctx)
+	}
 	s.getSettings(w, r)
 }
 

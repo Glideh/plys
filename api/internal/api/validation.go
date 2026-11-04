@@ -31,6 +31,10 @@ type userDTO struct {
 	Username string    `json:"username"`
 	Role     string    `json:"role"`
 	Locale   string    `json:"locale"`
+	// Remote marks a user of a paired server: it is listed for library access but managed there.
+	Remote bool `json:"remote"`
+	// OriginServer names the paired server of a remote user.
+	OriginServer string `json:"originServer,omitempty"`
 	// AutoplayNext starts the next episode or part when one ends.
 	AutoplayNext bool      `json:"autoplayNext"`
 	CreatedAt    time.Time `json:"createdAt"`
@@ -39,7 +43,7 @@ type userDTO struct {
 }
 
 func toUserDTO(u store.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt, AvatarUpdatedAt: u.AvatarUpdatedAt}
+	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, Remote: u.OriginPeerID != nil, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt, AvatarUpdatedAt: u.AvatarUpdatedAt}
 }
 
 func validateUsername(s string) error {

@@ -7,6 +7,8 @@ const props = defineProps<{
   to: RouteLocationRaw
   title: string
   subtitle?: string | null
+  /** Name of the paired server holding the item, shown dimmed. */
+  source?: string | null
   imageUrl: string | null
   /** Landscape for personal videos and episodes, portrait for posters. */
   landscape?: boolean
@@ -70,5 +72,6 @@ const initial = computed(() => props.title.trim().charAt(0).toUpperCase() || '?'
     </div>
     <p class="mt-2 truncate text-sm font-medium text-slate-200 group-hover:text-white" :title="title">{{ title }}</p>
     <p v-if="subtitle" class="truncate text-xs text-slate-500">{{ subtitle }}</p>
+    <p v-if="source" class="truncate text-xs text-slate-600">{{ source }}</p>
   </RouterLink>
 </template>

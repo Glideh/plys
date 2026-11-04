@@ -88,17 +88,18 @@ func run() error {
 	}
 
 	handler := api.New(api.Deps{
-		Pool:         pool,
-		Tokens:       auth.NewIssuer(secret, accessTokenTTL),
-		CookieSecure: cfg.CookieSecure,
-		Roots:        roots,
-		Scanner:      scan,
-		Metadata:     meta,
-		Images:       images,
-		Settings:     st,
-		Identity:     identity,
-		Playback:     player,
-		Subtitles:    subtitles,
+		Pool:                   pool,
+		Tokens:                 auth.NewIssuer(secret, accessTokenTTL),
+		CookieSecure:           cfg.CookieSecure,
+		Roots:                  roots,
+		Scanner:                scan,
+		Metadata:               meta,
+		Images:                 images,
+		Settings:               st,
+		Identity:               identity,
+		Playback:               player,
+		Subtitles:              subtitles,
+		FederationRequireHTTPS: cfg.FederationRequireHTTPS,
 	}).Routes()
 
 	srv := &http.Server{

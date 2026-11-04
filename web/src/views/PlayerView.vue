@@ -2,8 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { catalogApi, type ItemDetail, type Track } from '@/api/catalog'
-import { progressApi } from '@/api/progress'
+import { type ItemDetail, type Track } from '@/api/catalog'
+import { serverApi, serverFromQuery, serverQuery } from '@/api/federation'
+import { playbackTransport } from '@/api/playback'
 import BaseButton from '@/components/BaseButton.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { usePlayback } from '@/composables/usePlayback'
@@ -17,13 +18,15 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const errorMessage = useErrorMessage()
+// Null when this server holds the file; otherwise the paired server that does.
+const server = serverFromQuery(route.query)
 
 const item = ref<ItemDetail | null>(null)
 const loadError = ref('')
 
 onMounted(async () => {
   try {
-    item.value = await catalogApi.get(props.id)
+    item.value = await serverApi<ItemDetail>(server, `/items/${props.id}`)
   } catch (err) {
     loadError.value = errorMessage(err)
     return
@@ -57,6 +60,7 @@ const player = usePlayback(videoEl, {
   versionId: () => version.value?.id ?? '',
   initial: { start: startAt },
   onEnded: finish,
+  transport: playbackTransport(server),
 })
 const { session, status, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, subtitleLoad } = player
 
@@ -67,11 +71,20 @@ const total = computed(() => session.value?.duration || version.value?.durationS
 const REPORT_EVERY_MS = 10_000
 let lastReported = -1
 
+/** Saves the position on the server holding the file. */
+function sendProgress(position: number, duration: number, keepalive = false) {
+  return serverApi<void>(server, `/items/${props.id}/progress`, {
+    method: 'PUT',
+    body: { positionSeconds: position, durationSeconds: duration },
+    keepalive,
+  })
+}
+
 function report(keepalive = false) {
   if (status.value !== 'ready' || !total.value || position.value < 1) return
   if (Math.abs(position.value - lastReported) < 1) return
   lastReported = position.value
-  void progressApi.report(props.id, position.value, total.value, keepalive).catch(() => undefined)
+  void sendProgress(position.value, total.value, keepalive).catch(() => undefined)
 }
 
 const reportTimer = setInterval(() => {
@@ -95,7 +108,7 @@ const autoplayNext = computed(() => auth.user?.autoplayNext ?? false)
 /** The end of the video marks the item watched; the next one starts only if the user enabled it. */
 function finish() {
   lastReported = total.value
-  void progressApi.report(props.id, total.value, total.value).catch(() => undefined)
+  void sendProgress(total.value, total.value).catch(() => undefined)
   if (!item.value?.next) return
   if (autoplayNext.value) playNext()
   else ended.value = true
@@ -103,7 +116,7 @@ function finish() {
 
 function playNext() {
   const next = item.value?.next
-  if (next) void router.replace({ name: 'watch', params: { id: next.id } })
+  if (next) void router.replace({ name: 'watch', params: { id: next.id }, query: serverQuery(server) })
 }
 
 function toggleAutoplay() {
@@ -218,7 +231,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 function leave() {
   if (window.history.state?.back) router.back()
-  else void router.replace({ name: 'item', params: { id: props.id } })
+  else void router.replace({ name: 'item', params: { id: props.id }, query: serverQuery(server) })
 }
 
 // --- labels ---------------------------------------------------------------------------------------

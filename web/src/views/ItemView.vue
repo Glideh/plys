@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import { catalogApi, type ChildItem, type ItemDetail } from '@/api/catalog'
-import { progressApi } from '@/api/progress'
+import { useRoute, useRouter } from 'vue-router'
+import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
+import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
@@ -19,24 +19,83 @@ const router = useRouter()
 const auth = useAuthStore()
 const errorMessage = useErrorMessage()
 
+/** A version the user can read, with the server and item holding it. */
+interface VersionChoice {
+  server: ServerRef
+  itemId: string
+  positionSeconds: number
+  version: Version
+}
+
 const item = ref<ItemDetail | null>(null)
 const error = ref('')
+const choices = ref<VersionChoice[]>([])
 const versionId = ref<string>('')
 const matchOpen = ref(false)
 const refreshing = ref(false)
+const route = useRoute()
+// Null when this server holds the item; otherwise the paired server the page is read from.
+const server = serverFromQuery(route.query)
+
+function refOf(source: CardSource): ServerRef {
+  return { serverId: source.serverId, serverName: source.serverName, baseUrl: source.serverUrl ?? null }
+}
+
+/** Lists the versions of the title across every server holding it, this server's first. */
+async function loadChoices(primary: ItemDetail): Promise<void> {
+  let sources = primary.sources
+  if (server) sources = primary.tmdbId ? await catalogApi.titleSources(primary.kind, primary.tmdbId) : []
+
+  const localId = localServerId.value ?? ''
+  const primaryRef: ServerRef = server ?? {
+    serverId: localId,
+    serverName: sources.find((s) => s.serverId === localId)?.serverName ?? '',
+    baseUrl: null,
+  }
+
+  // Series and seasons have no playable version: their other copies are not fetched.
+  const seen = new Set([`${primaryRef.serverId}/${primary.id}`])
+  const others = primary.children.length
+    ? []
+    : sources.filter((s) => {
+        const key = `${s.serverId}/${s.itemId}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+  const fetched = await Promise.allSettled(others.map((s) => serverApi<ItemDetail>(refOf(s), `/items/${s.itemId}`)))
+
+  const list: VersionChoice[] = []
+  const add = (ref: ServerRef, detail: ItemDetail) => {
+    for (const version of detail.versions) {
+      list.push({ server: ref, itemId: detail.id, positionSeconds: detail.positionSeconds, version })
+    }
+  }
+  add(primaryRef, primary)
+  fetched.forEach((res, i) => {
+    if (res.status === 'fulfilled') add(refOf(others[i]), res.value)
+  })
+
+  choices.value = list
+  if (!list.some((c) => c.version.id === versionId.value)) versionId.value = list[0]?.version.id ?? ''
+}
 
 async function load() {
   error.value = ''
   try {
-    item.value = await catalogApi.get(props.id)
-    if (!item.value.versions.some((v) => v.id === versionId.value)) versionId.value = item.value.versions[0]?.id ?? ''
+    await loadLocalServer()
+    const primary = await serverApi<ItemDetail>(server, `/items/${props.id}`)
+    item.value = primary
+    await loadChoices(primary)
   } catch (err) {
     error.value = errorMessage(err)
   }
 }
 onMounted(load)
 
-const version = computed(() => item.value?.versions.find((v) => v.id === versionId.value) ?? null)
+const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
+const version = computed(() => selected.value?.version ?? null)
+const multiServer = computed(() => new Set(choices.value.map((c) => c.server.serverId)).size > 1)
 const hasOwnMetadata = computed(() => ['movie', 'series', 'video'].includes(item.value?.kind ?? ''))
 const backdrop = computed(() => item.value?.backdropUrl ?? (item.value?.kind === 'episode' ? item.value.thumbUrl : null))
 // Seasons and episodes have no backdrop of their own: the series' one is not loaded to keep a single request.
@@ -92,11 +151,13 @@ function trackLabel(tr: { language?: string; title?: string; codec: string; chan
 }
 
 function play(fromStart = false) {
-  const resumeAt = fromStart ? 0 : (item.value?.positionSeconds ?? 0)
+  const c = selected.value
+  if (!c) return
+  const resumeAt = fromStart ? 0 : c.positionSeconds
   void router.push({
     name: 'watch',
-    params: { id: props.id },
-    query: { v: versionId.value, ...(resumeAt ? { t: Math.floor(resumeAt) } : {}) },
+    params: { id: c.itemId },
+    query: { ...serverQuery(c.server), v: c.version.id, ...(resumeAt ? { t: Math.floor(resumeAt) } : {}) },
   })
 }
 
@@ -110,14 +171,18 @@ function targetLabel(tg: { kind: string; seasonNumber?: number; episodeNumber?: 
 function playTarget() {
   const tg = item.value?.playTarget
   if (!tg) return
-  void router.push({ name: 'watch', params: { id: tg.id }, query: tg.resume ? { t: Math.floor(tg.positionSeconds) } : {} })
+  void router.push({
+    name: 'watch',
+    params: { id: tg.id },
+    query: { ...serverQuery(server), ...(tg.resume ? { t: Math.floor(tg.positionSeconds) } : {}) },
+  })
 }
 
 const primaryLabel = computed(() => {
   const it = item.value
   if (!it) return ''
-  if (it.versions.length) {
-    if (it.positionSeconds) return t('catalog.resume', { time: formatClock(it.positionSeconds) })
+  if (choices.value.length) {
+    if (selected.value?.positionSeconds) return t('catalog.resume', { time: formatClock(selected.value.positionSeconds) })
     return it.watched ? t('catalog.rewatch') : t('catalog.play')
   }
   const tg = it.playTarget
@@ -131,7 +196,7 @@ const togglingWatched = ref(false)
 async function toggleWatched(id: string, watched: boolean) {
   togglingWatched.value = true
   try {
-    await progressApi.setWatched(id, !watched)
+    await serverApi(server, `/items/${id}/watched`, { method: watched ? 'DELETE' : 'POST' })
     await load()
   } catch (err) {
     error.value = errorMessage(err)
@@ -187,7 +252,7 @@ async function onMatched(merged: boolean) {
           <div class="min-w-0 flex-1">
             <nav v-if="item.ancestors.length" class="mb-2 flex flex-wrap gap-1 text-sm text-slate-400" aria-label="breadcrumb">
               <template v-for="(a, i) in item.ancestors" :key="a.id">
-                <RouterLink :to="{ name: 'item', params: { id: a.id } }" class="hover:text-white">
+                <RouterLink :to="{ name: 'item', params: { id: a.id }, query: serverQuery(server) }" class="hover:text-white">
                   {{ a.kind === 'season' ? itemTitle({ ...a, episodeNumber: undefined, partNumber: undefined }) : a.title }}
                 </RouterLink>
                 <span v-if="i < item.ancestors.length - 1" aria-hidden="true">›</span>
@@ -206,35 +271,35 @@ async function onMatched(merged: boolean) {
             <p v-if="item.overview" class="mt-3 max-w-3xl leading-relaxed text-slate-300">{{ item.overview }}</p>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
-              <BaseButton v-if="item.versions.length" variant="primary" class="px-6 py-2.5 text-base" @click="play()">
+              <BaseButton v-if="choices.length" variant="primary" class="px-6 py-2.5 text-base" @click="play()">
                 ▶ {{ primaryLabel }}
               </BaseButton>
               <BaseButton v-else-if="item.playTarget" variant="primary" class="px-6 py-2.5 text-base" @click="playTarget">
                 ▶ {{ primaryLabel }}
               </BaseButton>
-              <BaseButton v-if="item.versions.length && item.positionSeconds" @click="play(true)">{{ t('catalog.fromStart') }}</BaseButton>
-              <label v-if="item.versions.length > 1" class="flex items-center gap-2 text-sm text-slate-400">
+              <BaseButton v-if="selected?.positionSeconds" @click="play(true)">{{ t('catalog.fromStart') }}</BaseButton>
+              <label v-if="choices.length > 1" class="flex items-center gap-2 text-sm text-slate-400">
                 {{ t('catalog.version') }}
                 <select
                   v-model="versionId"
                   class="rounded-lg border border-white/10 bg-surface-800/80 px-3 py-2 text-sm text-slate-100 focus:border-accent-500 focus:outline-none"
                 >
-                  <option v-for="v in item.versions" :key="v.id" :value="v.id">
-                    {{ [v.label, formatBytes(v.size, locale)].filter(Boolean).join(' · ') }}
+                  <option v-for="c in choices" :key="c.version.id" :value="c.version.id">
+                    {{ [multiServer ? c.server.serverName : null, c.version.label, formatBytes(c.version.size, locale)].filter(Boolean).join(' · ') }}
                   </option>
                 </select>
               </label>
-              <BaseButton v-if="item.versions.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
+              <BaseButton v-if="choices.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
                 {{ item.watched ? t('catalog.markUnwatched') : t('catalog.markWatched') }}
               </BaseButton>
-              <template v-if="auth.isAdmin && hasOwnMetadata">
+              <template v-if="auth.isAdmin && !server && hasOwnMetadata">
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>
                 <BaseButton :loading="refreshing" @click="refresh">{{ t('catalog.refresh') }}</BaseButton>
               </template>
             </div>
 
             <dl v-if="version" class="mt-6 grid max-w-3xl gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-              <template v-if="item.versions.length === 1 && version.label">
+              <template v-if="choices.length === 1 && version.label">
                 <dt class="text-slate-500">{{ t('catalog.version') }}</dt>
                 <dd class="text-slate-300">{{ [version.label, formatBytes(version.size, locale)].join(' · ') }}</dd>
               </template>
@@ -264,7 +329,7 @@ async function onMatched(merged: boolean) {
           <ul v-if="item.kind === 'series'" class="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4 lg:grid-cols-6">
             <li v-for="c in item.children" :key="c.id">
               <PosterCard
-                :to="{ name: 'item', params: { id: c.id } }"
+                :to="{ name: 'item', params: { id: c.id }, query: serverQuery(server) }"
                 :title="childTitle(c)"
                 :subtitle="c.childCount ? t('catalog.episodeCount', c.childCount) : null"
                 :image-url="c.posterUrl ?? item.posterUrl"
@@ -276,7 +341,7 @@ async function onMatched(merged: boolean) {
 
           <ul v-else class="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/5 bg-surface-900/60">
             <li v-for="c in item.children" :key="c.id" class="relative">
-              <RouterLink :to="{ name: 'item', params: { id: c.id } }" class="group flex gap-4 p-4 pr-14 transition hover:bg-white/[0.03]">
+              <RouterLink :to="{ name: 'item', params: { id: c.id }, query: serverQuery(server) }" class="group flex gap-4 p-4 pr-14 transition hover:bg-white/[0.03]">
                 <div class="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-surface-800 sm:w-56">
                   <img v-if="c.thumbUrl" :src="c.thumbUrl" alt="" loading="lazy" class="size-full object-cover transition duration-500 group-hover:scale-105" />
                   <div v-if="childProgress(c)" class="absolute inset-x-0 bottom-0 h-1.5 bg-black/60">
@@ -325,7 +390,7 @@ async function onMatched(merged: boolean) {
         </section>
       </div>
 
-      <MatchDialog v-if="auth.isAdmin" v-model:open="matchOpen" :item-id="item.id" :title="item.title" :year="item.year" @matched="onMatched" />
+      <MatchDialog v-if="auth.isAdmin && !server" v-model:open="matchOpen" :item-id="item.id" :title="item.title" :year="item.year" @matched="onMatched" />
     </template>
   </main>
 </template>

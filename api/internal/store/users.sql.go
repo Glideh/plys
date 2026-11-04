@@ -36,7 +36,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, password_hash, role, locale)
 VALUES ($1, $2, $3, $4)
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
 `
 
 type CreateUserParams struct {
@@ -64,6 +64,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
 }
@@ -78,7 +79,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users WHERE id = $1
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -94,14 +95,16 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users WHERE lower(username) = lower($1)
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users WHERE lower(username) = lower($1) AND origin_peer_id IS NULL
 `
 
+// Shadow users of paired peers never log in here.
 func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByUsername, username)
 	var i User
@@ -115,12 +118,67 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
 }
 
+const listLocalUsers = `-- name: ListLocalUsers :many
+SELECT id, username FROM users WHERE origin_peer_id IS NULL ORDER BY lower(username)
+`
+
+type ListLocalUsersRow struct {
+	ID       uuid.UUID
+	Username string
+}
+
+// Public listing served to paired peers: no credential or contact data.
+func (q *Queries) ListLocalUsers(ctx context.Context) ([]ListLocalUsersRow, error) {
+	rows, err := q.db.Query(ctx, listLocalUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLocalUsersRow
+	for rows.Next() {
+		var i ListLocalUsersRow
+		if err := rows.Scan(&i.ID, &i.Username); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRemoteUserIDs = `-- name: ListRemoteUserIDs :many
+SELECT id FROM users WHERE origin_peer_id = $1
+`
+
+func (q *Queries) ListRemoteUserIDs(ctx context.Context, originPeerID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listRemoteUserIDs, originPeerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at FROM users ORDER BY lower(username)
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users ORDER BY lower(username)
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -142,6 +200,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.UpdatedAt,
 			&i.AutoplayNext,
 			&i.AvatarUpdatedAt,
+			&i.OriginPeerID,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +229,7 @@ SET role          = coalesce($1, role),
     password_hash = coalesce($3, password_hash),
     updated_at    = now()
 WHERE id = $4
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
 `
 
 type UpdateUserParams struct {
@@ -198,6 +257,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
 }
@@ -208,7 +268,7 @@ SET autoplay_next = coalesce($1, autoplay_next),
     locale        = coalesce($2, locale),
     updated_at    = now()
 WHERE id = $3
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
 `
 
 type UpdateUserPreferencesParams struct {
@@ -230,6 +290,25 @@ func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPrefe
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
+}
+
+const upsertRemoteUser = `-- name: UpsertRemoteUser :exec
+INSERT INTO users (id, username, password_hash, role, origin_peer_id)
+VALUES ($1, $2, '', 'user', $3)
+ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, updated_at = now()
+WHERE users.origin_peer_id = EXCLUDED.origin_peer_id
+`
+
+type UpsertRemoteUserParams struct {
+	ID           uuid.UUID
+	Username     string
+	OriginPeerID *uuid.UUID
+}
+
+func (q *Queries) UpsertRemoteUser(ctx context.Context, arg UpsertRemoteUserParams) error {
+	_, err := q.db.Exec(ctx, upsertRemoteUser, arg.ID, arg.Username, arg.OriginPeerID)
+	return err
 }

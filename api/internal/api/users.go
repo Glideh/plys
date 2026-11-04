@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"toto/api/internal/auth"
@@ -19,16 +20,31 @@ var (
 )
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.q.ListUsers(r.Context())
+	ctx := r.Context()
+	syncing := s.refreshStalePeerUsers(ctx)
+	users, err := s.q.ListUsers(ctx)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	peers, err := s.q.ListPeers(ctx)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	serverNames := make(map[uuid.UUID]string, len(peers))
+	for _, p := range peers {
+		serverNames[p.ID] = p.Name
+	}
 	out := make([]userDTO, 0, len(users))
 	for _, u := range users {
-		out = append(out, toUserDTO(u))
+		dto := toUserDTO(u)
+		if u.OriginPeerID != nil {
+			dto.OriginServer = serverNames[*u.OriginPeerID]
+		}
+		out = append(out, dto)
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": out, "syncing": syncing})
 }
 
 type createUserRequest struct {
@@ -129,6 +145,9 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		if current.OriginPeerID != nil {
+			return errRemoteUser
+		}
 		if current.Role == auth.RoleAdmin && req.Role != nil && *req.Role != auth.RoleAdmin {
 			if err := ensureAnotherAdmin(ctx, q); err != nil {
 				return err
@@ -168,6 +187,9 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		if current.OriginPeerID != nil {
+			return errRemoteUser
+		}
 		if current.Role == auth.RoleAdmin {
 			if err := ensureAnotherAdmin(ctx, q); err != nil {
 				return err
@@ -202,6 +224,8 @@ func (s *Server) writeUserMutationError(w http.ResponseWriter, r *http.Request, 
 		httpx.Error(w, http.StatusNotFound, "not_found", "user not found")
 	case errors.Is(err, errLastAdmin):
 		httpx.Error(w, http.StatusConflict, "last_admin", "at least one admin must remain")
+	case errors.Is(err, errRemoteUser):
+		httpx.Error(w, http.StatusConflict, "remote_user", "this user belongs to a paired server and is managed there")
 	case errors.Is(err, errDeleteSelf):
 		httpx.Error(w, http.StatusConflict, "cannot_delete_self", "you cannot delete your own account")
 	default:

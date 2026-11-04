@@ -83,7 +83,8 @@ unwatched AS (
     WHERE f.missing_since IS NULL AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
 )
-SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+SELECT i.id, i.kind, i.title, i.sort_title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+       i.tmdb_id, i.created_at,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
        COALESCE(u.n, 0)::int AS unwatched_count,
        COALESCE(pw.watched, false) AS watched,
@@ -101,6 +102,30 @@ ORDER BY
     CASE WHEN @sort::text = 'rating' THEN i.rating END DESC NULLS LAST,
     i.sort_title, i.id
 LIMIT @lim OFFSET @off;
+
+-- name: ListVisibleTitlesByTMDB :many
+-- Top-level items of one kind and TMDB ID readable by the caller, across every library.
+WITH libs AS (
+    SELECT l.id FROM libraries l
+    WHERE (@is_admin::bool OR NOT l.restricted
+           OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = @user_id))
+),
+visible AS (
+    SELECT DISTINCT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id
+    FROM media_files f
+    JOIN items x ON x.id = f.item_id
+    JOIN libs ON libs.id = x.library_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE f.missing_since IS NULL
+)
+SELECT i.id, i.title
+FROM items i
+JOIN libs ON libs.id = i.library_id
+WHERE i.parent_id IS NULL
+  AND i.kind = @item_kind
+  AND i.tmdb_id = @tmdb_id
+  AND i.id IN (SELECT root_id FROM visible)
+ORDER BY i.id;
 
 -- name: ListChildItems :many
 SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minutes, i.rating,

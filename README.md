@@ -93,6 +93,8 @@ services:
       # Keep false when browsing over plain http (home network).
       # Set true if a reverse proxy serves Plys over HTTPS, otherwise browsers drop the session cookie.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Paired servers must be reached over https by default; set false only on a trusted home network with plain http.
+      PLYS_FEDERATION_REQUIRE_HTTPS: ${PLYS_FEDERATION_REQUIRE_HTTPS:-true}
       # How many videos may be converted at the same time.
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -153,6 +155,7 @@ Set these in `.env` when needed (complete installation):
 | Variable | Default | Purpose |
 |---|---|---|
 | `COOKIE_SECURE` | `false` | `true` behind an HTTPS reverse proxy; keep `false` over plain http |
+| `PLYS_FEDERATION_REQUIRE_HTTPS` | `true` | Refuses paired servers whose public URL is not `https://`; set `false` only for pairing over plain http on a trusted network |
 | `PLYS_VERSION` | `latest` | Image version, e.g. `0.1.0` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
@@ -172,6 +175,8 @@ The API image is large (about 840 MB) because it ships ffmpeg and the GPU driver
 ## Development
 
 Only Docker (with Compose) is required on the host.
+
+> **Warning:** Do not expose it to the internet; run it only on a trusted local network.
 
 ```sh
 cp .env.example .env   # set UID/GID to `id -u` / `id -g` if they are not 1000

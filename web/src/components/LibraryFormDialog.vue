@@ -30,6 +30,10 @@ const error = ref('')
 
 // Admins always see every library, so only regular users can be granted access.
 const grantableUsers = computed(() => users.value.filter((u) => u.role !== 'admin'))
+const accessOptions = [
+  { restricted: false, label: 'libraries.openAccess', help: 'libraries.openAccessHelp' },
+  { restricted: true, label: 'libraries.restrictedAccess', help: 'libraries.restrictedAccessHelp' },
+] as const
 
 watch(open, async (isOpen) => {
   if (!isOpen) return
@@ -120,12 +124,19 @@ async function submit() {
 
       <fieldset>
         <legend class="mb-1.5 text-sm font-medium text-slate-300">{{ t('libraries.access') }}</legend>
-        <label class="flex items-center gap-3 text-sm">
-          <input v-model="restricted" type="checkbox" class="size-4 rounded accent-accent-500" />
-          {{ t('libraries.restricted') }}
-        </label>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label
+            v-for="option in accessOptions"
+            :key="String(option.restricted)"
+            :class="restricted === option.restricted ? 'border-accent-500 bg-accent-500/10' : 'border-white/10 hover:border-white/20'"
+            class="relative cursor-pointer rounded-xl border p-3.5 transition has-focus-visible:outline-2 has-focus-visible:outline-accent-400"
+          >
+            <input v-model="restricted" type="radio" name="access" :value="option.restricted" class="sr-only" />
+            <span class="block font-semibold">{{ t(option.label) }}</span>
+            <span class="mt-1 block text-xs leading-snug text-slate-400">{{ t(option.help) }}</span>
+          </label>
+        </div>
         <template v-if="restricted">
-          <p class="mt-1.5 text-xs text-slate-500">{{ t('libraries.restrictedHelp') }}</p>
           <p v-if="grantableUsers.length === 0" class="mt-3 text-sm text-slate-500">{{ t('libraries.noUsers') }}</p>
           <ul v-else class="mt-3 grid gap-2 sm:grid-cols-2">
             <li v-for="u in grantableUsers" :key="u.id">

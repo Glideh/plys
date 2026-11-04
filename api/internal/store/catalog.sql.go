@@ -243,7 +243,8 @@ unwatched AS (
     WHERE f.missing_since IS NULL AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
 )
-SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+SELECT i.id, i.kind, i.title, i.sort_title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+       i.tmdb_id, i.created_at,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
        COALESCE(u.n, 0)::int AS unwatched_count,
        COALESCE(pw.watched, false) AS watched,
@@ -278,11 +279,14 @@ type ListKindItemsRow struct {
 	ID             uuid.UUID
 	Kind           string
 	Title          string
+	SortTitle      string
 	Year           *int32
 	PosterPath     *string
 	ThumbPath      *string
 	Rating         *float32
 	MatchStatus    string
+	TmdbID         *int32
+	CreatedAt      time.Time
 	EpisodeCount   int32
 	UnwatchedCount int32
 	Watched        bool
@@ -312,11 +316,14 @@ func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([
 			&i.ID,
 			&i.Kind,
 			&i.Title,
+			&i.SortTitle,
 			&i.Year,
 			&i.PosterPath,
 			&i.ThumbPath,
 			&i.Rating,
 			&i.MatchStatus,
+			&i.TmdbID,
+			&i.CreatedAt,
 			&i.EpisodeCount,
 			&i.UnwatchedCount,
 			&i.Watched,
@@ -449,6 +456,68 @@ func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsPara
 			&i.Watched,
 			&i.Total,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVisibleTitlesByTMDB = `-- name: ListVisibleTitlesByTMDB :many
+WITH libs AS (
+    SELECT l.id FROM libraries l
+    WHERE ($3::bool OR NOT l.restricted
+           OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = $4))
+),
+visible AS (
+    SELECT DISTINCT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id
+    FROM media_files f
+    JOIN items x ON x.id = f.item_id
+    JOIN libs ON libs.id = x.library_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE f.missing_since IS NULL
+)
+SELECT i.id, i.title
+FROM items i
+JOIN libs ON libs.id = i.library_id
+WHERE i.parent_id IS NULL
+  AND i.kind = $1
+  AND i.tmdb_id = $2
+  AND i.id IN (SELECT root_id FROM visible)
+ORDER BY i.id
+`
+
+type ListVisibleTitlesByTMDBParams struct {
+	ItemKind string
+	TmdbID   *int32
+	IsAdmin  bool
+	UserID   uuid.UUID
+}
+
+type ListVisibleTitlesByTMDBRow struct {
+	ID    uuid.UUID
+	Title string
+}
+
+// Top-level items of one kind and TMDB ID readable by the caller, across every library.
+func (q *Queries) ListVisibleTitlesByTMDB(ctx context.Context, arg ListVisibleTitlesByTMDBParams) ([]ListVisibleTitlesByTMDBRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleTitlesByTMDB,
+		arg.ItemKind,
+		arg.TmdbID,
+		arg.IsAdmin,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListVisibleTitlesByTMDBRow
+	for rows.Next() {
+		var i ListVisibleTitlesByTMDBRow
+		if err := rows.Scan(&i.ID, &i.Title); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -85,6 +85,15 @@ type MediaFile struct {
 	Edition         *string
 }
 
+type Peer struct {
+	ID                   uuid.UUID
+	Url                  string
+	Name                 string
+	PublicKey            []byte
+	CreatedAt            time.Time
+	UsersSyncAttemptedAt *time.Time
+}
+
 type PlaybackProgress struct {
 	UserID          uuid.UUID
 	ItemID          uuid.UUID
@@ -122,6 +131,7 @@ type User struct {
 	UpdatedAt       time.Time
 	AutoplayNext    bool
 	AvatarUpdatedAt *time.Time
+	OriginPeerID    *uuid.UUID
 }
 
 type UserAvatar struct {

@@ -17,7 +17,21 @@ RETURNING *;
 SELECT * FROM users WHERE id = $1;
 
 -- name: GetUserByUsername :one
-SELECT * FROM users WHERE lower(username) = lower(@username);
+-- Shadow users of paired peers never log in here.
+SELECT * FROM users WHERE lower(username) = lower(@username) AND origin_peer_id IS NULL;
+
+-- name: ListLocalUsers :many
+-- Public listing served to paired peers: no credential or contact data.
+SELECT id, username FROM users WHERE origin_peer_id IS NULL ORDER BY lower(username);
+
+-- name: ListRemoteUserIDs :many
+SELECT id FROM users WHERE origin_peer_id = @origin_peer_id;
+
+-- name: UpsertRemoteUser :exec
+INSERT INTO users (id, username, password_hash, role, origin_peer_id)
+VALUES (@id, @username, '', 'user', @origin_peer_id)
+ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, updated_at = now()
+WHERE users.origin_peer_id = EXCLUDED.origin_peer_id;
 
 -- name: ListUsers :many
 SELECT * FROM users ORDER BY lower(username);

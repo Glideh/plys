@@ -3,6 +3,7 @@ import { api, type User } from './client'
 export type Role = User['role']
 
 export const usersApi = {
+  listPage: () => api<{ items: User[]; syncing: boolean }>('/users'),
   list: () => api<{ items: User[] }>('/users').then((r) => r.items),
   create: (body: { username: string; password: string; role: Role; locale: User['locale'] }) =>
     api<User>('/users', { method: 'POST', body }),

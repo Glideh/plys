@@ -39,6 +39,9 @@ export interface User {
   createdAt: string
   /** Present only when the user has an avatar; used as a cache-busting version. */
   avatarUpdatedAt?: string
+  remote: boolean
+  /** Present only for remote users. */
+  originServer?: string
 }
 
 export interface Session {

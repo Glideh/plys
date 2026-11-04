@@ -24,7 +24,7 @@ func TestLibraryLifecycle(t *testing.T) {
 	films := filepath.Join(root, "Films")
 
 	r := do(t, h, http.MethodPost, "/api/v1/libraries", admin, map[string]any{
-		"name": " Films ", "kind": "movies", "paths": []string{films, films + "/"},
+		"name": " Films ", "kind": "movies", "paths": []string{films, films + "/"}, "restricted": false,
 	})
 	if r.status != http.StatusCreated {
 		t.Fatalf("create: %d %v", r.status, r.body)

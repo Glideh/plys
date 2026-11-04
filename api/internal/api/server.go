@@ -31,15 +31,22 @@ type Deps struct {
 	Identity     settings.Identity
 	Playback     *playback.Manager
 	Subtitles    *playback.Subtitles
+	// FederationRequireHTTPS refuses peers served over plain HTTP.
+	FederationRequireHTTPS bool
+	// HTTPClient reaches peers; nil uses a default client with a timeout.
+	HTTPClient *http.Client
+	// PeerUserSyncInterval is the minimum delay between two automatic user syncs of a peer; zero uses one minute.
+	PeerUserSyncInterval time.Duration
 }
 
 type Server struct {
 	Deps
-	q *store.Queries
+	q          *store.Queries
+	handshakes *fixedWindowLimiter
 }
 
 func New(d Deps) *Server {
-	return &Server{Deps: d, q: store.New(d.Pool)}
+	return &Server{Deps: d, q: store.New(d.Pool), handshakes: newFixedWindowLimiter(handshakeLimit, handshakeWindow)}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -67,8 +74,32 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
 		r.Get("/images/local/{file}", s.localImage)
 		r.Get("/images/avatars/{id}", s.userAvatar)
-		r.Get("/stream/{sid}/subtitles/{track}", s.streamSubtitle)
-		r.Get("/stream/{sid}/{file}", s.streamFile)
+		r.Post("/federation/handshake", s.handshake)
+		r.Get("/federation/users", s.peerUsers)
+		r.Get("/federation/catalog/kinds/{kind}/items", s.peerKindItems)
+		r.Get("/federation/catalog/titles/{kind}/{tmdbId}", s.peerTitleIDs)
+		r.Group(func(r chi.Router) {
+			r.Use(s.peerCORS)
+			r.Get("/stream/{sid}/subtitles/{track}", s.streamSubtitle)
+			r.Get("/stream/{sid}/{file}", s.streamFile)
+			r.Options("/stream/{sid}/subtitles/{track}", noContent)
+			r.Options("/stream/{sid}/{file}", noContent)
+
+			r.Options("/items/{id}", noContent)
+			r.Options("/items/{id}/progress", noContent)
+			r.Options("/items/{id}/watched", noContent)
+			r.Options("/playback/sessions", noContent)
+			r.Options("/playback/sessions/{id}", noContent)
+			r.Group(func(r chi.Router) {
+				r.Use(s.federatedOrLocal)
+				r.Get("/items/{id}", s.getItem)
+				r.Put("/items/{id}/progress", s.putProgress)
+				r.Post("/items/{id}/watched", s.setWatched(true))
+				r.Delete("/items/{id}/watched", s.setWatched(false))
+				r.Post("/playback/sessions", s.startPlayback)
+				r.Delete("/playback/sessions/{id}", s.stopPlayback)
+			})
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.Tokens.Middleware)
@@ -76,18 +107,14 @@ func (s *Server) Routes() http.Handler {
 			r.Patch("/me", s.updateMe)
 			r.Put("/me/avatar", s.putAvatar)
 			r.Delete("/me/avatar", s.deleteAvatar)
+			r.Post("/me/federation-token", s.federationToken)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)
 			r.Get("/kinds/{kind}/items", s.listKindItems)
-			r.Get("/items/{id}", s.getItem)
-			r.Put("/items/{id}/progress", s.putProgress)
-			r.Post("/items/{id}/watched", s.setWatched(true))
-			r.Delete("/items/{id}/watched", s.setWatched(false))
+			r.Get("/kinds/{kind}/titles/{tmdbId}/sources", s.listTitleSources)
 			r.Get("/me/continue-watching", s.continueWatching)
 			r.Get("/me/next-up", s.nextUp)
-			r.Post("/playback/sessions", s.startPlayback)
-			r.Delete("/playback/sessions/{id}", s.stopPlayback)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)
@@ -104,6 +131,12 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/admin/scans", s.listScans)
 				r.Get("/admin/fs/browse", s.browseFS)
 				r.Get("/admin/settings", s.getSettings)
+				r.Get("/admin/federation/pairing-code", s.pairingCodeHandler)
+				r.Get("/admin/federation/peers", s.listPeers)
+				r.Post("/admin/federation/peers", s.addPeer)
+				r.Post("/admin/federation/peers/{id}/sync", s.syncPeer)
+				r.Patch("/admin/federation/peers/{id}", s.updatePeer)
+				r.Delete("/admin/federation/peers/{id}", s.deletePeer)
 				r.Patch("/admin/settings", s.updateSettings)
 				r.Get("/admin/system/transcoding", s.transcodingInfo)
 

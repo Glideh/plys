@@ -177,10 +177,11 @@ func (s *Server) getLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 type createLibraryRequest struct {
-	Name       string      `json:"name"`
-	Kind       string      `json:"kind"`
-	Paths      []string    `json:"paths"`
-	Restricted bool        `json:"restricted"`
+	Name  string   `json:"name"`
+	Kind  string   `json:"kind"`
+	Paths []string `json:"paths"`
+	// Restricted defaults to true when omitted: a new library is visible to no one but admins.
+	Restricted *bool       `json:"restricted"`
 	UserIDs    []uuid.UUID `json:"userIds"`
 }
 
@@ -199,6 +200,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
 		return
 	}
+	restricted := req.Restricted == nil || *req.Restricted
 
 	ctx := r.Context()
 	var lib store.Library
@@ -214,7 +216,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		if err := addPaths(r, q, lib.ID, paths); err != nil {
 			return err
 		}
-		if err := setLibraryAccess(r, q, lib.ID, req.Restricted, req.UserIDs); err != nil {
+		if err := setLibraryAccess(r, q, lib.ID, restricted, req.UserIDs); err != nil {
 			return err
 		}
 		lib, err = q.GetLibrary(ctx, lib.ID)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@/api/client'
 import { usersApi, type Role } from '@/api/users'
@@ -24,16 +24,33 @@ const notice = ref('')
 const selectClass =
   'rounded-lg border border-white/10 bg-surface-800 px-3 py-2 text-sm text-slate-100 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none'
 
+const syncing = ref(false)
+let syncRetries = 0
+let syncTimer: ReturnType<typeof setTimeout> | undefined
+
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    users.value = await usersApi.list()
+    const page = await usersApi.listPage()
+    users.value = page.items
+    syncing.value = page.syncing
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
     loading.value = false
   }
+  scheduleSyncReload()
+}
+
+// Re-reads the list while a peer sync runs in the background, up to a bounded number of tries.
+function scheduleSyncReload() {
+  if (!syncing.value || syncRetries >= 5) {
+    syncRetries = 0
+    return
+  }
+  syncRetries++
+  syncTimer = setTimeout(load, 2000)
 }
 
 async function changeRole(user: User, role: Role) {
@@ -113,12 +130,16 @@ async function remove() {
 }
 
 onMounted(load)
+onUnmounted(() => clearTimeout(syncTimer))
 </script>
 
 <template>
   <section>
     <div class="mb-6 flex items-center justify-between gap-4">
-      <h2 class="text-lg font-semibold">{{ t('admin.users') }}</h2>
+      <div class="flex items-center gap-3">
+        <h2 class="text-lg font-semibold">{{ t('admin.users') }}</h2>
+        <span v-if="loading || syncing" role="status" class="text-xs text-slate-500">{{ t('users.syncing') }}</span>
+      </div>
       <BaseButton variant="primary" @click="openCreate">+ {{ t('users.new') }}</BaseButton>
     </div>
 
@@ -148,12 +169,14 @@ onMounted(load)
                 </span>
                 <span class="font-medium">{{ user.username }}</span>
                 <span v-if="user.id === auth.user?.id" class="text-xs text-slate-500">({{ t('users.you') }})</span>
+                <span v-if="user.remote" class="text-xs text-slate-500">{{ t('users.remoteFrom', { server: user.originServer }) }}</span>
               </div>
             </td>
             <td class="px-5 py-3">
               <select
                 :value="user.role"
                 :class="selectClass"
+                :disabled="user.remote"
                 :aria-label="t('users.role')"
                 @change="changeRole(user, ($event.target as HTMLSelectElement).value as Role)"
               >
@@ -164,9 +187,9 @@ onMounted(load)
             <td class="hidden px-5 py-3 text-slate-400 sm:table-cell">{{ d(new Date(user.createdAt)) }}</td>
             <td class="px-5 py-3">
               <div class="flex justify-end gap-2">
-                <BaseButton @click="openPassword(user)">{{ t('users.changePassword') }}</BaseButton>
+                <BaseButton v-if="!user.remote" @click="openPassword(user)">{{ t('users.changePassword') }}</BaseButton>
                 <BaseButton
-                  v-if="user.id !== auth.user?.id"
+                  v-if="!user.remote && user.id !== auth.user?.id"
                   class="hover:!bg-red-500/15 hover:!text-red-300"
                   @click="askDelete(user)"
                 >

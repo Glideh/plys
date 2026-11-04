@@ -36,7 +36,7 @@ const setUserAvatarUpdatedAt = `-- name: SetUserAvatarUpdatedAt :one
 UPDATE users
 SET avatar_updated_at = $1
 WHERE id = $2
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
 `
 
 type SetUserAvatarUpdatedAtParams struct {
@@ -57,6 +57,7 @@ func (q *Queries) SetUserAvatarUpdatedAt(ctx context.Context, arg SetUserAvatarU
 		&i.UpdatedAt,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
 	)
 	return i, err
 }

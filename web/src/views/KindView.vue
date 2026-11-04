@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { catalogApi, itemSorts } from '@/api/catalog'
 import { librariesApi, type Library, type LibraryKind } from '@/api/libraries'
+import { loadLocalServer } from '@/api/federation'
 import CatalogGrid from '@/components/CatalogGrid.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import LibrarySelect from '@/components/LibrarySelect.vue'
@@ -25,6 +26,11 @@ function openLibrary(id: string | null) {
 }
 
 onMounted(async () => {
+  try {
+    await loadLocalServer()
+  } catch (err) {
+    error.value = errorMessage(err)
+  }
   reload()
   try {
     libraries.value = await librariesApi.list()

@@ -116,30 +116,50 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, _ := auth.PrincipalFrom(r.Context())
-	rows, err := s.q.ListKindItems(r.Context(), store.ListKindItemsParams{
-		UserID: p.UserID, IsAdmin: p.Role == auth.RoleAdmin, Kind: kind, LibraryID: libraryID,
-		Query: params.query, Sort: params.sort, Off: int32(params.offset), Lim: int32(params.limit),
-	})
+	ctx := r.Context()
+	p, _ := auth.PrincipalFrom(ctx)
+	isAdmin := p.Role == auth.RoleAdmin
+	serverName, err := s.Settings.ServerName(ctx)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	total := int32(0)
-	items := make([]itemCardDTO, 0, len(rows))
-	for _, row := range rows {
-		total = row.Total
-		poster := imageURL(row.PosterPath, "w342")
-		if poster == nil {
-			poster = imageURL(row.ThumbPath, "w342")
-		}
-		items = append(items, itemCardDTO{
-			ID: row.ID, Kind: row.Kind, Title: row.Title, Year: row.Year, PosterURL: poster,
-			Rating: row.Rating, EpisodeCount: row.EpisodeCount, MatchStatus: row.MatchStatus,
-			Watched: row.Watched || (row.Kind == "series" && row.UnwatchedCount == 0), UnwatchedCount: row.UnwatchedCount,
-		})
+	publicURL, err := s.Settings.ServerPublicURL(ctx)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "total": total, "offset": params.offset, "limit": params.limit})
+	local, _, err := s.kindCards(ctx, p.UserID, isAdmin, kind, libraryID, params.query, params.sort, 0, allRows)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	cards := make([]sourcedCard, 0, len(local))
+	for _, c := range local {
+		cards = append(cards, sourcedCard{federatedCard: c, source: cardSourceDTO{
+			ServerID: s.Identity.ID, ServerName: serverName, ServerURL: publicURL, ItemID: c.ID,
+		}})
+	}
+	unavailable := 0
+	// A library filter names a local library, so peers are not asked.
+	if libraryID == nil {
+		raw := strings.TrimSpace(r.URL.Query().Get("query"))
+		peerCards, failed, err := s.peerKindCards(ctx, p.UserID, kind, raw, params.sort)
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+		cards = append(cards, peerCards...)
+		unavailable = failed
+	}
+	slices.SortStableFunc(cards, func(a, b sourcedCard) int { return compareCards(a, b, params.sort) })
+	groups := groupCards(cards)
+	total := len(groups)
+	start, end := min(params.offset, total), min(params.offset+params.limit, total)
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"items": groups[start:end], "total": total, "offset": params.offset, "limit": params.limit,
+		"unavailableServers": unavailable,
+	})
 }
 
 type itemListParams struct {
@@ -286,6 +306,8 @@ type itemDetailDTO struct {
 	PlayTarget *playTargetDTO `json:"playTarget"`
 	// Next follows an episode or part in viewing order.
 	Next *playTargetDTO `json:"next"`
+	// Sources lists the servers holding this title; set on top-level items for local users only.
+	Sources []cardSourceDTO `json:"sources"`
 }
 
 func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +342,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		PosterURL: imageURL(it.PosterPath, "w500"), BackdropURL: imageURL(it.BackdropPath, "w1280"),
 		ThumbURL: imageURL(it.ThumbPath, "w500"), TMDBID: it.TmdbID, MatchStatus: it.MatchStatus,
 		SeasonNumber: it.SeasonNumber, EpisodeNumber: it.EpisodeNumber, EpisodeNumberEnd: it.EpisodeNumberEnd,
-		PartNumber: it.PartNumber, Ancestors: []ancestorDTO{}, Cast: []castDTO{},
+		PartNumber: it.PartNumber, Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
 	}
 	if dto.Cast, err = castFromJSON(it.CastMembers); err != nil {
 		httpx.InternalError(w, r, err)
@@ -341,6 +363,13 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 	if err := s.withProgress(r, it, &dto); err != nil {
 		httpx.InternalError(w, r, err)
 		return
+	}
+	if it.ParentID == nil && it.TmdbID != nil && !isFederatedRequest(ctx) {
+		p, _ := auth.PrincipalFrom(ctx)
+		if dto.Sources, err = s.titleSources(ctx, p.UserID, p.Role == auth.RoleAdmin, it.Kind, *it.TmdbID); err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
 	}
 	httpx.JSON(w, http.StatusOK, dto)
 }

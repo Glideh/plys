@@ -32,15 +32,16 @@ services:
       DATABASE_URL: postgres://toto:toto@db:5432/toto?sslmode=disable
       TEST_DATABASE_URL: postgres://toto:toto@db:5432/toto_test?sslmode=disable
       COOKIE_SECURE: "false"
+      PLYS_FEDERATION_REQUIRE_HTTPS: "false"
       LOG_LEVEL: debug
     volumes:
       - ./api:/src
       - go-cache:/go-cache
       - api-cache:/cache
     # Media folders are mounted under /media by compose.override.yaml (see compose.override.example.yaml).
+    # All interfaces: other federated servers reach this API by LAN IP.
     ports:
-      - "127.0.0.1:8080:8080"
-      - "[::1]:8080:8080"
+      - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -57,10 +58,9 @@ services:
     volumes:
       - ./web:/app
       - web-node-modules:/app/node_modules
-    # Both loopbacks: browsers resolve localhost to ::1 first.
+    # All interfaces: peers and browsers reach this front by LAN IP.
     ports:
-      - "127.0.0.1:5173:5173"
-      - "[::1]:5173:5173"
+      - "5173:5173"
     depends_on:
       - api
 
