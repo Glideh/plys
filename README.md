@@ -210,13 +210,17 @@ docker compose exec web npm install <package>  # add a front-end dependency
 
 ## Publishing the images
 
-For maintainers. Log in to Docker Hub (`docker login`), commit the changes, then:
+For maintainers. Log in to Docker Hub (`docker login`), then:
 
 ```sh
-./release.sh 0.1.0     # builds both images and pushes 0.1.0, 0.1 and latest (plus the major tag from 1.0.0), after confirmation
+./bump.sh [patch|minor|major]   # sets the next version in VERSION and in the other files (minor by default)
+# commit the changes first: release.sh refuses uncommitted changes
+./release.sh           # builds both images at the version in VERSION and pushes the tags, after confirmation
 ./release.sh --local   # builds :dev into the local Docker only
-NAMESPACE=myaccount ./release.sh 0.1.0   # publish under another Docker Hub account
+NAMESPACE=myaccount ./release.sh   # publish under another Docker Hub account
 ```
+
+Tags are `x.y.z`, `x.y` and `latest`, plus `x` from 1.0.0 on.
 
 Images are built for `linux/amd64` with `docker-bake.hcl`, with provenance and SBOM attestations. To try a local build, run `PLYS_VERSION=dev docker compose -f compose.prod.yaml up -d` with a `.env` as above.
 

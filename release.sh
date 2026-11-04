@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the production images and publishes them to Docker Hub.
-#   ./release.sh 0.1.0     build + push glide/plys-api and glide/plys-web (tags 0.1.0, 0.1, latest; plus 1 from 1.0.0 on)
+#   ./release.sh           build + push glide/plys-api and glide/plys-web at the version in VERSION (set it with bump.sh)
 #   ./release.sh --local   build :dev into the local Docker only
 # Requires `docker login` first. NAMESPACE overrides the Docker Hub account.
 set -euo pipefail
@@ -16,11 +16,15 @@ if [[ "$arg" == "--local" ]]; then
   exit 0
 fi
 
-if [[ ! "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Usage: $0 <x.y.z> | --local" >&2
+if [[ -n "$arg" ]]; then
+  echo "Usage: $0 [--local]. The version comes from VERSION; change it with bump.sh." >&2
   exit 1
 fi
-export VERSION="$arg"
+export VERSION="$(tr -d '[:space:]' < VERSION)"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "VERSION must contain x.y.z, got '$VERSION'" >&2
+  exit 1
+fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "The working tree has uncommitted changes: commit them first so the image matches a revision." >&2
