@@ -72,14 +72,27 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 	sort, limit, offset, query := params.sort, params.limit, params.offset, params.query
 
 	p, _ := auth.PrincipalFrom(r.Context())
-	rows, err := s.q.ListLibraryItems(r.Context(), store.ListLibraryItemsParams{
+	listParams := store.ListLibraryItemsParams{
 		UserID: p.UserID, LibraryID: id, Query: query, Sort: sort, Off: int32(offset), Lim: int32(limit),
-	})
+		Filters: params.filters,
+	}
+	rows, err := s.q.ListLibraryItems(r.Context(), listParams)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
 	total := int32(0)
+	if len(rows) == 0 && offset > 0 {
+		listParams.Off, listParams.Lim = 0, 1
+		first, err := s.q.ListLibraryItems(r.Context(), listParams)
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+		if len(first) > 0 {
+			total = first[0].Total
+		}
+	}
 	items := make([]itemCardDTO, 0, len(rows))
 	for _, row := range rows {
 		total = row.Total
@@ -129,7 +142,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	local, _, err := s.kindCards(ctx, p.UserID, isAdmin, kind, libraryID, params.query, params.sort, 0, allRows)
+	local, _, err := s.kindCards(ctx, p.UserID, isAdmin, kind, libraryID, params.query, params.sort, 0, allRows, params.filters)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
@@ -144,7 +157,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 	// A library filter names a local library, so peers are not asked.
 	if libraryID == nil {
 		raw := strings.TrimSpace(r.URL.Query().Get("query"))
-		peerCards, failed, err := s.peerKindCards(ctx, p.UserID, kind, raw, params.sort)
+		peerCards, failed, err := s.peerKindCards(ctx, p.UserID, kind, raw, params.sort, params.filters)
 		if err != nil {
 			httpx.InternalError(w, r, err)
 			return
@@ -163,6 +176,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 }
 
 type itemListParams struct {
+	filters       json.RawMessage
 	sort, query   string
 	limit, offset int
 }
@@ -190,6 +204,11 @@ func parseItemListParams(w http.ResponseWriter, r *http.Request) (itemListParams
 		return p, false
 	}
 	p.limit, p.offset = limit, offset
+	p.filters, err = parseCatalogFilters(qs.Get("filters"))
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
+		return p, false
+	}
 	if q := strings.TrimSpace(qs.Get("query")); q != "" {
 		p.query = "%" + likeEscaper.Replace(q) + "%"
 	}

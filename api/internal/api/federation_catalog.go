@@ -59,10 +59,11 @@ type catalogCardDTO struct {
 }
 
 // kindCards reads the top-level entries of one kind that a user can see on this server.
-func (s *Server) kindCards(ctx context.Context, userID uuid.UUID, isAdmin bool, kind string, libraryID *uuid.UUID, query, sort string, offset, limit int) ([]federatedCard, int32, error) {
+func (s *Server) kindCards(ctx context.Context, userID uuid.UUID, isAdmin bool, kind string, libraryID *uuid.UUID, query, sort string, offset, limit int, filters json.RawMessage) ([]federatedCard, int32, error) {
 	rows, err := s.q.ListKindItems(ctx, store.ListKindItemsParams{
 		UserID: userID, IsAdmin: isAdmin, Kind: kind, LibraryID: libraryID,
 		Query: query, Sort: sort, Off: int32(offset), Lim: int32(limit),
+		Filters: filters,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -127,7 +128,7 @@ func (s *Server) peerKindItems(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cards, total, err := s.kindCards(r.Context(), userID, false, kind, nil, params.query, params.sort, params.offset, params.limit)
+	cards, total, err := s.kindCards(r.Context(), userID, false, kind, nil, params.query, params.sort, params.offset, params.limit, params.filters)
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
@@ -136,7 +137,7 @@ func (s *Server) peerKindItems(w http.ResponseWriter, r *http.Request) {
 }
 
 // peerKindCards reads every visible card of one kind from each paired peer; unreachable peers are counted and skipped.
-func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, query, sort string) ([]sourcedCard, int, error) {
+func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, int, error) {
 	peers, err := s.q.ListPeers(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -148,7 +149,7 @@ func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, quer
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i], errs[i] = s.fetchPeerCards(ctx, p, userID, kind, query, sort)
+			results[i], errs[i] = s.fetchPeerCards(ctx, p, userID, kind, query, sort, filters)
 		}()
 	}
 	wg.Wait()
@@ -166,9 +167,12 @@ func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, quer
 }
 
 // fetchPeerCards pages through the listing of one peer, with a federated token for the user.
-func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.UUID, kind, query, sort string) ([]sourcedCard, error) {
+func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, error) {
 	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
 	defer cancel()
+	if _, err := s.checkPeerVersion(ctx, p); err != nil {
+		return nil, err
+	}
 	token, err := s.federatedTokenFor(p.ID, userID)
 	if err != nil {
 		return nil, err
@@ -176,10 +180,11 @@ func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.U
 	var out []sourcedCard
 	for offset := 0; ; {
 		target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
-			"sort":   {sort},
-			"query":  {query},
-			"offset": {strconv.Itoa(offset)},
-			"limit":  {strconv.Itoa(maxPageSize)},
+			"sort":    {sort},
+			"query":   {query},
+			"filters": {string(filters)},
+			"offset":  {strconv.Itoa(offset)},
+			"limit":   {strconv.Itoa(maxPageSize)},
 		}.Encode()
 		var page struct {
 			Items []federatedCard `json:"items"`

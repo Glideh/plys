@@ -74,6 +74,9 @@ func (s *Server) authenticatePeer(r *http.Request) (store.Peer, error) {
 	if !ed25519.Verify(peer.PublicKey, peerRequestMessage(r.Method, r.URL.Path, ts), sig) {
 		return store.Peer{}, errInvalidPeerRequest
 	}
+	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {
+		return store.Peer{}, errInvalidPeerRequest
+	}
 	return peer, nil
 }
 
@@ -107,6 +110,9 @@ func (s *Server) peerUsers(w http.ResponseWriter, r *http.Request) {
 
 // syncPeerUsers mirrors the users of a paired peer as shadow rows and removes those the peer no longer lists.
 func (s *Server) syncPeerUsers(ctx context.Context, peer store.Peer) (int, error) {
+	if _, err := s.checkPeerVersion(ctx, peer); err != nil {
+		return 0, err
+	}
 	var list struct {
 		Items []peerUserDTO `json:"items"`
 	}
@@ -211,6 +217,10 @@ func (s *Server) syncPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n, err := s.syncPeerUsers(ctx, peer)
+	if errors.Is(err, errPeerIncompatible) {
+		httpx.Error(w, http.StatusConflict, "peer_incompatible", "the peer must use the same major server version")
+		return
+	}
 	if errors.Is(err, errPeerUnreachable) || errors.Is(err, errInvalidPeerData) {
 		httpx.Error(w, http.StatusBadGateway, "peer_unreachable", "the peer did not return a valid user list")
 		return

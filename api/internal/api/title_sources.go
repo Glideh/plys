@@ -120,6 +120,9 @@ func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin boo
 func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID uuid.UUID, kind string, tmdbID int32) ([]cardSourceDTO, error) {
 	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
 	defer cancel()
+	if _, err := s.checkPeerVersion(ctx, p); err != nil {
+		return nil, err
+	}
 	token, err := s.federatedTokenFor(p.ID, userID)
 	if err != nil {
 		return nil, err

@@ -88,6 +88,83 @@ func (q *Queries) GetPlaybackFile(ctx context.Context, id uuid.UUID) (GetPlaybac
 	return i, err
 }
 
+const listCatalogFilterOptions = `-- name: ListCatalogFilterOptions :many
+WITH libs AS (
+  SELECT l.id FROM libraries l
+  WHERE l.kind = $1
+    AND ($2::uuid IS NULL OR l.id = $2::uuid)
+    AND ($3::bool OR NOT l.restricted OR EXISTS (
+      SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = $4))
+), visible AS (
+  SELECT DISTINCT coalesce(p.parent_id, x.parent_id, x.id) AS root_id
+  FROM media_files f JOIN items x ON x.id = f.item_id
+  JOIN libs ON libs.id = x.library_id
+  LEFT JOIN items p ON p.id = x.parent_id
+  WHERE f.missing_since IS NULL
+), entries AS (
+  SELECT
+    facet.key::text AS category, coalesce(entry->>'id', '')::text AS id,
+    coalesce(entry->>'label', '')::text AS label
+  FROM items i JOIN visible ON visible.root_id = i.id
+  CROSS JOIN LATERAL jsonb_each(i.filter_labels) AS facet
+  CROSS JOIN LATERAL jsonb_array_elements(facet.value) AS entry
+  WHERE ($5::text = '' OR facet.key = $5)
+    AND ($6::text = '' OR facet.key IN ('languages', 'countries') OR entry->>'label' ILIKE $6 OR entry->>'id' = ANY($7::text[]))
+), options AS (
+  SELECT DISTINCT ON (category, id) category, id, label FROM entries ORDER BY category, id, label
+), ranked AS (
+  SELECT category, id, label, row_number() OVER (PARTITION BY category ORDER BY (id = ANY($7::text[])) DESC, label, id) AS position
+  FROM options
+)
+SELECT category, id, label FROM ranked
+WHERE position <= CASE WHEN category IN ('languages', 'countries') THEN 250 ELSE 50 END
+ORDER BY category, label, id
+`
+
+type ListCatalogFilterOptionsParams struct {
+	Kind      string
+	LibraryID *uuid.UUID
+	IsAdmin   bool
+	UserID    uuid.UUID
+	Category  string
+	Query     string
+	Selected  []string
+}
+
+type ListCatalogFilterOptionsRow struct {
+	Category string
+	ID       string
+	Label    string
+}
+
+func (q *Queries) ListCatalogFilterOptions(ctx context.Context, arg ListCatalogFilterOptionsParams) ([]ListCatalogFilterOptionsRow, error) {
+	rows, err := q.db.Query(ctx, listCatalogFilterOptions,
+		arg.Kind,
+		arg.LibraryID,
+		arg.IsAdmin,
+		arg.UserID,
+		arg.Category,
+		arg.Query,
+		arg.Selected,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCatalogFilterOptionsRow
+	for rows.Next() {
+		var i ListCatalogFilterOptionsRow
+		if err := rows.Scan(&i.Category, &i.ID, &i.Label); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChildItems = `-- name: ListChildItems :many
 SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minutes, i.rating,
        i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end, i.part_number,
@@ -220,9 +297,9 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 const listKindItems = `-- name: ListKindItems :many
 WITH libs AS (
     SELECT l.id FROM libraries l
-    WHERE l.kind = $6
-      AND ($7::uuid IS NULL OR l.id = $7::uuid)
-      AND ($8::bool OR NOT l.restricted
+    WHERE l.kind = $7
+      AND ($8::uuid IS NULL OR l.id = $8::uuid)
+      AND ($9::bool OR NOT l.restricted
            OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = $1))
 ),
 visible AS (
@@ -255,18 +332,35 @@ LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.parent_id IS NULL
   AND ($2::text = '' OR i.title ILIKE $2 OR i.original_title ILIKE $2)
+  AND (($3::jsonb->>'yearMin') IS NULL OR i.year >= ($3::jsonb->>'yearMin')::integer)
+  AND (($3::jsonb->>'yearMax') IS NULL OR i.year <= ($3::jsonb->>'yearMax')::integer)
+  AND (($3::jsonb->>'ratingMin') IS NULL OR i.rating >= ($3::jsonb->>'ratingMin')::real)
+  AND (($3::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($3::jsonb->>'votesMin')::integer)
+  AND (($3::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($3::jsonb->>'runtimeMin')::integer))
+  AND (($3::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($3::jsonb->>'runtimeMax')::integer))
+  AND (coalesce(jsonb_array_length($3::jsonb->'genres'), 0) = 0 OR
+       CASE WHEN $3::jsonb->>'genreMode' = 'all'
+       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres'))
+       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres')) END)
+  AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'excludeGenres')))
+  AND (coalesce(jsonb_array_length($3::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'actors')))
+  AND (coalesce(jsonb_array_length($3::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'creators')))
+  AND (coalesce(jsonb_array_length($3::jsonb->'keywords'), 0) = 0 OR i.keyword_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'keywords')))
+  AND (coalesce(jsonb_array_length($3::jsonb->'languages'), 0) = 0 OR i.original_language = ANY(ARRAY(SELECT value FROM jsonb_array_elements_text($3::jsonb->'languages'))))
+  AND (coalesce(jsonb_array_length($3::jsonb->'countries'), 0) = 0 OR i.countries && ARRAY(SELECT value FROM jsonb_array_elements_text($3::jsonb->'countries')))
   AND i.id IN (SELECT root_id FROM visible)
 ORDER BY
-    CASE WHEN $3::text = 'year' THEN i.year END DESC NULLS LAST,
-    CASE WHEN $3::text = 'added' THEN i.created_at END DESC,
-    CASE WHEN $3::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $4::text = 'year' THEN i.year END DESC NULLS LAST,
+    CASE WHEN $4::text = 'added' THEN i.created_at END DESC,
+    CASE WHEN $4::text = 'rating' THEN i.rating END DESC NULLS LAST,
     i.sort_title, i.id
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListKindItemsParams struct {
 	UserID    uuid.UUID
 	Query     string
+	Filters   []byte
 	Sort      string
 	Off       int32
 	Lim       int32
@@ -298,6 +392,7 @@ func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([
 	rows, err := q.db.Query(ctx, listKindItems,
 		arg.UserID,
 		arg.Query,
+		arg.Filters,
 		arg.Sort,
 		arg.Off,
 		arg.Lim,
@@ -390,19 +485,36 @@ LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.library_id = $2 AND i.parent_id IS NULL
   AND ($3::text = '' OR i.title ILIKE $3 OR i.original_title ILIKE $3)
+  AND (($4::jsonb->>'yearMin') IS NULL OR i.year >= ($4::jsonb->>'yearMin')::integer)
+  AND (($4::jsonb->>'yearMax') IS NULL OR i.year <= ($4::jsonb->>'yearMax')::integer)
+  AND (($4::jsonb->>'ratingMin') IS NULL OR i.rating >= ($4::jsonb->>'ratingMin')::real)
+  AND (($4::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($4::jsonb->>'votesMin')::integer)
+  AND (($4::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($4::jsonb->>'runtimeMin')::integer))
+  AND (($4::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($4::jsonb->>'runtimeMax')::integer))
+  AND (coalesce(jsonb_array_length($4::jsonb->'genres'), 0) = 0 OR
+       CASE WHEN $4::jsonb->>'genreMode' = 'all'
+       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres'))
+       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres')) END)
+  AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'excludeGenres')))
+  AND (coalesce(jsonb_array_length($4::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'actors')))
+  AND (coalesce(jsonb_array_length($4::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'creators')))
+  AND (coalesce(jsonb_array_length($4::jsonb->'keywords'), 0) = 0 OR i.keyword_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'keywords')))
+  AND (coalesce(jsonb_array_length($4::jsonb->'languages'), 0) = 0 OR i.original_language = ANY(ARRAY(SELECT value FROM jsonb_array_elements_text($4::jsonb->'languages'))))
+  AND (coalesce(jsonb_array_length($4::jsonb->'countries'), 0) = 0 OR i.countries && ARRAY(SELECT value FROM jsonb_array_elements_text($4::jsonb->'countries')))
   AND i.id IN (SELECT root_id FROM visible)
 ORDER BY
-    CASE WHEN $4::text = 'year' THEN i.year END DESC NULLS LAST,
-    CASE WHEN $4::text = 'added' THEN i.created_at END DESC,
-    CASE WHEN $4::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $5::text = 'year' THEN i.year END DESC NULLS LAST,
+    CASE WHEN $5::text = 'added' THEN i.created_at END DESC,
+    CASE WHEN $5::text = 'rating' THEN i.rating END DESC NULLS LAST,
     i.sort_title, i.id
-LIMIT $6 OFFSET $5
+LIMIT $7 OFFSET $6
 `
 
 type ListLibraryItemsParams struct {
 	UserID    uuid.UUID
 	LibraryID uuid.UUID
 	Query     string
+	Filters   []byte
 	Sort      string
 	Off       int32
 	Lim       int32
@@ -431,6 +543,7 @@ func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsPara
 		arg.UserID,
 		arg.LibraryID,
 		arg.Query,
+		arg.Filters,
 		arg.Sort,
 		arg.Off,
 		arg.Lim,

@@ -46,6 +46,7 @@ type Service struct {
 	baseURL  string
 
 	mu        sync.Mutex
+	refreshMu sync.Mutex
 	client    *TMDB
 	clientKey string
 
@@ -111,6 +112,8 @@ func (s *Service) ValidateKey(ctx context.Context, key string) error {
 // RefreshLibrary fetches metadata for new items and for items whose language changed. Without an API key,
 // movies and series stay pending until one is configured; thumbnails of personal videos are still extracted.
 func (s *Service) RefreshLibrary(ctx context.Context, lib store.Library, progress func(done, total int)) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	defer func() { go s.WarmImages(ctx) }()
 
 	client, lang, err := s.Client(ctx)
@@ -152,6 +155,25 @@ func (s *Service) RefreshLibrary(ctx context.Context, lib store.Library, progres
 		progress(i+1, len(items))
 	}
 	return firstErr
+}
+
+func (s *Service) BackfillFilters(ctx context.Context) {
+	if _, _, err := s.Client(ctx); err != nil {
+		return
+	}
+	libraries, err := s.q.ListLibrariesForFilterEnrichment(ctx)
+	if err != nil {
+		slog.Warn("list libraries for metadata enrichment", "err", err)
+		return
+	}
+	for _, library := range libraries {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := s.RefreshLibrary(ctx, library, func(int, int) {}); err != nil && ctx.Err() == nil {
+			slog.Warn("enrich library filter metadata", "library_id", library.ID, "err", err)
+		}
+	}
 }
 
 // RefreshItem refreshes one movie or series now. A non-nil tmdbID is an admin choice and locks the match.
@@ -226,6 +248,16 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 	if err != nil {
 		return err
 	}
+	creators := make([]Genre, 0)
+	for _, member := range m.Credits.Crew {
+		if member.Job == "Director" {
+			creators = append(creators, Genre{ID: member.ID, Name: member.Name})
+		}
+	}
+	countries := make([]string, 0, len(m.ProductionCountries))
+	for _, country := range m.ProductionCountries {
+		countries = append(countries, country.Code)
+	}
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		err := q.UpdateItemMetadata(ctx, store.UpdateItemMetadataParams{
@@ -241,6 +273,9 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 			return err
 		}
 		if err := q.SetChildrenMatchStatus(ctx, store.SetChildrenMatchStatusParams{ParentID: &it.ID, MatchStatus: status}); err != nil {
+			return err
+		}
+		if err := q.UpdateItemFilters(ctx, filterMetadata(it.ID, m.Genres, m.Credits.Cast, creators, m.Keywords.Keywords, countries, m.OriginalLanguage, m.VoteCount)); err != nil {
 			return err
 		}
 		_, err = mergeDuplicate(ctx, q, lib.ID, "movie", int32(id), it.ID)
@@ -330,8 +365,10 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 		return err
 	}
 	creators := make([]string, 0, len(tv.CreatedBy))
+	creatorIDs := make([]Genre, 0, len(tv.CreatedBy))
 	for _, cr := range tv.CreatedBy {
 		creators = append(creators, cr.Name)
+		creatorIDs = append(creatorIDs, Genre{ID: cr.ID, Name: cr.Name})
 	}
 	runtime := 0
 	if len(tv.EpisodeRunTime) > 0 {
@@ -351,6 +388,9 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 			MatchStatus: status, MetadataLanguage: &lang,
 		})
 		if err != nil {
+			return err
+		}
+		if err := q.UpdateItemFilters(ctx, filterMetadata(it.ID, tv.Genres, tv.Credits.Cast, creatorIDs, tv.Keywords.Results, tv.OriginCountry, tv.OriginalLanguage, tv.VoteCount)); err != nil {
 			return err
 		}
 		winner, err = mergeDuplicate(ctx, q, lib.ID, "series", int32(id), it.ID)

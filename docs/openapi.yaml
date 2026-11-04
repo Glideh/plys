@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Plys API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Media library API used by the web front-end and the native Android TV client.
 
@@ -395,6 +395,7 @@ paths:
       operationId: listLibraryItems
       summary: Top-level entries of a library (movies, series or videos)
       parameters:
+        - $ref: "#/components/parameters/CatalogFilters"
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
@@ -422,6 +423,7 @@ paths:
       operationId: listKindItems
       summary: Top-level entries of every readable library of one kind
       parameters:
+        - $ref: "#/components/parameters/CatalogFilters"
         - { name: library, in: query, required: false, schema: { type: string, format: uuid }, description: Restrict to one library of this kind }
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
@@ -440,7 +442,81 @@ paths:
                   total: { type: integer }
                   offset: { type: integer }
                   limit: { type: integer }
+                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers" }
         "400": { $ref: "#/components/responses/Error" }
+
+  /kinds/{kind}/filters:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [movies, series] } }
+    get:
+      operationId: listCatalogFilterOptions
+      summary: Suggestions from accessible titles with available media, including compatible peers
+      parameters:
+        - { name: library, in: query, schema: { type: string, format: uuid }, description: Limit to a local library and do not query peers }
+        - $ref: "#/components/parameters/FilterCategory"
+        - $ref: "#/components/parameters/FilterSearch"
+        - $ref: "#/components/parameters/SelectedFilters"
+        - $ref: "#/components/parameters/FilterLocale"
+      responses:
+        "200":
+          description: Up to 50 suggestions per category, deduplicated by ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogFilterOptions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /federation/catalog/kinds/{kind}/filters:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [movies, series] } }
+    get:
+      operationId: peerCatalogFilterOptions
+      summary: Local suggestions for the shadow user named by a compatible peer's federated token
+      parameters:
+        - $ref: "#/components/parameters/FilterCategory"
+        - $ref: "#/components/parameters/FilterSearch"
+        - $ref: "#/components/parameters/SelectedFilters"
+        - $ref: "#/components/parameters/FilterLocale"
+      responses:
+        "200":
+          description: Local suggestions only, never re-exporting other peers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CatalogFilterOptions" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /admin/federation/peers:
+    get:
+      operationId: listPeers
+      summary: List paired servers with their current version and compatibility (admin)
+      description: Compatibility compares only SemVer major versions. Unknown or invalid versions are unverified. Reachability is checked without removing the pairing.
+      responses:
+        "200":
+          description: Paired servers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Peer" }
+
+  /admin/federation/peers/{id}/sync:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: syncPeer
+      summary: Synchronize users from a compatible peer (admin)
+      responses:
+        "200":
+          description: Synchronized users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users: { type: integer }
+        "409": { description: The peer does not use a valid version with the same major version }
+        "502": { description: The peer is unavailable or returned invalid data }
 
   /items/{id}:
     parameters:
@@ -855,6 +931,33 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
 
 components:
+  parameters:
+    CatalogFilters:
+      name: filters
+      in: query
+      description: URL-encoded JSON object, at most 8192 bytes. Criteria use AND; selections within one criterion use OR, except genres in all mode. Missing values fail active inclusion or range criteria; excluded genres only remove known matches. For duplicate TMDB titles, at least one source must satisfy all criteria.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CatalogFilters" }
+    FilterCategory:
+      name: category
+      in: query
+      schema: { type: string, enum: [genres, actors, creators, keywords, languages, countries] }
+    FilterSearch:
+      name: query
+      in: query
+      schema: { type: string, maxLength: 200 }
+      description: Case-insensitive substring of the suggestion label
+    SelectedFilters:
+      name: selected
+      in: query
+      description: Up to 20 comma-separated IDs whose accessible labels should be included regardless of the search text
+      schema: { type: string, maxLength: 500 }
+    FilterLocale:
+      name: locale
+      in: query
+      description: Display and search language for ISO country and language names
+      schema: { type: string, enum: [fr, en], default: fr }
   securitySchemes:
     bearer:
       type: http
@@ -874,6 +977,55 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    CatalogFilters:
+      type: object
+      additionalProperties: false
+      properties:
+        genres: { $ref: "#/components/schemas/TMDBFilterIDs" }
+        excludeGenres: { $ref: "#/components/schemas/TMDBFilterIDs" }
+        genreMode: { type: string, enum: [any, all], default: any }
+        actors: { $ref: "#/components/schemas/TMDBFilterIDs" }
+        creators: { $ref: "#/components/schemas/TMDBFilterIDs", description: Movie directors or series creators }
+        keywords: { $ref: "#/components/schemas/TMDBFilterIDs" }
+        languages: { type: array, maxItems: 20, items: { type: string, pattern: "^[a-zA-Z]{2}$" }, description: "Original language, normalized to lowercase" }
+        countries: { type: array, maxItems: 20, items: { type: string, pattern: "^[a-zA-Z]{2}$" }, description: "Movie production countries or series countries of origin, normalized to uppercase" }
+        yearMin: { type: integer, minimum: 1800, maximum: 9999 }
+        yearMax: { type: integer, minimum: 1800, maximum: 9999 }
+        ratingMin: { type: number, minimum: 0, maximum: 10 }
+        votesMin: { type: integer, minimum: 0, maximum: 2147483647 }
+        runtimeMin: { type: integer, minimum: 0, maximum: 10000, description: "Minutes, movies only" }
+        runtimeMax: { type: integer, minimum: 0, maximum: 10000, description: "Minutes, movies only" }
+    TMDBFilterIDs:
+      type: array
+      maxItems: 20
+      items: { type: integer, minimum: 1, maximum: 2147483647 }
+    CatalogFilterOptions:
+      type: object
+      required: [options, unavailableServers]
+      properties:
+        unavailableServers: { type: integer }
+        options:
+          type: object
+          additionalProperties:
+            type: array
+            maxItems: 50
+            items:
+              type: object
+              required: [id, label]
+              properties:
+                id: { type: string }
+                label: { type: string }
+    Peer:
+      type: object
+      required: [id, url, name, version, localVersion, status, versionCheckedAt]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        name: { type: string }
+        version: { type: [string, "null"] }
+        localVersion: { type: string }
+        status: { type: string, enum: [compatible, incompatible, unverified, offline] }
+        versionCheckedAt: { type: [string, "null"], format: date-time }
     ClientCaps:
       type: object
       description: What the client can decode; the server transcodes the rest.

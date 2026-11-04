@@ -45,7 +45,7 @@ func (q *Queries) DeletePeer(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getPeer = `-- name: GetPeer :one
-SELECT id, url, name, public_key, created_at, users_sync_attempted_at FROM peers WHERE id = $1
+SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at FROM peers WHERE id = $1
 `
 
 func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
@@ -58,6 +58,8 @@ func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
 		&i.PublicKey,
 		&i.CreatedAt,
 		&i.UsersSyncAttemptedAt,
+		&i.Version,
+		&i.VersionCheckedAt,
 	)
 	return i, err
 }
@@ -65,7 +67,7 @@ func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
 const insertPeer = `-- name: InsertPeer :one
 INSERT INTO peers (id, url, name, public_key)
 VALUES ($1, $2, $3, $4)
-RETURNING id, url, name, public_key, created_at, users_sync_attempted_at
+RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at
 `
 
 type InsertPeerParams struct {
@@ -90,12 +92,14 @@ func (q *Queries) InsertPeer(ctx context.Context, arg InsertPeerParams) (Peer, e
 		&i.PublicKey,
 		&i.CreatedAt,
 		&i.UsersSyncAttemptedAt,
+		&i.Version,
+		&i.VersionCheckedAt,
 	)
 	return i, err
 }
 
 const listPeers = `-- name: ListPeers :many
-SELECT id, url, name, public_key, created_at, users_sync_attempted_at FROM peers ORDER BY name, url
+SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at FROM peers ORDER BY name, url
 `
 
 func (q *Queries) ListPeers(ctx context.Context) ([]Peer, error) {
@@ -114,6 +118,8 @@ func (q *Queries) ListPeers(ctx context.Context) ([]Peer, error) {
 			&i.PublicKey,
 			&i.CreatedAt,
 			&i.UsersSyncAttemptedAt,
+			&i.Version,
+			&i.VersionCheckedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -137,7 +143,7 @@ func (q *Queries) PeerAllowsOrigin(ctx context.Context, origin string) (bool, er
 }
 
 const updatePeerURL = `-- name: UpdatePeerURL :one
-UPDATE peers SET url = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at
+UPDATE peers SET url = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at
 `
 
 type UpdatePeerURLParams struct {
@@ -155,6 +161,33 @@ func (q *Queries) UpdatePeerURL(ctx context.Context, arg UpdatePeerURLParams) (P
 		&i.PublicKey,
 		&i.CreatedAt,
 		&i.UsersSyncAttemptedAt,
+		&i.Version,
+		&i.VersionCheckedAt,
+	)
+	return i, err
+}
+
+const updatePeerVersion = `-- name: UpdatePeerVersion :one
+UPDATE peers SET version = $2, version_checked_at = now() WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at
+`
+
+type UpdatePeerVersionParams struct {
+	ID      uuid.UUID
+	Version *string
+}
+
+func (q *Queries) UpdatePeerVersion(ctx context.Context, arg UpdatePeerVersionParams) (Peer, error) {
+	row := q.db.QueryRow(ctx, updatePeerVersion, arg.ID, arg.Version)
+	var i Peer
+	err := row.Scan(
+		&i.ID,
+		&i.Url,
+		&i.Name,
+		&i.PublicKey,
+		&i.CreatedAt,
+		&i.UsersSyncAttemptedAt,
+		&i.Version,
+		&i.VersionCheckedAt,
 	)
 	return i, err
 }

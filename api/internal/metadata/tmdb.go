@@ -144,10 +144,12 @@ func (r SearchResult) Year() int {
 }
 
 type Genre struct {
+	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
 type CastMember struct {
+	ID          int    `json:"id"`
 	Name        string `json:"name"`
 	Character   string `json:"character"`
 	ProfilePath string `json:"profile_path"`
@@ -157,12 +159,22 @@ type CastMember struct {
 type Credits struct {
 	Cast []CastMember `json:"cast"`
 	Crew []struct {
+		ID   int    `json:"id"`
 		Job  string `json:"job"`
 		Name string `json:"name"`
 	} `json:"crew"`
 }
 
 type Movie struct {
+	VoteCount           *int32 `json:"vote_count"`
+	OriginalLanguage    string `json:"original_language"`
+	ProductionCountries []struct {
+		Code string `json:"iso_3166_1"`
+		Name string `json:"name"`
+	} `json:"production_countries"`
+	Keywords struct {
+		Keywords []Genre `json:"keywords"`
+	} `json:"keywords"`
 	ID            int     `json:"id"`
 	Title         string  `json:"title"`
 	OriginalTitle string  `json:"original_title"`
@@ -184,6 +196,12 @@ type TVSeasonSummary struct {
 }
 
 type TV struct {
+	VoteCount        *int32   `json:"vote_count"`
+	OriginalLanguage string   `json:"original_language"`
+	OriginCountry    []string `json:"origin_country"`
+	Keywords         struct {
+		Results []Genre `json:"results"`
+	} `json:"keywords"`
 	ID             int               `json:"id"`
 	Name           string            `json:"name"`
 	OriginalName   string            `json:"original_name"`
@@ -197,6 +215,7 @@ type TV struct {
 	BackdropPath   string            `json:"backdrop_path"`
 	Seasons        []TVSeasonSummary `json:"seasons"`
 	CreatedBy      []struct {
+		ID   int    `json:"id"`
 		Name string `json:"name"`
 	} `json:"created_by"`
 	Credits     Credits `json:"credits"`
@@ -263,13 +282,13 @@ func (c *TMDB) SearchTV(ctx context.Context, query string, year int, lang string
 
 func (c *TMDB) Movie(ctx context.Context, id int, lang string) (Movie, error) {
 	var out Movie
-	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits"}}, &out)
+	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,keywords"}}, &out)
 	return out, err
 }
 
 func (c *TMDB) TV(ctx context.Context, id int, lang string) (TV, error) {
 	var out TV
-	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,external_ids"}}, &out)
+	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,external_ids,keywords"}}, &out)
 	return out, err
 }
 

@@ -1,6 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { itemSorts, type ItemCard, type ItemPage, type ItemSort } from '@/api/catalog'
+import { parseFilters, serializeFilters, type CatalogFilters } from '@/api/catalogFilters'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 
 const PAGE_SIZE = 60
@@ -11,6 +12,7 @@ export interface CatalogPageRequest {
   sort: ItemSort
   offset: number
   limit: number
+  filters: CatalogFilters
 }
 
 /** Paginated item list; search and sort live in the URL so that back navigation restores the view. */
@@ -23,6 +25,8 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   const total = ref(0)
   const loading = ref(false)
   const error = ref('')
+  const unavailableServers = ref(0)
+  const filters = ref<CatalogFilters>(parseFilters(route.query.filters))
   const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
   const sort = ref<ItemSort>(itemSorts.includes(route.query.sort as ItemSort) ? (route.query.sort as ItemSort) : 'title')
   const sentinel = useTemplateRef<HTMLElement>('sentinel')
@@ -41,10 +45,12 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
         sort: sort.value,
         offset: reset ? 0 : items.value.length,
         limit: PAGE_SIZE,
+        filters: filters.value,
       })
       if (gen !== generation) return
       items.value = reset ? page.items : [...items.value, ...page.items]
       total.value = page.total
+      unavailableServers.value = page.unavailableServers ?? 0
     } catch (err) {
       if (gen === generation) error.value = errorMessage(err)
     } finally {
@@ -53,12 +59,22 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   }
 
   let debounce: ReturnType<typeof setTimeout> | undefined
-  watch([query, sort], () => {
+  watch([query, sort, () => serializeFilters(filters.value)], () => {
     clearTimeout(debounce)
     debounce = setTimeout(() => {
-      router.replace({ query: { ...route.query, q: query.value || undefined, sort: sort.value === 'title' ? undefined : sort.value } })
+      router.replace({ query: { ...route.query, q: query.value || undefined, sort: sort.value === 'title' ? undefined : sort.value, filters: serializeFilters(filters.value) } })
       load(true)
     }, SEARCH_DEBOUNCE_MS)
+  })
+
+  watch(() => route.query, (next) => {
+    const nextQuery = typeof next.q === 'string' ? next.q : ''
+    const nextSort = itemSorts.includes(next.sort as ItemSort) ? next.sort as ItemSort : 'title'
+    const nextFilters = parseFilters(next.filters)
+    if (nextQuery === query.value && nextSort === sort.value && serializeFilters(nextFilters) === serializeFilters(filters.value)) return
+    query.value = nextQuery
+    sort.value = nextSort
+    filters.value = nextFilters
   })
 
   const observer = new IntersectionObserver(
@@ -76,5 +92,5 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
     clearTimeout(debounce)
   })
 
-  return { items, total, loading, error, query, sort, reload: () => load(true) }
+  return { items, total, loading, error, query, sort, filters, unavailableServers, reload: () => load(true) }
 }

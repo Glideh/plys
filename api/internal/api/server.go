@@ -77,6 +77,7 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/federation/handshake", s.handshake)
 		r.Get("/federation/users", s.peerUsers)
 		r.Get("/federation/catalog/kinds/{kind}/items", s.peerKindItems)
+		r.Get("/federation/catalog/kinds/{kind}/filters", s.peerCatalogFilterOptions)
 		r.Get("/federation/catalog/titles/{kind}/{tmdbId}", s.peerTitleIDs)
 		r.Group(func(r chi.Router) {
 			r.Use(s.peerCORS)
@@ -112,6 +113,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)
 			r.Get("/kinds/{kind}/items", s.listKindItems)
+			r.Get("/kinds/{kind}/filters", s.listCatalogFilterOptions)
 			r.Get("/kinds/{kind}/titles/{tmdbId}/sources", s.listTitleSources)
 			r.Get("/me/continue-watching", s.continueWatching)
 			r.Get("/me/next-up", s.nextUp)

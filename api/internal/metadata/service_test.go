@@ -60,8 +60,10 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 			respond(w, map[string]any{
 				"id": 348, "title": "Alien, le huitième passager", "original_title": "Alien", "overview": overview,
 				"release_date": "1979-05-25", "runtime": 117, "vote_average": 8.2, "poster_path": "/alien.jpg",
-				"genres":  []map[string]any{{"name": "Horreur"}, {"name": "Science-Fiction"}},
-				"credits": map[string]any{"cast": []map[string]any{{"name": "Sigourney Weaver", "character": "Ripley", "profile_path": "/sw.jpg"}}, "crew": []map[string]any{{"job": "Director", "name": "Ridley Scott"}}},
+				"vote_count": 5000, "original_language": "en", "production_countries": []map[string]any{{"iso_3166_1": "GB", "name": "United Kingdom"}},
+				"keywords": map[string]any{"keywords": []map[string]any{{"id": 123, "name": "space"}}},
+				"genres":   []map[string]any{{"id": 27, "name": "Horreur"}, {"id": 878, "name": "Science-Fiction"}},
+				"credits":  map[string]any{"cast": []map[string]any{{"id": 10205, "name": "Sigourney Weaver", "character": "Ripley", "profile_path": "/sw.jpg"}}, "crew": []map[string]any{{"id": 578, "job": "Director", "name": "Ridley Scott"}}},
 			})
 		case r.URL.Path == "/movie/78":
 			respond(w, map[string]any{"id": 78, "title": "Blade Runner", "overview": "Los Angeles, 2019.", "release_date": "1982-06-25", "imdb_id": "tt0083658"})
@@ -142,6 +144,54 @@ type row struct {
 	TMDB                *int32
 	Overview            *string
 	Files               int
+}
+
+func TestFilterMetadataKeepsFullCast(t *testing.T) {
+	cast := make([]CastMember, 20)
+	for index := range cast {
+		cast[index] = CastMember{ID: index + 1, Name: "Actor"}
+	}
+	params := filterMetadata(uuid.New(), []Genre{{ID: 878, Name: "Science-fiction"}}, cast, nil, nil, []string{"GB"}, "en", nil)
+	if len(params.ActorIds) != 20 || len(params.GenreIds) != 1 || params.GenreIds[0] != 878 {
+		t.Fatalf("filter IDs: %+v", params)
+	}
+	if params.VoteCount != nil {
+		t.Fatal("missing vote count must remain unknown")
+	}
+	var series TV
+	if err := json.Unmarshal([]byte(`{"keywords":{"results":[{"id":42,"name":"time travel"}]}}`), &series); err != nil {
+		t.Fatal(err)
+	}
+	if len(series.Keywords.Results) != 1 || series.Keywords.Results[0].ID != 42 {
+		t.Fatalf("TV keywords: %+v", series.Keywords)
+	}
+}
+
+func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
+	env := newEnv(t, "good-key")
+	library := env.library(t, "movies", "Alien.1979.mkv")
+	var itemID uuid.UUID
+	if err := env.pool.QueryRow(context.Background(), `SELECT id FROM items WHERE library_id = $1 AND kind = 'movie'`, library).Scan(&itemID); err != nil {
+		t.Fatal(err)
+	}
+	item, err := env.q.GetItem(context.Background(), itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 1 {
+		t.Fatalf("missing enrichment: %+v", item)
+	}
+	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 0, match_status = 'manual', keyword_ids = '{}' WHERE id = $1`, itemID); err != nil {
+		t.Fatal(err)
+	}
+	env.svc.BackfillFilters(context.Background())
+	item, err = env.q.GetItem(context.Background(), itemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.EnrichmentVersion != 1 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
+		t.Fatalf("backfill: %+v", item)
+	}
 }
 
 func (e env) items(t *testing.T, libID uuid.UUID, kind string) []row {

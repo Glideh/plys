@@ -12,6 +12,9 @@ RETURNING *;
 -- name: UpdatePeerURL :one
 UPDATE peers SET url = $2 WHERE id = $1 RETURNING *;
 
+-- name: UpdatePeerVersion :one
+UPDATE peers SET version = $2, version_checked_at = now() WHERE id = $1 RETURNING *;
+
 -- name: ClaimPeerUserSync :execrows
 -- Lets only one request sync a peer per interval, concurrent listings included.
 UPDATE peers SET users_sync_attempted_at = @attempted_at

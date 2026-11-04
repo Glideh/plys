@@ -71,13 +71,24 @@ type addPeerRequest struct {
 }
 
 type peerDTO struct {
-	ID   uuid.UUID `json:"id"`
-	URL  string    `json:"url"`
-	Name string    `json:"name"`
+	ID               uuid.UUID  `json:"id"`
+	URL              string     `json:"url"`
+	Name             string     `json:"name"`
+	Version          *string    `json:"version"`
+	LocalVersion     string     `json:"localVersion"`
+	Status           string     `json:"status"`
+	VersionCheckedAt *time.Time `json:"versionCheckedAt"`
 }
 
 func peerToDTO(p store.Peer) peerDTO {
-	return peerDTO{ID: p.ID, URL: p.Url, Name: p.Name}
+	status := "unverified"
+	if p.Version != nil && federationVersionPattern.MatchString(*p.Version) && federationVersionPattern.MatchString(Version) {
+		status = "incompatible"
+		if compatiblePeerVersions(Version, *p.Version) {
+			status = "compatible"
+		}
+	}
+	return peerDTO{ID: p.ID, URL: p.Url, Name: p.Name, Version: p.Version, LocalVersion: Version, Status: status, VersionCheckedAt: p.VersionCheckedAt}
 }
 
 func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +149,7 @@ func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	p, _ = s.checkPeerVersion(ctx, p)
 	if _, err := s.syncPeerUsers(ctx, p); err != nil {
 		logPeerSyncFailure(ctx, p, err)
 	}
@@ -243,7 +255,12 @@ func (s *Server) listPeers(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]peerDTO, 0, len(peers))
 	for _, p := range peers {
-		out = append(out, peerToDTO(p))
+		checked, checkErr := s.checkPeerVersion(r.Context(), p)
+		dto := peerToDTO(checked)
+		if checkErr != nil && !errors.Is(checkErr, errPeerIncompatible) {
+			dto.Status = "offline"
+		}
+		out = append(out, dto)
 	}
 	httpx.JSON(w, http.StatusOK, out)
 }
@@ -319,6 +336,7 @@ func (s *Server) updatePeer(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	updated, _ = s.checkPeerVersion(ctx, updated)
 	httpx.JSON(w, http.StatusOK, peerToDTO(updated))
 }
 

@@ -88,7 +88,14 @@ func (s *Server) authenticateFederatedToken(r *http.Request, token string) (fede
 	if err != nil {
 		return federatedClaims{}, err
 	}
-	return verifyFederatedToken(token, peer.PublicKey, s.Identity.ID, time.Now())
+	claims, err := verifyFederatedToken(token, peer.PublicKey, s.Identity.ID, time.Now())
+	if err != nil {
+		return federatedClaims{}, err
+	}
+	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {
+		return federatedClaims{}, err
+	}
+	return claims, nil
 }
 
 // federationToken issues a short-lived token for the logged-in user, usable only on the given paired peer.
@@ -100,13 +107,17 @@ func (s *Server) federationToken(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeRequired(w, r, &req) {
 		return
 	}
-	_, err := s.q.GetPeer(r.Context(), req.Audience)
+	peer, err := s.q.GetPeer(r.Context(), req.Audience)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "peer not found")
 		return
 	}
 	if err != nil {
 		httpx.InternalError(w, r, err)
+		return
+	}
+	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {
+		httpx.Error(w, http.StatusConflict, "peer_incompatible", "the peer must be reachable and use the same major server version")
 		return
 	}
 	now := time.Now()

@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { ItemKind, LibraryKind } from './libraries'
+import { serializeFilters, type CatalogFilters, type FilterCategory, type FilterOptionsPage } from './catalogFilters'
 
 export const itemSorts = ['title', 'year', 'added', 'rating'] as const
 export type ItemSort = (typeof itemSorts)[number]
@@ -35,6 +36,7 @@ export interface ItemPage {
   total: number
   offset: number
   limit: number
+  unavailableServers?: number
 }
 
 export interface Track {
@@ -150,17 +152,24 @@ export interface MatchCandidate {
 }
 
 export const catalogApi = {
-  list: (libraryId: string, params: { query?: string; sort?: ItemSort; offset?: number; limit?: number }) => {
+  list: (libraryId: string, params: { query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }) => {
     const qs = new URLSearchParams()
-    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
+    for (const [key, value] of Object.entries({ ...params, filters: params.filters && serializeFilters(params.filters) })) if (value !== undefined && value !== '') qs.set(key, String(value))
     return api<ItemPage>(`/libraries/${libraryId}/items?${qs}`)
   },
-  listKind: (kind: LibraryKind, params: { library?: string; query?: string; sort?: ItemSort; offset?: number; limit?: number }) => {
+  listKind: (kind: LibraryKind, params: { library?: string; query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }) => {
     const qs = new URLSearchParams()
-    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v))
+    for (const [key, value] of Object.entries({ ...params, filters: params.filters && serializeFilters(params.filters) })) if (value !== undefined && value !== '') qs.set(key, String(value))
     return api<ItemPage>(`/kinds/${kind}/items?${qs}`)
   },
   get: (id: string) => api<ItemDetail>(`/items/${id}`),
+  filterOptions: (kind: LibraryKind, library?: string, category?: FilterCategory, query = '', selected: string[] = [], locale = 'fr') => {
+    const params = new URLSearchParams({ query, locale })
+    if (library) params.set('library', library)
+    if (category) params.set('category', category)
+    if (selected.length) params.set('selected', selected.join(','))
+    return api<FilterOptionsPage>(`/kinds/${kind}/filters?${params}`)
+  },
   titleSources: (kind: ItemKind, tmdbId: number) =>
     api<{ sources: CardSource[] }>(`/kinds/${kind}/titles/${tmdbId}/sources`).then((r) => r.sources),
   searchMatch: (id: string, query: string, year?: number) => {

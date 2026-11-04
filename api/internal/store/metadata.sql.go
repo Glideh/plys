@@ -105,7 +105,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, part_number, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, part_number, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -143,6 +143,15 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.MatchStatus,
 		&i.MetadataLanguage,
 		&i.MetadataUpdatedAt,
+		&i.GenreIds,
+		&i.ActorIds,
+		&i.CreatorIds,
+		&i.KeywordIds,
+		&i.OriginalLanguage,
+		&i.Countries,
+		&i.VoteCount,
+		&i.FilterLabels,
+		&i.EnrichmentVersion,
 	)
 	return i, err
 }
@@ -263,6 +272,7 @@ SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = $1 AND i.kind IN ('movie', 'series', 'video')
   AND (
     i.match_status = 'pending'
+    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 1)
     OR (i.match_status IN ('matched', 'manual') AND i.metadata_language IS DISTINCT FROM $2::text)
     OR (i.kind = 'series' AND EXISTS (
         SELECT 1 FROM items s
@@ -304,6 +314,41 @@ func (q *Queries) ListItemsToMatch(ctx context.Context, arg ListItemsToMatchPara
 			&i.Year,
 			&i.TmdbID,
 			&i.MatchStatus,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLibrariesForFilterEnrichment = `-- name: ListLibrariesForFilterEnrichment :many
+SELECT l.id, l.name, l.kind, l.created_at, l.updated_at, l.last_scanned_at, l.restricted FROM libraries l WHERE EXISTS (
+    SELECT 1 FROM items i WHERE i.library_id = l.id AND i.kind IN ('movie', 'series')
+      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 1
+)
+`
+
+func (q *Queries) ListLibrariesForFilterEnrichment(ctx context.Context) ([]Library, error) {
+	rows, err := q.db.Query(ctx, listLibrariesForFilterEnrichment)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Library
+	for rows.Next() {
+		var i Library
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Kind,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastScannedAt,
+			&i.Restricted,
 		); err != nil {
 			return nil, err
 		}
@@ -409,6 +454,41 @@ type SetItemThumbParams struct {
 
 func (q *Queries) SetItemThumb(ctx context.Context, arg SetItemThumbParams) error {
 	_, err := q.db.Exec(ctx, setItemThumb, arg.ID, arg.ThumbPath, arg.MatchStatus)
+	return err
+}
+
+const updateItemFilters = `-- name: UpdateItemFilters :exec
+UPDATE items SET genre_ids = $1::integer[], actor_ids = $2::integer[],
+  creator_ids = $3::integer[], keyword_ids = $4::integer[],
+  original_language = $5, countries = $6::text[], vote_count = $7,
+  filter_labels = $8::jsonb, enrichment_version = 1
+WHERE id = $9
+`
+
+type UpdateItemFiltersParams struct {
+	GenreIds         []int32
+	ActorIds         []int32
+	CreatorIds       []int32
+	KeywordIds       []int32
+	OriginalLanguage *string
+	Countries        []string
+	VoteCount        *int32
+	FilterLabels     []byte
+	ID               uuid.UUID
+}
+
+func (q *Queries) UpdateItemFilters(ctx context.Context, arg UpdateItemFiltersParams) error {
+	_, err := q.db.Exec(ctx, updateItemFilters,
+		arg.GenreIds,
+		arg.ActorIds,
+		arg.CreatorIds,
+		arg.KeywordIds,
+		arg.OriginalLanguage,
+		arg.Countries,
+		arg.VoteCount,
+		arg.FilterLabels,
+		arg.ID,
+	)
 	return err
 }
 

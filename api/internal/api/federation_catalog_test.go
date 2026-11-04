@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"toto/api/internal/store"
 )
 
 func sourced(kind string, tmdb *int32, title string, serverID uuid.UUID) sourcedCard {
@@ -18,6 +22,47 @@ func sourced(kind string, tmdb *int32, title string, serverID uuid.UUID) sourced
 			AddedAt:     time.Now(),
 		},
 		source: cardSourceDTO{ServerID: serverID, ServerName: "srv", ItemID: uuid.New()},
+	}
+}
+
+func TestFederatedCatalogForwardsFiltersAndSkipsIncompatiblePeers(t *testing.T) {
+	env, peer, admin := pairedEnv(t)
+	received := make(chan string, 2)
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/federation/catalog/kinds/movies/items" {
+			received <- r.URL.Query().Get("filters")
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": uuid.New(), "kind": "movie", "title": "Remote title", "sortTitle": "remote title", "tmdbId": 603, "addedAt": time.Now()}}, "total": 1})
+			return
+		}
+		peer.handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(remote.Close)
+	env.srv.HTTPClient = remote.Client()
+	if _, err := env.srv.q.UpdatePeerURL(context.Background(), store.UpdatePeerURLParams{ID: peer.id, Url: remote.URL}); err != nil {
+		t.Fatal(err)
+	}
+	filters := `{"genres":[878],"ratingMin":7}`
+	result := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/items?filters="+url.QueryEscape(filters), admin, nil)
+	if result.status != http.StatusOK || result.body["total"] != float64(1) {
+		t.Fatalf("federated filters: %d %v", result.status, result.body)
+	}
+	select {
+	case got := <-received:
+		if got != filters {
+			t.Fatalf("filters changed: %s", got)
+		}
+	default:
+		t.Fatal("peer was not queried")
+	}
+	peer.version = "1.0.0"
+	result = do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/items", admin, nil)
+	if result.status != http.StatusOK || result.body["total"] != float64(0) || result.body["unavailableServers"] != float64(1) {
+		t.Fatalf("incompatible peer included: %d %v", result.status, result.body)
+	}
+	select {
+	case <-received:
+		t.Fatal("incompatible peer catalog was queried")
+	default:
 	}
 }
 

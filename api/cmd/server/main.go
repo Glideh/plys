@@ -76,6 +76,7 @@ func run() error {
 	go meta.WarmImages(ctx)
 	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, meta, cfg.ScanInterval)
 	go scan.Run(ctx)
+	go meta.BackfillFilters(ctx)
 
 	player, err := playback.NewManager("ffmpeg", "ffprobe", playback.DetectEncoder(ctx, "ffmpeg", cfg.HWAccel), cfg.CacheDir, cfg.MaxTranscodes)
 	if err != nil {

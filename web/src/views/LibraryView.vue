@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import { catalogApi, itemSorts } from '@/api/catalog'
 import { librariesApi, type Library } from '@/api/libraries'
 import CatalogGrid from '@/components/CatalogGrid.vue'
+import CatalogFilters from '@/components/CatalogFilters.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import LibrarySelect from '@/components/LibrarySelect.vue'
 import { useCatalogList } from '@/composables/useCatalogList'
@@ -19,7 +20,7 @@ const library = ref<Library | null>(null)
 const libraries = ref<Library[]>([])
 const sameKindLibraries = computed(() => libraries.value.filter((l) => l.kind === library.value?.kind))
 
-const { items, total, loading, error, query, sort, reload } = useCatalogList((req) => catalogApi.list(props.id, req))
+const { items, total, loading, error, query, sort, filters, reload } = useCatalogList((req) => catalogApi.list(props.id, req))
 
 function selectLibrary(id: string | null) {
   if (id) router.push({ name: 'library', params: { id } })
@@ -75,12 +76,13 @@ onMounted(async () => {
           <option v-for="s in itemSorts" :key="s" :value="s">{{ t(`catalog.sorts.${s}`) }}</option>
         </select>
       </label>
+      <CatalogFilters v-if="library && library.kind !== 'other'" v-model="filters" :kind="library.kind" :library="id" />
     </header>
 
     <ErrorAlert v-if="error" class="mb-6" :message="error" />
 
     <p v-if="!loading && !error && items.length === 0" class="rounded-xl border border-dashed border-white/10 px-6 py-16 text-center text-slate-500">
-      {{ query ? t('catalog.noResults') : t('catalog.empty') }}
+      {{ query || Object.keys(filters).length ? t('catalog.noResults') : t('catalog.empty') }}
     </p>
 
     <CatalogGrid :items="items" :loading="loading" :kind="library?.kind ?? null" />

@@ -34,6 +34,7 @@ services:
       LOG_LEVEL: debug
     volumes:
       - ./api:/src
+      - ./VERSION:/version:ro
       - peer-go-cache:/go-cache
       - peer-api-cache:/cache
       - /media/volume2:/media:ro

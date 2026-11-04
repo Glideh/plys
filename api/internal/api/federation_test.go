@@ -20,6 +20,7 @@ type fakePeer struct {
 	priv    ed25519.PrivateKey
 	sign    func(msg []byte) []byte
 	handler http.Handler
+	version string
 	// users is returned by GET /api/v1/federation/users; tests change it to simulate users added or removed.
 	users []peerUserDTO
 }
@@ -30,11 +31,11 @@ func newFakePeer(t *testing.T) *fakePeer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := &fakePeer{id: uuid.New(), pub: pub, priv: priv}
+	p := &fakePeer{id: uuid.New(), pub: pub, priv: priv, version: Version}
 	p.sign = func(msg []byte) []byte { return ed25519.Sign(priv, msg) }
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/server", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": p.id, "name": "Peer", "publicKey": p.pub})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": p.id, "name": "Peer", "publicKey": p.pub, "version": p.version})
 	})
 	mux.HandleFunc("POST /api/v1/federation/handshake", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {

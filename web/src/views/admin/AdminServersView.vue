@@ -180,9 +180,15 @@ onMounted(() => Promise.all([load(), loadPairingCode()]))
             <div class="min-w-0">
               <p class="font-medium text-slate-100">{{ peer.name }}</p>
               <p class="truncate font-mono text-xs text-slate-500">{{ peer.url }}</p>
+              <p class="mt-1 text-xs" :class="peer.status === 'compatible' ? 'text-emerald-400' : 'text-amber-400'">
+                {{ peer.version ?? t('servers.unknownVersion') }} · {{ t(`servers.status.${peer.status}`) }}
+              </p>
+              <p v-if="peer.status === 'incompatible'" class="mt-1 text-xs text-slate-400">
+                {{ t('servers.versionMismatch', { local: peer.localVersion }) }}
+              </p>
             </div>
             <div class="flex gap-2">
-              <BaseButton :loading="syncingId === peer.id" @click="sync(peer)">{{ t('servers.sync') }}</BaseButton>
+              <BaseButton :disabled="peer.status !== 'compatible'" :loading="syncingId === peer.id" @click="sync(peer)">{{ t('servers.sync') }}</BaseButton>
               <BaseButton @click="startEdit(peer)">{{ t('servers.edit') }}</BaseButton>
               <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askRemove(peer)">{{ t('servers.remove') }}</BaseButton>
             </div>

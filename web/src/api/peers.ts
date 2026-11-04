@@ -5,6 +5,10 @@ export interface Peer {
   id: string
   url: string
   name: string
+  version: string | null
+  localVersion: string
+  status: 'compatible' | 'incompatible' | 'unverified' | 'offline'
+  versionCheckedAt: string | null
 }
 
 export const peersApi = {

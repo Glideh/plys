@@ -36,6 +36,7 @@ services:
       LOG_LEVEL: debug
     volumes:
       - ./api:/src
+      - ./VERSION:/version:ro
       - go-cache:/go-cache
       - api-cache:/cache
     # Media folders are mounted under /media by compose.override.yaml (see compose.override.example.yaml).

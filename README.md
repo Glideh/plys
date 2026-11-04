@@ -156,7 +156,7 @@ Set these in `.env` when needed (complete installation):
 |---|---|---|
 | `COOKIE_SECURE` | `false` | `true` behind an HTTPS reverse proxy; keep `false` over plain http |
 | `PLYS_FEDERATION_REQUIRE_HTTPS` | `true` | Refuses paired servers whose public URL is not `https://`; set `false` only for pairing over plain http on a trusted network |
-| `PLYS_VERSION` | `latest` | Image version, e.g. `0.2.0` to stay on a release |
+| `PLYS_VERSION` | `latest` | Image version, e.g. `0.3.0` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
 
@@ -171,6 +171,20 @@ docker compose exec db pg_dump -U plys plys > plys-backup.sql   # back up the da
 Data lives in two Docker volumes: `db-data` (database) and `api-cache` (converted segments, posters; can be rebuilt). The videos are never modified.
 
 The API image is large (about 840 MB) because it ships ffmpeg and the GPU drivers. Images are published for `linux/amd64`.
+
+### Advanced filters
+
+Movie and series catalogs have an **Advanced filters** panel: include or exclude genres, select years, a minimum TMDB rating and vote count, original languages, countries, actors, directors or series creators, and TMDB keywords. Movies also support a runtime range in minutes. Countries refer to production countries for movies and countries of origin for series; original language does not describe the available audio tracks.
+
+Different criteria are combined with AND; multiple selections within a criterion use OR. Included genres can instead require every selected genre. Apply the panel to update the results, or cancel to keep the current criteria. Active criteria can be removed individually or reset, and are preserved in the page URL.
+
+Filtering uses stored metadata, without contacting TMDB on each search. On startup, previously matched titles are progressively enriched with the new fields when a TMDB key is configured; manual matches are preserved. Failed enrichment is retried at a subsequent scan or restart. Until enrichment completes, a title with missing data is excluded only when a corresponding criterion requires it. Titles without an excluded genre remain eligible. Suggestions only come from accessible titles with available media files.
+
+### Federation versions
+
+Paired servers must use the same SemVer major version. Minor, patch and prerelease differences are accepted: `0.2.0-dev` and `0.9.0` are compatible, but `0.2.0` and `1.0.0` are not. Breaking federation changes therefore require a new major version, including before 1.0.
+
+The administration **Servers** page shows each peer's version and compatibility. Incompatible, unverified or unreachable peers are excluded from federation, including unfiltered catalogs, user synchronization and remote playback access. Pairing is retained, and versions are checked again so a compatible update does not require pairing again. Missing or invalid versions cannot establish compatibility. Development servers read `VERSION` and append `-dev`; rebuild or restart the API after changing that file if hot reload has not picked it up.
 
 ## Development
 

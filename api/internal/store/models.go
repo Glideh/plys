@@ -42,6 +42,15 @@ type Item struct {
 	MatchStatus       string
 	MetadataLanguage  *string
 	MetadataUpdatedAt *time.Time
+	GenreIds          []int32
+	ActorIds          []int32
+	CreatorIds        []int32
+	KeywordIds        []int32
+	OriginalLanguage  *string
+	Countries         []string
+	VoteCount         *int32
+	FilterLabels      []byte
+	EnrichmentVersion int32
 }
 
 type Library struct {
@@ -92,6 +101,8 @@ type Peer struct {
 	PublicKey            []byte
 	CreatedAt            time.Time
 	UsersSyncAttemptedAt *time.Time
+	Version              *string
+	VersionCheckedAt     *time.Time
 }
 
 type PlaybackProgress struct {
