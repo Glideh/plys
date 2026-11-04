@@ -29,6 +29,11 @@ sed -i "0,/\"version\": \"[^\"]*\"/s//\"version\": \"$new\"/" web/package.json
 sed -i "1,10s/\"version\": \"$current\"/\"version\": \"$new\"/" web/package-lock.json
 sed -i "0,/^  version: .*/s//  version: $new/" docs/openapi.yaml
 
+# Release examples in the docs; the escaped pattern matches the dots literally.
+esc="${current//./\\.}"
+sed -i "s/\(release such as \)$esc\(, or latest\)/\1$new\2/" .env.example
+sed -i "s/\(e\.g\. \`\)$esc\(\` to stay\)/\1$new\2/" README.md
+
 gradle=android-tv/app/build.gradle.kts
 code="$(sed -n 's/^ *versionCode = \([0-9]*\)$/\1/p' "$gradle")"
 sed -i "s/versionName = \"[^\"]*\"/versionName = \"$new\"/; s/versionCode = $code\$/versionCode = $((code + 1))/" "$gradle"
