@@ -1,4 +1,15 @@
 <resources>
+    <string name="audio_stream_info">Flux audio : %1$s · canaux : %2$d</string>
+    <string name="error_subtitles">Les sous-titres sélectionnés ne sont pas disponibles. Réessayez ou choisissez une autre piste.</string>
+    <string name="version">Version</string>
+    <string name="audio">Audio</string>
+    <string name="subtitles">Sous-titres</string>
+    <string name="no_subtitles">Sans sous-titres</string>
+    <string name="cast">Acteurs</string>
+    <string name="directed_by">Réalisation : %1$s</string>
+    <string name="created_by">Création : %1$s</string>
+    <string name="no_filter">Sans filtre</string>
+    <string name="error_home_unavailable">Ce serveur ne fournit pas l’API de l’accueil. Vérifiez son adresse et mettez à jour le serveur Plys. Les catalogues restent accessibles.</string>
     <string name="title_count_pending">Titres : —</string>
     <plurals name="title_count">
         <item quantity="one">%1$d titre</item>

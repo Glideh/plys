@@ -1,4 +1,15 @@
 <resources>
+    <string name="audio_stream_info">Audio stream: %1$s · channels: %2$d</string>
+    <string name="error_subtitles">The selected subtitles could not be prepared. Try again or select another track.</string>
+    <string name="version">Version</string>
+    <string name="audio">Audio</string>
+    <string name="subtitles">Subtitles</string>
+    <string name="no_subtitles">Off</string>
+    <string name="cast">Cast</string>
+    <string name="directed_by">Directed by: %1$s</string>
+    <string name="created_by">Created by: %1$s</string>
+    <string name="no_filter">No filter</string>
+    <string name="error_home_unavailable">This server does not provide the home screen API. Check its address and update Plys Server. Catalogs remain available.</string>
     <string name="title_count_pending">Titles: —</string>
     <plurals name="title_count">
         <item quantity="one">%1$d title</item>

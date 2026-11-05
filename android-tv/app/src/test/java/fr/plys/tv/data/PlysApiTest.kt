@@ -11,6 +11,12 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import androidx.paging.PagingSource
+import fr.plys.tv.ui.withFilterSelection
+import fr.plys.tv.ui.audioClientCaps
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.int
 
 class PlysApiTest {
     private lateinit var server: MockWebServer
@@ -276,6 +282,91 @@ class PlysApiTest {
             assertNull(request.queryParameter("library"))
             assertNull(request.queryParameter("filters"))
         }
+    }
+
+    @Test fun `missing home API is explicit and does not prevent title counts`() = runBlocking {
+        login()
+        json("""{"error":"not_found"}""", 404)
+        try { api.home(); fail("Expected missing home API") }
+        catch (error: ClientException) { assertEquals(Failure.HOME_UNAVAILABLE, error.failure) }
+        assertTrue(api.signedIn)
+        assertEquals("/api/v1/me/home", server.takeRequest().path)
+        json("""{"id":"origin"}""")
+        json("""{"items":[],"total":65,"offset":0,"limit":1}""")
+        assertEquals(CatalogCount(65), api.catalogCount(CatalogKind.MOVIES))
+        server.takeRequest()
+        server.takeRequest()
+        json("""{"error":"not_found"}""", 404)
+        try { api.item("missing"); fail("Expected missing item") }
+        catch (error: ClientException) { assertEquals(Failure.NOT_FOUND, error.failure) }
+    }
+
+    @Test fun `TV filter choices contain at most one value and replace previous choices`() {
+        val first = withFilterSelection(CatalogFilters(), "genres", listOf("878", "18"))
+        assertEquals(listOf(878), first.genres)
+        assertEquals(listOf(18), withFilterSelection(first, "genres", listOf("18")).genres)
+        assertTrue(withFilterSelection(first, "genres", emptyList()).genres.isEmpty())
+        assertEquals(listOf("fr"), withFilterSelection(first, "languages", listOf("fr", "en")).languages)
+        assertEquals(listOf(10205), withFilterSelection(first, "actors", listOf("10205", "578")).actors)
+    }
+
+    @Test fun `details decode cast directors and media tracks`() = runBlocking {
+        login()
+        json("""{"id":"film","kind":"movie","title":"Alien","cast":[{"name":"Sigourney Weaver","character":"Ripley","photoUrl":null}],"directors":["Ridley Scott"],"versions":[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","default":true},{"index":7,"language":"fr"}],"subtitles":[{"index":9,"language":"fr","codec":"subrip"}]}],"children":[]}""")
+        val item = api.item("film")
+        assertEquals("Sigourney Weaver", item.cast.single().name)
+        assertEquals(listOf("Ridley Scott"), item.directors)
+        assertEquals(7, item.versions.single().audio[1].index)
+        assertEquals(9, item.versions.single().subtitles.single().index)
+    }
+
+    @Test fun `version changes discard invalid tracks and next episode preserves languages`() {
+        val item = ItemDetail("film", "movie", "Film", versions = listOf(
+            Version("first", "1080p", audio = listOf(MediaTrack(1, "en", default = true), MediaTrack(7, "fr")), subtitles = listOf(MediaTrack(9, "fr"))),
+            Version("second", "720p", audio = listOf(MediaTrack(3, "en", default = true)), subtitles = listOf(MediaTrack(5, "en"))),
+        ), children = emptyList())
+        val french = PlaybackSelection("first", 7, 9).normalized(item)
+        assertEquals(PlaybackSelection("first", 7, 9), french)
+        assertEquals(PlaybackSelection("second", 3, null), PlaybackSelection("second", 7, 9).normalized(item))
+        val next = item.copy(id = "next", versions = listOf(Version("next-version", "1080p", audio = listOf(MediaTrack(12, "en", default = true), MediaTrack(14, "fr")), subtitles = listOf(MediaTrack(17, "fr")))))
+        assertEquals(PlaybackSelection("next-version", 14, 17), french.forNext(item, next))
+        assertNull(french.copy(subtitleIndex = null).forNext(item, next).subtitleIndex)
+    }
+
+    @Test fun `playback sends the selected version audio and subtitle indices`() = runBlocking {
+        login()
+        json("""{"id":"session","playlistUrl":"/api/v1/stream/session/index.m3u8","start":60,"duration":120,"subtitleUrl":"/api/v1/stream/session/subtitles/9.vtt","burnedSubtitle":false}""", 201)
+        val session = api.start("selected-version", 60.0, audioClientCaps(listOf("h264"), listOf("aac"), listOf("ac3")), audioIndex = 7, subtitleIndex = 9)
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals("selected-version", body["versionId"]!!.jsonPrimitive.content)
+        assertEquals(7, body["audioIndex"]!!.jsonPrimitive.int)
+        assertEquals(9, body["subtitleIndex"]!!.jsonPrimitive.int)
+        assertEquals("ac3", body["caps"]!!.jsonObject["preferredAudioCodec"]!!.jsonPrimitive.content)
+        assertEquals("/api/v1/stream/session/subtitles/9.vtt", session.subtitleUrl)
+        assertFalse(session.burnedSubtitle)
+    }
+
+    @Test fun `text subtitles wait for WebVTT and reject unrelated hosts`() = runBlocking {
+        login()
+        json("", 202)
+        json("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nSubtitle fixture\n")
+        val url = api.readySubtitleUrl("/api/v1/stream/session/subtitles/9.vtt")
+        assertEquals(server.url("/api/v1/stream/session/subtitles/9.vtt").toString(), url)
+        repeat(2) { assertNull(server.takeRequest().getHeader("Authorization")) }
+        try { api.readySubtitleUrl("https://unrelated.example/subtitles.vtt"); fail("Expected origin rejection") }
+        catch (error: ClientException) { assertEquals(Failure.RESPONSE, error.failure) }
+    }
+
+    @Test fun `audio capabilities include HDMI passthrough without requiring a Dolby decoder`() {
+        val hdmi = audioClientCaps(listOf("h264"), listOf("aac"), listOf("ac3", "eac3"))
+        assertEquals(listOf("aac", "ac3", "eac3"), hdmi.audioCodecs)
+        assertEquals("ac3", hdmi.preferredAudioCodec)
+        val stereo = audioClientCaps(listOf("h264"), listOf("aac", "ac3"), emptyList())
+        assertEquals("", stereo.preferredAudioCodec)
+        val plusOnly = audioClientCaps(listOf("h264"), listOf("aac"), listOf("eac3"))
+        assertEquals("eac3", plusOnly.preferredAudioCodec)
+        val ac3Only = audioClientCaps(listOf("h264"), listOf("aac", "ac3", "eac3"), listOf("ac3"))
+        assertEquals(listOf("aac", "ac3"), ac3Only.audioCodecs)
     }
 
     private class MemoryStore : SessionStore {

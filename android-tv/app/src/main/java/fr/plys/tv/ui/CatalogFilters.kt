@@ -11,7 +11,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Checkbox
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -24,8 +39,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import fr.plys.tv.ui.PlysButton as Button
@@ -56,13 +74,13 @@ fun filterSelection(filters: CatalogFilters, key: String): List<String> = when (
 }
 
 fun withFilterSelection(filters: CatalogFilters, key: String, values: List<String>): CatalogFilters = when (key) {
-    "genres" -> filters.copy(genres = values.mapNotNull(String::toIntOrNull))
-    "excludeGenres" -> filters.copy(excludeGenres = values.mapNotNull(String::toIntOrNull))
-    "actors" -> filters.copy(actors = values.mapNotNull(String::toIntOrNull))
-    "creators" -> filters.copy(creators = values.mapNotNull(String::toIntOrNull))
-    "keywords" -> filters.copy(keywords = values.mapNotNull(String::toIntOrNull))
-    "languages" -> filters.copy(languages = values)
-    "countries" -> filters.copy(countries = values)
+    "genres" -> filters.copy(genres = values.take(1).mapNotNull(String::toIntOrNull), genreMode = "any")
+    "excludeGenres" -> filters.copy(excludeGenres = values.take(1).mapNotNull(String::toIntOrNull))
+    "actors" -> filters.copy(actors = values.take(1).mapNotNull(String::toIntOrNull))
+    "creators" -> filters.copy(creators = values.take(1).mapNotNull(String::toIntOrNull))
+    "keywords" -> filters.copy(keywords = values.take(1).mapNotNull(String::toIntOrNull))
+    "languages" -> filters.copy(languages = values.take(1))
+    "countries" -> filters.copy(countries = values.take(1))
     else -> filters
 }
 
@@ -87,6 +105,8 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
 fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
     var search by remember(screen.query.kind, screen.query.libraryId) { mutableStateOf(screen.query.query) }
     var dialog by remember { mutableStateOf("") }
+    val searchLabel = stringResource(R.string.search)
+    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(search) {
         if (search != screen.query.query) {
             delay(350)
@@ -94,8 +114,24 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         }
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(search, { search = it }, Modifier.weight(1f), singleLine = true,
-            label = { androidx.compose.material3.Text(stringResource(R.string.search)) })
+        BasicTextField(search, { search = it },
+            modifier = Modifier.weight(1f).height(40.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 12.dp).semantics { contentDescription = searchLabel },
+            singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+            decorationBox = { input ->
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.weight(1f)) {
+                        if (search.isEmpty()) Text(searchLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        input()
+                    }
+                }
+            },
+        )
         Button(onClick = { dialog = "library" }) {
             Text(libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries))
         }
@@ -142,7 +178,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
 }
 
 @Composable
-private fun ChoiceDialog(title: String, dismiss: () -> Unit, entries: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
+fun ChoiceDialog(title: String, dismiss: () -> Unit, entries: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     Dialog(onDismissRequest = dismiss) {
         Surface(color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.widthIn(max = 700.dp).fillMaxWidth().heightIn(max = 460.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -156,9 +192,10 @@ private fun ChoiceDialog(title: String, dismiss: () -> Unit, entries: androidx.c
 
 @Composable
 private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit, apply: (CatalogFilters) -> Unit) {
-    var draft by remember { mutableStateOf(query.filters) }
+    var draft by remember { mutableStateOf(categories.fold(query.filters) { filters, key -> withFilterSelection(filters, key, filterSelection(filters, key)) }) }
     var numeric by remember { mutableStateOf(numericFilterValues(query.filters)) }
     var picker by remember { mutableStateOf<String?>(null) }
+    var editingNumber by remember { mutableStateOf<String?>(null) }
     var invalid by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = dismiss) {
         Surface(color = MaterialTheme.colorScheme.surface) {
@@ -167,18 +204,15 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(categories) { category ->
                         Button(onClick = { picker = category }, modifier = Modifier.fillMaxWidth()) {
-                            Text("${filterLabel(category, query.kind)} (${filterSelection(draft, category).size})")
-                        }
-                    }
-                    item {
-                        Button(onClick = { draft = draft.copy(genreMode = if (draft.genreMode == "all") "any" else "all") }) {
-                            Text(stringResource(if (draft.genreMode == "all") R.string.genres_all else R.string.genres_any))
+                            val selected = filterSelection(draft, category).firstOrNull()
+                            val value = selected?.let { api.filterOptionLabel(if (category == "excludeGenres") "genres" else category, it) } ?: stringResource(R.string.no_filter)
+                            Text("${filterLabel(category, query.kind)} : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
                     items(numbers.filter { query.kind == CatalogKind.MOVIES || !it.startsWith("runtime") }) { key ->
-                        OutlinedTextField(numeric[key].orEmpty(), { numeric = numeric + (key to it); invalid = false }, Modifier.fillMaxWidth(),
-                            label = { androidx.compose.material3.Text(filterLabel(key, query.kind)) }, singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = if (key == "ratingMin") KeyboardType.Decimal else KeyboardType.Number))
+                        Button(onClick = { editingNumber = key }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${filterLabel(key, query.kind)} : ${numeric[key]?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_filter)}")
+                        }
                     }
                 }
                 if (invalid) Text(stringResource(R.string.invalid_filters), color = MaterialTheme.colorScheme.error)
@@ -200,6 +234,35 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     picker?.let { key ->
         FilterPickerDialog(query, key, draft, api, { picker = null }) { draft = withFilterSelection(draft, key, it); picker = null }
     }
+    editingNumber?.let { key ->
+        FilterInputDialog(filterLabel(key, query.kind), numeric[key].orEmpty(), if (key == "ratingMin") KeyboardType.Decimal else KeyboardType.Number,
+            dismiss = { editingNumber = null },
+            apply = { numeric = numeric + (key to it); invalid = false; editingNumber = null },
+        )
+    }
+}
+
+@Composable
+private fun FilterInputDialog(title: String, initial: String, keyboardType: KeyboardType, dismiss: () -> Unit, apply: (String) -> Unit) {
+    var value by remember { mutableStateOf(initial) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val close = { keyboard?.hide(); dismiss() }
+    val save = { keyboard?.hide(); apply(value) }
+    Dialog(onDismissRequest = close) {
+        Surface(color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(value, { value = it }, Modifier.fillMaxWidth().focusInitially(), singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { save() }),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Action(R.string.cancel, onClick = close)
+                    Action(R.string.apply, onClick = save)
+                }
+            }
+        }
+    }
 }
 
 private fun numericFilterValues(filters: CatalogFilters): Map<String, String> = mapOf(
@@ -219,7 +282,8 @@ private fun withoutBound(filters: CatalogFilters, key: String): CatalogFilters =
 @Composable
 private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: CatalogFilters, api: PlysApi, dismiss: () -> Unit, apply: (List<String>) -> Unit) {
     var search by remember { mutableStateOf("") }
-    var selected by remember { mutableStateOf(filterSelection(draft, category)) }
+    val selected = remember { filterSelection(draft, category).take(1) }
+    var editingSearch by remember { mutableStateOf(false) }
     var options by remember { mutableStateOf(emptyList<FilterOption>()) }
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -238,26 +302,31 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
         Surface(color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.widthIn(max = 700.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(filterLabel(category, query.kind), style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth().focusInitially(), singleLine = true,
-                    label = { androidx.compose.material3.Text(stringResource(R.string.search)) })
+                Button(onClick = { editingSearch = true }, modifier = Modifier.fillMaxWidth().focusInitially()) {
+                    Text(if (search.isBlank()) stringResource(R.string.search) else search, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 if (loading) Text(stringResource(R.string.loading))
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        Button(onClick = { apply(emptyList()) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.no_filter)) }
+                    }
                     if (!loading && options.isEmpty()) item { Text(stringResource(R.string.empty)) }
                     items(options, key = { it.id }) { option ->
-                        Button(onClick = { selected = if (option.id in selected) selected - option.id else selected + option.id },
-                            enabled = option.id !in excluded && (option.id in selected || selected.size < 20), modifier = Modifier.fillMaxWidth()) {
-                            Checkbox(checked = option.id in selected, onCheckedChange = null)
+                        Button(onClick = { apply(listOf(option.id)) },
+                            enabled = option.id !in excluded, modifier = Modifier.fillMaxWidth()) {
+                            RadioButton(selected = option.id in selected, onClick = null)
                             Text(option.label, modifier = Modifier.weight(1f))
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Action(R.string.reset) { selected = emptyList() }
                     Action(R.string.cancel, onClick = dismiss)
-                    Action(R.string.apply) { apply(selected) }
                 }
             }
         }
     }
+    if (editingSearch) FilterInputDialog(stringResource(R.string.search), search, KeyboardType.Text,
+        dismiss = { editingSearch = false }, apply = { search = it; editingSearch = false },
+    )
 }

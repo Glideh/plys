@@ -3,11 +3,13 @@ package fr.plys.tv.ui
 import android.app.Application
 import android.widget.Toast
 import androidx.media3.common.MediaItem
+import androidx.media3.common.C
+import android.net.Uri
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import fr.plys.tv.R
@@ -16,6 +18,7 @@ import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlaybackSession
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,7 @@ data class PlayerState(
     val paused: Boolean = false,
     val ended: Boolean = false,
     val error: String? = null,
+    val audioInfo: String? = null,
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -44,14 +48,16 @@ class PlayerController(
     item: ItemDetail,
     initialPosition: Double,
     private val source: ServerRef? = null,
+    initialSelection: PlaybackSelection = PlaybackSelection(),
 ) {
+    private var selection = initialSelection.normalized(item)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val player = ExoPlayer.Builder(application).build().apply {
-        setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
+        setAudioAttributes(playbackAudioAttributes(), true)
         setHandleAudioBecomingNoisy(true)
     }
     private val mutableState = MutableStateFlow(PlayerState(
-        item, initialPosition, item.playableVersion?.durationSeconds ?: 0.0,
+        item, initialPosition, selection.version(item)?.durationSeconds ?: 0.0,
     ))
     val state = mutableState.asStateFlow()
     private var session: PlaybackSession? = null
@@ -61,7 +67,6 @@ class PlayerController(
     private var disposing = false
     private var ready = false
     private var lastReported = -1.0
-    private val caps by lazy { deviceCaps() }
 
     init {
         player.addListener(object : Player.Listener {
@@ -69,7 +74,15 @@ class PlayerController(
                 when (playbackState) {
                     Player.STATE_READY -> {
                         ready = true
-                        mutableState.value = mutableState.value.copy(loading = false)
+                        val format = player.audioFormat
+                        val codec = when (format?.sampleMimeType) {
+                            MimeTypes.AUDIO_AAC -> "AAC"
+                            MimeTypes.AUDIO_AC3 -> "AC-3"
+                            MimeTypes.AUDIO_E_AC3 -> "E-AC-3"
+                            else -> format?.sampleMimeType?.removePrefix("audio/")?.uppercase()
+                        }
+                        val info = if (codec != null && format != null && format.channelCount > 0) application.getString(R.string.audio_stream_info, codec, format.channelCount) else null
+                        mutableState.value = mutableState.value.copy(loading = false, audioInfo = info)
                     }
                     Player.STATE_ENDED -> {
                         val duration = if (mutableState.value.duration > 0) mutableState.value.duration
@@ -162,6 +175,7 @@ class PlayerController(
                     attempt(notify = true) { report(ended = mutableState.value.ended) }
                     stopSession()
                     val nextItem = api.item(next.id, source)
+                    selection = selection.forNext(mutableState.value.item, nextItem)
                     mutableState.value = PlayerState(
                         nextItem, next.positionSeconds, nextItem.playableVersion?.durationSeconds ?: 0.0,
                     )
@@ -206,9 +220,10 @@ class PlayerController(
     }
 
     private suspend fun openSession(position: Double) {
-        val version = mutableState.value.item.playableVersion
+        selection = selection.normalized(mutableState.value.item)
+        val version = selection.version(mutableState.value.item)
             ?: throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
-        val opened = api.start(version.id, position, caps, source)
+        val opened = api.start(version.id, position, deviceCaps(application), source, selection.audioIndex, selection.subtitleIndex)
         player.clearMediaItems()
         session = opened
         ready = false
@@ -222,14 +237,21 @@ class PlayerController(
         val item = MediaItem.Builder()
             .setUri(api.mediaUrl(opened.playlistUrl, source))
             .setMimeType(MimeTypes.APPLICATION_M3U8)
-            .build()
-        val source = HlsMediaSource.Factory(DefaultHttpDataSource.Factory()
+        if (opened.subtitleUrl != null && !opened.burnedSubtitle) {
+            val url = api.readySubtitleUrl(opened.subtitleUrl, source)
+            val track = version.subtitles.firstOrNull { it.index == selection.subtitleIndex }
+            item.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
+                .setMimeType(MimeTypes.TEXT_VTT).setLanguage(track?.language?.takeIf { it.isNotBlank() })
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
+        }
+        if (!foreground || closing || disposing) { stopSession(); return }
+        val mediaSource = DefaultMediaSourceFactory(DefaultHttpDataSource.Factory()
             .setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000))
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(6))
-            .createMediaSource(item)
+            .createMediaSource(item.build())
         // HLS is an EVENT playlist and only contains the portion starting at session.start.
         // Always seek by opening a server session, not by seeking into unproduced HLS segments.
-        player.setMediaSource(source, ((position - opened.start).coerceAtLeast(0.0) * 1000).toLong())
+        player.setMediaSource(mediaSource, ((position - opened.start).coerceAtLeast(0.0) * 1000).toLong())
         player.prepare()
         player.playWhenReady = !mutableState.value.paused
     }

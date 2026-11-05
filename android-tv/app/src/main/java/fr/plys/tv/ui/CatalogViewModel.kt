@@ -19,6 +19,7 @@ import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,7 @@ sealed interface Screen {
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
-    data class Detail(val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList()) : Screen
+    data class Detail(val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList(), val selection: PlaybackSelection = PlaybackSelection()) : Screen
 }
 
 data class CatalogState(
@@ -46,6 +47,7 @@ data class CatalogState(
     val playback: ItemDetail? = null,
     val playbackPosition: Double = 0.0,
     val playbackSource: ServerRef? = null,
+    val playbackSelection: PlaybackSelection = PlaybackSelection(),
     val libraries: List<Library> = emptyList(),
     val catalogCounts: Map<CatalogKind, CatalogCount> = emptyMap(),
 )
@@ -100,7 +102,14 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private suspend fun loadHome() {
         countsJob?.cancel()
         mutableState.value = mutableState.value.copy(libraries = api.libraries())
-        mutableState.value = mutableState.value.copy(screen = Screen.Home(api.home()), catalogCounts = emptyMap())
+        mutableState.value = mutableState.value.copy(screen = Screen.Home(HomeResponse()), catalogCounts = emptyMap())
+        try {
+            mutableState.value = mutableState.value.copy(screen = Screen.Home(api.home()))
+        } catch (error: ClientException) {
+            if (!api.signedIn) throw error
+            mutableState.value = mutableState.value.copy(error = error, canRetry = true)
+            retryAction = { loadHome() }
+        }
         refreshCatalogCounts()
     }
 
@@ -171,13 +180,19 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
-        mutableState.value = mutableState.value.copy(screen = screen.copy(item = api.item(source.itemId, source), source = source))
+        mutableState.value = mutableState.value.copy(screen = screen.copy(item = api.item(source.itemId, source), source = source, selection = PlaybackSelection()))
+    }
+
+    fun selectPlayback(selection: PlaybackSelection) {
+        val screen = mutableState.value.screen as? Screen.Detail ?: return
+        mutableState.value = mutableState.value.copy(screen = screen.copy(selection = selection.normalized(screen.item)))
     }
 
     fun play(item: ItemDetail, restart: Boolean = false) = perform {
         val target = item.playTarget
         val source = (mutableState.value.screen as? Screen.Detail)?.source
         val playable = if (target != null) api.item(target.id, source) else item
+        val selection = (mutableState.value.screen as? Screen.Detail)?.selection ?: PlaybackSelection()
         if (playable.playableVersion == null) {
             throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
         }
@@ -185,6 +200,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
             playback = playable,
             playbackPosition = if (restart) 0.0 else target?.positionSeconds ?: playable.positionSeconds,
             playbackSource = source,
+            playbackSelection = if (playable.id == item.id) selection.normalized(playable) else selection.forNext(item, playable),
         )
     }
 
@@ -207,7 +223,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         perform {
             val refreshed = when (screen) {
                 Screen.Login -> screen
-                is Screen.Home -> Screen.Home(api.home()).also { refreshCatalogCounts() }
+                is Screen.Home -> { loadHome(); mutableState.value.screen }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
                 is Screen.Catalog -> screen
                 is Screen.Detail -> screen.copy(item = api.item(screen.item.id, screen.source))

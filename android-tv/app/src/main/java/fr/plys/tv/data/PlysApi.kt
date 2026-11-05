@@ -4,6 +4,8 @@ import java.io.IOException
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -23,7 +25,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, NOT_FOUND, STORAGE, RESPONSE, SERVER }
+enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
 
 class ClientException(val failure: Failure, val status: Int = 0, cause: Throwable? = null) :
     Exception(failure.name, cause)
@@ -111,7 +113,13 @@ class PlysApi(
         decode(request("libraries/$libraryId/items?sort=title&offset=$offset&limit=40"))
     }
 
-    suspend fun home(): HomeResponse = locked { decode(request("me/home")) }
+    suspend fun home(): HomeResponse = locked {
+        try { decode(request("me/home")) }
+        catch (error: ClientException) {
+            if (error.status == 404) throw ClientException(Failure.HOME_UNAVAILABLE, error.status, error)
+            throw error
+        }
+    }
 
     suspend fun catalogCount(kind: CatalogKind): CatalogCount {
         val page = catalog(CatalogQuery(kind), limit = 1)
@@ -145,8 +153,8 @@ class PlysApi(
 
     suspend fun item(id: String, source: ServerRef? = null): ItemDetail = locked { decode(sourceRequest(source, "items/$id")) }
 
-    suspend fun start(versionId: String, position: Double, caps: ClientCaps, source: ServerRef? = null): PlaybackSession = locked {
-        decode(sourceRequest(source, "playback/sessions", "POST", json.encodeToString(PlaybackRequest(versionId, position, caps))))
+    suspend fun start(versionId: String, position: Double, caps: ClientCaps, source: ServerRef? = null, audioIndex: Int? = null, subtitleIndex: Int? = null): PlaybackSession = locked {
+        decode(sourceRequest(source, "playback/sessions", "POST", json.encodeToString(PlaybackRequest(versionId, position, caps, audioIndex, subtitleIndex))))
     }
 
     suspend fun stop(id: String, source: ServerRef? = null) = locked {
@@ -179,6 +187,27 @@ class PlysApi(
         val absolute = path.toHttpUrlOrNull()
         if (absolute != null && absolute.username.isEmpty() && absolute.password.isEmpty()) return absolute.toString()
         return mediaUrl(path)
+    }
+
+    suspend fun readySubtitleUrl(path: String, source: ServerRef? = null): String {
+        val url = mediaUrl(path, source)
+        val ready = withTimeoutOrNull(60_000) {
+            var available = false
+            while (!available) {
+                val (status, body) = execute(Request.Builder().url(url).build())
+                when (status) {
+                    200 -> {
+                        if (!body.trimStart().startsWith("WEBVTT")) throw ClientException(Failure.SUBTITLES, status)
+                        available = true
+                    }
+                    202 -> delay(500)
+                    else -> throw ClientException(Failure.SUBTITLES, status)
+                }
+            }
+            true
+        }
+        if (ready != true) throw ClientException(Failure.SUBTITLES)
+        return url
     }
 
     private suspend fun sourceRequest(source: ServerRef?, path: String, method: String = "GET", body: String? = null, retried: Boolean = false): String {

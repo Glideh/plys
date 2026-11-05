@@ -101,7 +101,41 @@ data class ServerInfo(val id: String)
 data class FederatedToken(val token: String, val expiresAt: String)
 
 @Serializable
-data class Version(val id: String, val label: String, val durationSeconds: Double? = null, val error: String? = null)
+data class Version(
+    val id: String, val label: String, val durationSeconds: Double? = null, val error: String? = null,
+    val audio: List<MediaTrack> = emptyList(), val subtitles: List<MediaTrack> = emptyList(),
+)
+
+@Serializable
+data class MediaTrack(
+    val index: Int, val language: String = "", val title: String = "", val codec: String = "",
+    val channels: Int = 0, val default: Boolean = false, val forced: Boolean = false, val imageBased: Boolean = false,
+)
+
+@Serializable
+data class CastMember(val name: String, val character: String = "", val photoUrl: String? = null)
+
+data class PlaybackSelection(val versionId: String? = null, val audioIndex: Int? = null, val subtitleIndex: Int? = null) {
+    fun version(item: ItemDetail): Version? = item.versions.firstOrNull { it.id == versionId && it.error == null } ?: item.playableVersion
+
+    fun normalized(item: ItemDetail): PlaybackSelection {
+        val selected = version(item) ?: return PlaybackSelection()
+        val audio = selected.audio.firstOrNull { it.index == audioIndex }
+            ?: selected.audio.firstOrNull { it.default } ?: selected.audio.firstOrNull()
+        return PlaybackSelection(selected.id, audio?.index, subtitleIndex?.takeIf { index -> selected.subtitles.any { it.index == index } })
+    }
+
+    fun forNext(previous: ItemDetail, next: ItemDetail): PlaybackSelection {
+        val current = version(previous)
+        val selected = next.playableVersion ?: return PlaybackSelection()
+        val audioLanguage = current?.audio?.firstOrNull { it.index == audioIndex }?.language?.takeIf { it.isNotBlank() }
+        val subtitleLanguage = current?.subtitles?.firstOrNull { it.index == subtitleIndex }?.language?.takeIf { it.isNotBlank() }
+        return PlaybackSelection(selected.id,
+            selected.audio.firstOrNull { audioLanguage != null && it.language == audioLanguage }?.index,
+            selected.subtitles.firstOrNull { subtitleLanguage != null && it.language == subtitleLanguage }?.index,
+        ).normalized(next)
+    }
+}
 
 @Serializable
 data class ChildItem(
@@ -133,6 +167,8 @@ data class ItemDetail(
     val watched: Boolean = false,
     val playTarget: PlayTarget? = null,
     val next: PlayTarget? = null,
+    val cast: List<CastMember> = emptyList(),
+    val directors: List<String> = emptyList(),
 ) {
     val playableVersion: Version? get() = versions.firstOrNull { it.error == null }
 }
@@ -143,13 +179,17 @@ data class ClientCaps(
     val audioCodecs: List<String>,
     val hdr: Boolean = false,
     val maxHeight: Int = 1080,
+    val preferredAudioCodec: String = "",
 )
 
 @Serializable
-data class PlaybackRequest(val versionId: String, val start: Double, val caps: ClientCaps)
+data class PlaybackRequest(val versionId: String, val start: Double, val caps: ClientCaps, val audioIndex: Int? = null, val subtitleIndex: Int? = null)
 
 @Serializable
-data class PlaybackSession(val id: String, val playlistUrl: String, val start: Double, val duration: Double)
+data class PlaybackSession(
+    val id: String, val playlistUrl: String, val start: Double, val duration: Double,
+    val subtitleUrl: String? = null, val burnedSubtitle: Boolean = false,
+)
 
 @Serializable
 data class ProgressRequest(val positionSeconds: Double, val durationSeconds: Double)

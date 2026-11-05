@@ -62,7 +62,9 @@ import fr.plys.tv.data.ServerRef
 @Composable
 fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier = Modifier) {
     BackHandler(model.canGoBack || state.loading) { model.back() }
-    Column(modifier.padding(horizontal = 48.dp, vertical = 24.dp)) {
+    val compact = state.screen is Screen.Catalog || state.screen is Screen.Detail
+    Column(modifier.padding(horizontal = 48.dp, vertical = if (compact) 12.dp else 24.dp)) {
+        if (!compact) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Plys TV", modifier = Modifier.weight(1f))
             if (state.screen != Screen.Login && state.screen !is Screen.Home) Action(R.string.home) { model.home() }
@@ -70,6 +72,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
             if (state.screen != Screen.Login) Action(R.string.sign_out, !state.loading) { model.logout() }
         }
         Spacer(Modifier.height(16.dp))
+        }
         state.error?.let {
             Text(LocalContext.current.errorMessage(it), color = androidx.tv.material3.MaterialTheme.colorScheme.error)
             if (state.canRetry) Action(R.string.retry, !state.loading) { model.retry() }
@@ -102,7 +105,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                     }
                 }
                 is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
-                is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { Detail(screen.item, model, screen.source, screen.sources) }
+                is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { Detail(screen.item, model, screen.source, screen.sources, screen.selection) }
             }
         }
     }
@@ -136,7 +139,7 @@ private fun Login(model: CatalogViewModel, loading: Boolean) {
 }
 
 @Composable
-private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?, sources: List<ServerRef>) {
+private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?, sources: List<ServerRef>, selection: fr.plys.tv.data.PlaybackSelection) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -150,6 +153,7 @@ private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?
                     }
                     if (item.watched) Text(stringResource(R.string.watched))
                     item.overview?.let { Text(it, maxLines = 5, overflow = TextOverflow.Ellipsis) }
+                    PlaybackSelectionControls(item, selection, model::selectPlayback)
                     if (item.playableVersion != null || item.playTarget != null) {
                         val position = item.playTarget?.positionSeconds ?: item.positionSeconds
                         Button(onClick = { model.play(item) }, modifier = Modifier.focusInitially()) {
@@ -161,6 +165,11 @@ private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?
                     } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable))
                 }
             }
+        }
+        if (item.cast.isNotEmpty()) item { CastRow(item.cast, model.api, source) }
+        if (item.directors.isNotEmpty()) item {
+            Text(stringResource(if (item.kind == "series") R.string.created_by else R.string.directed_by, item.directors.joinToString(", ")),
+                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant)
         }
         items(item.children, key = { it.id }) { child ->
             Button(

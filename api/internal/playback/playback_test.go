@@ -40,6 +40,15 @@ func TestDecide(t *testing.T) {
 		{"image subtitles burned in", Source{Video: h264, Audio: aac, Subtitle: pgs}, browser, Plan{CopyAudio: true, BurnSubtitle: true, Width: 1920, Height: 800}},
 		{"client height limit", Source{Video: h264, Audio: aac}, ClientCaps{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac"}, MaxHeight: 720}, Plan{CopyAudio: true, Width: 1728, Height: 720}},
 		{"FLAC when the client cannot decode AAC", Source{Video: h264, Audio: eac3}, ClientCaps{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"flac"}}, Plan{CopyVideo: true, AudioChannels: 6, AudioCodec: "flac"}},
+		{"Dolby passthrough remains copied", Source{Audio: eac3}, ClientCaps{AudioCodecs: []string{"aac", "eac3"}, PreferredAudioCodec: "ac3"}, Plan{CopyAudio: true}},
+		{"DTS 5.1 converted to HDMI AC3", Source{Audio: &scanner.Stream{Codec: "dts", Channels: 6}}, ClientCaps{AudioCodecs: []string{"aac", "ac3"}, PreferredAudioCodec: "ac3"}, Plan{AudioChannels: 6, AudioCodec: "ac3"}},
+		{"DTS 5.1 converted to HDMI EAC3", Source{Audio: &scanner.Stream{Codec: "dts", Channels: 6}}, ClientCaps{AudioCodecs: []string{"aac", "eac3"}, PreferredAudioCodec: "eac3"}, Plan{AudioChannels: 6, AudioCodec: "eac3"}},
+		{"AAC 5.1 converted for direct HDMI output", Source{Audio: &scanner.Stream{Codec: "aac", Channels: 6}}, ClientCaps{AudioCodecs: []string{"aac", "ac3"}, PreferredAudioCodec: "ac3"}, Plan{AudioChannels: 6, AudioCodec: "ac3"}},
+		{"stereo AAC stays copied", Source{Audio: aac}, ClientCaps{AudioCodecs: []string{"aac", "ac3"}, PreferredAudioCodec: "ac3"}, Plan{CopyAudio: true}},
+		{"7.1 transcode remains capped at six channels", Source{Audio: &scanner.Stream{Codec: "truehd", Channels: 8}}, ClientCaps{AudioCodecs: []string{"aac", "ac3"}, PreferredAudioCodec: "ac3"}, Plan{AudioChannels: 6, AudioCodec: "ac3"}},
+		{"stereo stays AAC when transcoding", Source{Audio: &scanner.Stream{Codec: "dts", Channels: 2}}, ClientCaps{AudioCodecs: []string{"aac", "ac3"}, PreferredAudioCodec: "ac3"}, Plan{AudioChannels: 2}},
+		{"unsupported preference ignored", Source{Audio: &scanner.Stream{Codec: "dts", Channels: 6}}, ClientCaps{AudioCodecs: []string{"aac"}, PreferredAudioCodec: "ac3"}, Plan{AudioChannels: 6}},
+		{"unrecognized preference ignored", Source{Audio: &scanner.Stream{Codec: "dts", Channels: 6}}, ClientCaps{AudioCodecs: []string{"aac"}, PreferredAudioCodec: "unexpected"}, Plan{AudioChannels: 6}},
 	}
 	for _, c := range cases {
 		if got := Decide(c.src, c.caps); got != c.want {
@@ -48,6 +57,46 @@ func TestDecide(t *testing.T) {
 	}
 	if w, h := outputSize(3840, 1600, 0); w != 2592 || h != 1080 {
 		t.Errorf("scope 4K must scale to 2592x1080, got %dx%d", w, h)
+	}
+}
+
+func TestDolbyTranscodingPreservesSixChannels(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	input := filepath.Join(t.TempDir(), "surround.flac")
+	if output, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=5.1", "-t", "0.5", "-c:a", "flac", input).CombinedOutput(); err != nil {
+		t.Fatalf("generate surround input: %v %s", err, output)
+	}
+	for _, codec := range []string{"ac3", "eac3"} {
+		t.Run(codec, func(t *testing.T) {
+			source := probe(t, input)
+			plan := Decide(source, ClientCaps{AudioCodecs: []string{"aac", "flac", codec}, PreferredAudioCodec: codec})
+			if plan.CopyAudio || plan.AudioChannels != 6 || plan.AudioCodec != codec {
+				t.Fatalf("plan: %+v", plan)
+			}
+			directory := t.TempDir()
+			if output, err := exec.Command(ffmpeg, Args(plan, source, 0, Encoder{Accel: AccelNone}, directory)...).CombinedOutput(); err != nil {
+				t.Fatalf("transcode surround: %v %s", err, output)
+			}
+			init, err := os.ReadFile(filepath.Join(directory, "init.mp4"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			segment, err := os.ReadFile(filepath.Join(directory, "seg_00000.m4s"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			combined := filepath.Join(t.TempDir(), "audio.mp4")
+			if err := os.WriteFile(combined, append(init, segment...), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			output := probe(t, combined)
+			if output.Audio == nil || output.Audio.Codec != codec || output.Audio.Channels != 6 {
+				t.Fatalf("output audio: %+v", output.Audio)
+			}
+		})
 	}
 }
 

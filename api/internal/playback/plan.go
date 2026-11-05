@@ -28,10 +28,11 @@ const (
 
 // ClientCaps lists what the client can decode, as reported by the browser (MediaSource) or the mobile app.
 type ClientCaps struct {
-	VideoCodecs []string `json:"videoCodecs"`
-	AudioCodecs []string `json:"audioCodecs"`
-	HDR         bool     `json:"hdr"`
-	MaxHeight   int      `json:"maxHeight"`
+	VideoCodecs         []string `json:"videoCodecs"`
+	AudioCodecs         []string `json:"audioCodecs"`
+	HDR                 bool     `json:"hdr"`
+	MaxHeight           int      `json:"maxHeight"`
+	PreferredAudioCodec string   `json:"preferredAudioCodec,omitempty"`
 }
 
 // Video codecs that fit in fMP4 HLS segments and can therefore be copied.
@@ -90,11 +91,14 @@ func Decide(src Source, caps ClientCaps) Plan {
 		}
 	}
 	if a := src.Audio; a != nil {
-		p.CopyAudio = slices.Contains(copyableAudio, a.Codec) && slices.Contains(caps.AudioCodecs, a.Codec)
+		preferSurround := a.Channels > 2 && slices.Contains([]string{"ac3", "eac3"}, caps.PreferredAudioCodec) && slices.Contains(caps.AudioCodecs, caps.PreferredAudioCodec)
+		p.CopyAudio = slices.Contains(copyableAudio, a.Codec) && slices.Contains(caps.AudioCodecs, a.Codec) &&
+			(!preferSurround || a.Codec == "ac3" || a.Codec == "eac3")
 		if !p.CopyAudio {
 			p.AudioChannels = min(max(a.Channels, 2), 6)
-			// Some embedded browsers report AAC support but cannot decode it, while FLAC always works.
-			if !slices.Contains(caps.AudioCodecs, "aac") && slices.Contains(caps.AudioCodecs, "flac") {
+			if preferSurround {
+				p.AudioCodec = caps.PreferredAudioCodec
+			} else if !slices.Contains(caps.AudioCodecs, "aac") && slices.Contains(caps.AudioCodecs, "flac") {
 				p.AudioCodec = "flac"
 			}
 		}
@@ -177,6 +181,8 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 		args = append(args, "-map", fmt.Sprintf("0:%d", src.Audio.Index))
 		if p.CopyAudio {
 			args = append(args, "-c:a", "copy")
+		} else if p.AudioCodec == "ac3" || p.AudioCodec == "eac3" {
+			args = append(args, "-c:a", p.AudioCodec, "-b:a", "640k", "-ac", strconv.Itoa(p.AudioChannels))
 		} else if p.AudioCodec == "flac" {
 			args = append(args, "-c:a", "flac", "-ac", strconv.Itoa(p.AudioChannels))
 		} else {

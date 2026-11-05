@@ -22,7 +22,7 @@ class MainActivity : ComponentActivity() {
                     val state by model.state.collectAsStateWithLifecycle()
                     val item = state.playback
                     if (item != null) {
-                        PlaybackScreen(item, state.playbackPosition, model.api, model::closePlayer, state.playbackSource)
+                        PlaybackScreen(item, state.playbackPosition, model.api, model::closePlayer, state.playbackSource, state.playbackSelection)
                     } else {
                         CatalogApp(model, state, Modifier.fillMaxSize())
                     }

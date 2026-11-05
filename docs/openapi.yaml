@@ -1054,11 +1054,16 @@ components:
         versionCheckedAt: { type: [string, "null"], format: date-time }
     ClientCaps:
       type: object
-      description: What the client can decode; the server transcodes the rest.
+      description: What the client can decode or output directly; the server transcodes the rest.
       required: [videoCodecs, audioCodecs]
       properties:
         videoCodecs: { type: array, items: { type: string, enum: [h264, hevc, av1] } }
         audioCodecs: { type: array, items: { type: string, enum: [aac, mp3, opus, flac, ac3, eac3, alac] } }
+        preferredAudioCodec:
+          type: string
+          enum: ["", ac3, eac3]
+          default: ""
+          description: Preferred direct-output codec for multichannel audio. Must be in audioCodecs. Supported Dolby streams remain copied; other multichannel formats are converted to this codec, capped at six channels. Empty preserves the default policy.
         hdr: { type: boolean, default: false, description: The display can show HDR; otherwise HDR video is tone mapped }
         maxHeight: { type: integer, default: 0, description: "Largest picture height the client accepts, 0 for no limit (transcoding is capped at 1080)" }
     PlaybackSession:

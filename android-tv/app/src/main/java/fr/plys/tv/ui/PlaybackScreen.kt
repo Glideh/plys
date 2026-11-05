@@ -18,6 +18,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,11 +33,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.CaptionStyleCompat
+import androidx.core.content.res.ResourcesCompat
 import fr.plys.tv.ui.PlysButton as Button
 import androidx.tv.material3.Text
 import fr.plys.tv.MainActivity
@@ -45,15 +49,16 @@ import fr.plys.tv.R
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.delay
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onClosed: () -> Unit, source: ServerRef? = null) {
+fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onClosed: () -> Unit, source: ServerRef? = null, selection: PlaybackSelection = PlaybackSelection()) {
     val context = LocalContext.current
     val activity = context as MainActivity
-    val model = remember(source?.serverId, item.id) {
-        PlayerController(context.applicationContext as PlysApplication, api, item, initialPosition, source)
+    val model = remember(source?.serverId, item.id, selection) {
+        PlayerController(context.applicationContext as PlysApplication, api, item, initialPosition, source, selection)
     }
     DisposableEffect(model) { onDispose { model.dispose() } }
     val state by model.state.collectAsStateWithLifecycle()
@@ -75,6 +80,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
         }
     }
     var showControls by remember { mutableStateOf(true) }
+    var controlsHeight by remember { mutableIntStateOf(0) }
     var interaction by remember { mutableStateOf(0) }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
@@ -124,15 +130,24 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 player = model.player
                 useController = false
                 isFocusable = false
+                subtitleView?.setStyle(CaptionStyleCompat(android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT,
+                    android.graphics.Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK,
+                    ResourcesCompat.getFont(it, R.font.nunito)))
             } },
-            update = { it.player = model.player },
+            update = {
+                it.player = model.player
+                it.subtitleView?.setPadding(0, 0, 0, if (visible) controlsHeight else 0)
+                it.subtitleView?.setBottomPaddingFraction(0.08f)
+            },
             modifier = Modifier.fillMaxSize(),
         )
         if (visible) Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(androidx.tv.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { controlsHeight = it.height }
+                .background(androidx.tv.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(state.item.title)
+            state.audioInfo?.let { Text(it, style = androidx.tv.material3.MaterialTheme.typography.bodySmall, color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant) }
             Text("${clock(state.position)} / ${clock(state.duration)}")
             state.error?.let { Text(it, color = androidx.tv.material3.MaterialTheme.colorScheme.error) }
             if (state.loading) CircularProgressIndicator(color = androidx.tv.material3.MaterialTheme.colorScheme.primary)
