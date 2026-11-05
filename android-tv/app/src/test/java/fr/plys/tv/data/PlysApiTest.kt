@@ -10,6 +10,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import androidx.paging.PagingSource
 
 class PlysApiTest {
     private lateinit var server: MockWebServer
@@ -230,6 +231,51 @@ class PlysApiTest {
         assertFalse(CatalogFilters(ratingMin = Double.NaN).valid)
         assertFalse(CatalogFilters(languages = listOf("english")).valid)
         assertEquals(2, CatalogFilters(genres = listOf(27, 878), ratingMin = 0.0).count)
+    }
+
+    @Test fun `paging reuses initial page and appends without losing filters`() = runBlocking {
+        login()
+        val query = CatalogQuery(CatalogKind.MOVIES, query = "space", filters = CatalogFilters(genres = listOf(878)))
+        val seed = ItemPage(List(40) { ItemCard("item-$it", "movie", "Title $it") }, total = 41, offset = 0, limit = 40)
+        val source = CatalogPagingSource(api, query, seed)
+        val first = source.load(PagingSource.LoadParams.Refresh(key = 0, loadSize = 40, placeholdersEnabled = false)) as PagingSource.LoadResult.Page
+        assertEquals(40, first.data.size)
+        assertEquals(40, first.nextKey)
+        assertNull(first.prevKey)
+        assertEquals(2, server.requestCount)
+        json("""{"id":"origin"}""")
+        json("""{"items":[{"id":"item-40","kind":"movie","title":"Last title"}],"total":41,"offset":40,"limit":40}""")
+        val appended = source.load(PagingSource.LoadParams.Append(key = 40, loadSize = 40, placeholdersEnabled = false)) as PagingSource.LoadResult.Page
+        assertEquals("item-40", appended.data.single().id)
+        assertNull(appended.nextKey)
+        server.takeRequest()
+        val request = server.takeRequest().requestUrl!!
+        assertEquals("40", request.queryParameter("offset"))
+        assertEquals("space", request.queryParameter("query"))
+        assertEquals("""{"genres":[878]}""", request.queryParameter("filters"))
+        json("""{"error":"unavailable"}""", 503)
+        assertTrue(source.load(PagingSource.LoadParams.Append(key = 40, loadSize = 40, placeholdersEnabled = false)) is PagingSource.LoadResult.Error)
+    }
+
+    @Test fun `home counts use catalog totals with a single item request and indicate partial results`() = runBlocking {
+        login()
+        json("""{"id":"origin"}""")
+        val cases = listOf(
+            Triple(CatalogKind.MOVIES, 65, 0),
+            Triple(CatalogKind.SERIES, 0, 0),
+            Triple(CatalogKind.OTHER, 2, 1),
+        )
+        cases.forEachIndexed { index, (kind, total, unavailable) ->
+            json("""{"items":[],"total":$total,"offset":0,"limit":1,"unavailableServers":$unavailable}""")
+            assertEquals(CatalogCount(total, unavailable > 0), api.catalogCount(kind))
+            if (index == 0) assertEquals("/api/v1/server", server.takeRequest().requestUrl?.encodedPath)
+            val request = server.takeRequest().requestUrl!!
+            assertEquals("/api/v1/kinds/${kind.value}/items", request.encodedPath)
+            assertEquals("1", request.queryParameter("limit"))
+            assertEquals("0", request.queryParameter("offset"))
+            assertNull(request.queryParameter("library"))
+            assertNull(request.queryParameter("filters"))
+        }
     }
 
     private class MemoryStore : SessionStore {

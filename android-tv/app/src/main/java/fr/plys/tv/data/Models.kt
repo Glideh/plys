@@ -31,6 +31,8 @@ data class ItemCard(
 @Serializable
 data class ItemPage(val items: List<ItemCard>, val total: Int, val offset: Int, val limit: Int, val unavailableServers: Int = 0)
 
+data class CatalogCount(val total: Int, val partial: Boolean = false)
+
 @Serializable
 enum class CatalogKind(val value: String) {
     @SerialName("movies") MOVIES("movies"),

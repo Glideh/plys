@@ -4,28 +4,37 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.cachedIn
+import fr.plys.tv.data.CatalogPagingSource
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.data.ClientException
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.ItemPage
 import fr.plys.tv.data.Library
 import fr.plys.tv.data.CatalogKind
+import fr.plys.tv.data.CatalogCount
 import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface Screen {
     data object Login : Screen
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
-    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null) : Screen
+    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
     data class Detail(val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList()) : Screen
 }
 
@@ -38,8 +47,10 @@ data class CatalogState(
     val playbackPosition: Double = 0.0,
     val playbackSource: ServerRef? = null,
     val libraries: List<Library> = emptyList(),
+    val catalogCounts: Map<CatalogKind, CatalogCount> = emptyMap(),
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     val api = (application as PlysApplication).api
     private val mutableState = MutableStateFlow(CatalogState())
@@ -47,7 +58,18 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private val history = mutableListOf<Screen>()
     private var retryAction: suspend () -> Unit = { restore() }
     private var activeJob: Job? = null
+    private var countsJob: Job? = null
     private var generation = 0
+    private data class PageRequest(val query: CatalogQuery, val seed: ItemPage, val revision: Int)
+    private val pageRequest = MutableStateFlow<PageRequest?>(null)
+    private val catalogPositions = ConcurrentHashMap<String, Int>()
+    val catalogPages = pageRequest.filterNotNull().flatMapLatest { request ->
+        Pager(PagingConfig(pageSize = 40, initialLoadSize = 40, prefetchDistance = 12, enablePlaceholders = false), initialKey = request.query.offset) {
+            CatalogPagingSource(api, request.query, request.seed) { offset, cards ->
+                cards.forEachIndexed { index, card -> catalogPositions[card.id] = offset + index }
+            }
+        }.flow
+    }.cachedIn(viewModelScope)
 
     init { perform { restore() } }
 
@@ -55,32 +77,58 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         if (api.signedIn || api.restore()) {
             loadHome()
             savedState.get<String>("catalogQuery")?.let { raw ->
-                val query = runCatching { Json.decodeFromString<CatalogQuery>(raw) }.getOrNull()
-                if (query != null) navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), api.catalog(query), query, savedState["focusedItem"]))
+                val stored = runCatching { Json.decodeFromString<CatalogQuery>(raw) }.getOrNull()
+                if (stored != null) {
+                    val position = savedState.get<Int>("focusedPosition") ?: stored.offset
+                    val query = stored.copy(offset = position / 40 * 40)
+                    val page = api.catalog(query)
+                    navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset))
+                    preparePaging(query, page)
+                }
             }
         }
     }
 
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
+        countsJob?.cancel()
+        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap())
         clearCatalogState()
         api.login(server, username, password)
         loadHome()
     }
 
     private suspend fun loadHome() {
+        countsJob?.cancel()
         mutableState.value = mutableState.value.copy(libraries = api.libraries())
-        mutableState.value = mutableState.value.copy(screen = Screen.Home(api.home()))
+        mutableState.value = mutableState.value.copy(screen = Screen.Home(api.home()), catalogCounts = emptyMap())
+        refreshCatalogCounts()
+    }
+
+    private fun refreshCatalogCounts() {
+        countsJob?.cancel()
+        countsJob = viewModelScope.launch {
+            for (kind in CatalogKind.entries) {
+                try {
+                    val count = api.catalogCount(kind)
+                    mutableState.value = mutableState.value.copy(catalogCounts = mutableState.value.catalogCounts + (kind to count))
+                } catch (_: ClientException) {}
+            }
+        }
     }
 
     fun home() = perform { clearCatalogState(); history.clear(); loadHome() }
 
     fun openKind(kind: CatalogKind) = perform {
         val query = CatalogQuery(kind)
-        navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), api.catalog(query), query))
+        val page = api.catalog(query)
+        navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), page, query))
+        preparePaging(query, page)
         savedState["catalogQuery"] = Json.encodeToString(query)
     }
 
     fun logout() = perform {
+        countsJob?.cancel()
+        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap())
         api.logout()
         clearCatalogState()
         history.clear()
@@ -89,26 +137,27 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun openLibrary(library: Library) = perform {
         val query = CatalogQuery(CatalogKind.entries.first { it.value == library.kind }, libraryId = library.id)
-        navigate(Screen.Catalog(library, api.catalog(query), query))
-    }
-
-    fun page(offset: Int) {
-        val screen = mutableState.value.screen as? Screen.Catalog ?: return
-        changeQuery(screen.query.copy(offset = offset))
+        val page = api.catalog(query)
+        navigate(Screen.Catalog(library, page, query))
+        preparePaging(query, page)
     }
 
     fun changeQuery(query: CatalogQuery) = perform(replace = true) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return@perform
-        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = api.catalog(query), focusedId = null))
+        val page = api.catalog(query)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = page, focusedId = null, focusedIndex = 0))
+        preparePaging(query, page)
         savedState["catalogQuery"] = Json.encodeToString(query)
         savedState.remove<String>("focusedItem")
+        savedState.remove<Int>("focusedPosition")
     }
 
-    fun rememberFocus(id: String) {
+    fun rememberFocus(id: String, index: Int = 0) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return
         if (screen.focusedId == id) return
-        mutableState.value = mutableState.value.copy(screen = screen.copy(focusedId = id))
+        mutableState.value = mutableState.value.copy(screen = screen.copy(focusedId = id, focusedIndex = index))
         savedState["focusedItem"] = id
+        savedState["focusedPosition"] = catalogPositions[id] ?: screen.query.offset + index
     }
 
     fun openCard(card: ItemCard) {
@@ -158,9 +207,9 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         perform {
             val refreshed = when (screen) {
                 Screen.Login -> screen
-                is Screen.Home -> Screen.Home(api.home())
+                is Screen.Home -> Screen.Home(api.home()).also { refreshCatalogCounts() }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
-                is Screen.Catalog -> screen.copy(page = api.catalog(screen.query))
+                is Screen.Catalog -> screen
                 is Screen.Detail -> screen.copy(item = api.item(screen.item.id, screen.source))
             }
             mutableState.value = mutableState.value.copy(screen = refreshed)
@@ -173,6 +222,13 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private fun clearCatalogState() {
         savedState.remove<String>("catalogQuery")
         savedState.remove<String>("focusedItem")
+        savedState.remove<Int>("focusedPosition")
+        catalogPositions.clear()
+    }
+
+    private fun preparePaging(query: CatalogQuery, page: ItemPage) {
+        catalogPositions.clear()
+        pageRequest.value = PageRequest(query, page, generation)
     }
 
     private fun navigate(screen: Screen) {
@@ -182,6 +238,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     private fun perform(retryable: Boolean = true, replace: Boolean = false, action: suspend () -> Unit) {
         if (mutableState.value.loading && !replace) return
+        if (mutableState.value.screen is Screen.Home) countsJob?.cancel()
         if (replace) activeJob?.cancel()
         val current = ++generation
         if (retryable) retryAction = action

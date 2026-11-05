@@ -37,7 +37,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.PlayerView
-import androidx.tv.material3.Button
+import fr.plys.tv.ui.PlysButton as Button
 import androidx.tv.material3.Text
 import fr.plys.tv.MainActivity
 import fr.plys.tv.PlysApplication

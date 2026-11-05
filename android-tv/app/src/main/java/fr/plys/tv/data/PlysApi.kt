@@ -113,11 +113,16 @@ class PlysApi(
 
     suspend fun home(): HomeResponse = locked { decode(request("me/home")) }
 
-    suspend fun catalog(query: CatalogQuery): ItemPage = locked {
+    suspend fun catalogCount(kind: CatalogKind): CatalogCount {
+        val page = catalog(CatalogQuery(kind), limit = 1)
+        return CatalogCount(page.total, page.unavailableServers > 0)
+    }
+
+    suspend fun catalog(query: CatalogQuery, limit: Int = 40): ItemPage = locked {
         if (localServerId == null) localServerId = decode<ServerInfo>(request("server", authenticated = false)).id
         val params = checkNotNull(base).newBuilder().addQueryParameter("query", query.query)
             .addQueryParameter("sort", query.sort).addQueryParameter("offset", query.offset.toString())
-            .addQueryParameter("limit", "40")
+            .addQueryParameter("limit", limit.toString())
         query.libraryId?.let { params.addQueryParameter("library", it) }
         if (query.filters.count > 0) params.addQueryParameter("filters", Json.encodeToString(query.filters))
         val page = decode<ItemPage>(request("kinds/${query.kind.value}/items?${params.build().encodedQuery}"))

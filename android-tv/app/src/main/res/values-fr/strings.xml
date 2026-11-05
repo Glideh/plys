@@ -1,4 +1,14 @@
 <resources>
+    <string name="title_count_pending">Titres : —</string>
+    <plurals name="title_count">
+        <item quantity="one">%1$d titre</item>
+        <item quantity="other">%1$d titres</item>
+    </plurals>
+    <plurals name="library_count">
+        <item quantity="one">%1$d bibliothèque</item>
+        <item quantity="other">%1$d bibliothèques</item>
+    </plurals>
+    <string name="catalog_count">Titres : %1$d</string>
     <string name="search">Rechercher</string>
     <string name="sort">Trier</string>
     <string name="sort_title">Titre</string>

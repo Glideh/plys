@@ -21,14 +21,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.tv.material3.Button
+import fr.plys.tv.ui.PlysButton as Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import fr.plys.tv.R
@@ -93,7 +93,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
             model.changeQuery(screen.query.copy(query = search, offset = 0))
         }
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(search, { search = it }, Modifier.weight(1f), singleLine = true,
             label = { androidx.compose.material3.Text(stringResource(R.string.search)) })
         Button(onClick = { dialog = "library" }) {
@@ -108,7 +108,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         val filters = screen.query.filters
         val selected = categories.flatMap { key -> filterSelection(filters, key).map { key to it } }
         val bounds = numericFilterValues(filters).filterValues { it.isNotBlank() }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
             items(selected, key = { "${it.first}:${it.second}" }) { (key, value) ->
                 val label = "${filterLabel(key, screen.query.kind)}: ${model.api.filterOptionLabel(if (key == "excludeGenres") "genres" else key, value)}"
                 Button(onClick = { model.changeQuery(screen.query.copy(filters = withFilterSelection(filters, key, filterSelection(filters, key) - value), offset = 0)) }) {

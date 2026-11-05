@@ -14,19 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -36,8 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -46,17 +38,26 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Button
-import androidx.tv.material3.ButtonDefaults
+import fr.plys.tv.ui.PlysButton as Button
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material3.Icon
 import fr.plys.tv.R
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ChildItem
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
-import kotlin.math.max
 
 @Composable
 fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier = Modifier) {
@@ -83,7 +84,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
         } else {
             when (val screen = state.screen) {
                 Screen.Login -> Unit
-                is Screen.Home -> key("home") { HomeScreen(screen.data, model) }
+                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts) }
                 is Screen.Libraries -> {
                     Text(stringResource(R.string.libraries))
                     if (screen.items.isEmpty()) Text(stringResource(R.string.empty))
@@ -100,32 +101,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                         }
                     }
                 }
-                is Screen.Catalog -> key(screen.query.kind, screen.query.libraryId, screen.page.offset) {
-                    Text(stringResource(kindLabel(screen.query.kind)), style = androidx.tv.material3.MaterialTheme.typography.headlineMedium)
-                    CatalogToolbar(screen, model, state.libraries)
-                    val page = screen.page
-                    if (page.unavailableServers > 0) Text(stringResource(R.string.partial_results, page.unavailableServers))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(vertical = 12.dp)) {
-                        Action(R.string.previous_page, page.offset > 0) { model.page(max(0, page.offset - page.limit)) }
-                        Text(stringResource(R.string.page, page.offset / page.limit + 1, max(1, (page.total + page.limit - 1) / page.limit)))
-                        Action(R.string.next_page, page.offset + page.limit < page.total) { model.page(page.offset + page.limit) }
-                    }
-                    if (page.items.isEmpty()) Text(stringResource(R.string.empty))
-                    val focusId = screen.focusedId ?: page.items.firstOrNull()?.id
-                    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = page.items.indexOfFirst { it.id == focusId }.coerceAtLeast(0))
-                    LazyVerticalGrid(
-                        state = gridState,
-                        columns = GridCells.Adaptive(160.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        items(page.items, key = { it.id }) { item ->
-                            MediaCard(item, model.api,
-                                Modifier.focusInitially(item.id == focusId).onFocusChanged { if (it.hasFocus) model.rememberFocus(item.id) },
-                            ) { model.openCard(item) }
-                        }
-                    }
-                }
+                is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
                 is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { Detail(screen.item, model, screen.source, screen.sources) }
             }
         }
@@ -218,16 +194,10 @@ private fun childLabel(item: ChildItem): String {
 }
 
 @Composable
-private fun MediaCard(item: ItemCard, api: PlysApi, modifier: Modifier, onClick: () -> Unit) {
-    Button(onClick = onClick, shape = ButtonDefaults.shape(shape = RoundedCornerShape(8.dp)), modifier = modifier.fillMaxWidth()) {
-        Column {
-            Poster(item.posterUrl, api, Modifier.fillMaxWidth().height(144.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            item.year?.let { Text(it.toString()) }
-            if (item.watched) Text(stringResource(R.string.watched))
-        }
-    }
+fun MediaCard(item: ItemCard, api: PlysApi, modifier: Modifier, onClick: () -> Unit) {
+    PosterTile(title = item.title, image = item.posterUrl, api = api, modifier = modifier,
+        subtitle = listOfNotNull(item.year?.toString(), item.sources.firstOrNull()?.serverName?.takeIf { it.isNotBlank() }).joinToString(" · "),
+        landscape = item.kind == "video", watched = item.watched, onClick = onClick)
 }
 
 @Composable
@@ -242,9 +212,22 @@ fun Poster(path: String?, api: PlysApi, modifier: Modifier, source: ServerRef? =
 
 @Composable
 fun Action(label: Int, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick = onClick, enabled = enabled, colors = ButtonDefaults.colors(
-        disabledContentColor = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-    )) { Text(stringResource(label)) }
+    val icon = when (label) {
+        R.string.home -> Icons.Outlined.Home
+        R.string.back -> Icons.AutoMirrored.Outlined.ArrowBack
+        R.string.sign_out -> Icons.AutoMirrored.Outlined.Logout
+        R.string.retry, R.string.reset -> Icons.Outlined.Refresh
+        R.string.apply -> Icons.Outlined.Check
+        R.string.cancel -> Icons.Outlined.Close
+        R.string.play -> Icons.Outlined.PlayArrow
+        R.string.pause -> Icons.Outlined.Pause
+        R.string.stop -> Icons.Outlined.Stop
+        else -> null
+    }
+    Button(onClick = onClick, enabled = enabled) {
+        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current); Spacer(Modifier.width(8.dp)) }
+        Text(stringResource(label))
+    }
 }
 
 @Composable

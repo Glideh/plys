@@ -1,0 +1,73 @@
+package fr.plys.tv.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import fr.plys.tv.R
+import fr.plys.tv.data.ClientException
+import fr.plys.tv.data.Library
+
+@Composable
+fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
+    val items = model.catalogPages.collectAsLazyPagingItems()
+    val grid = rememberLazyGridState(initialFirstVisibleItemIndex = screen.focusedIndex)
+    var restored by remember { mutableStateOf(false) }
+    LaunchedEffect(items.itemCount) {
+        if (!restored && items.itemCount > screen.focusedIndex) {
+            grid.scrollToItem(screen.focusedIndex)
+            restored = true
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+        CatalogToolbar(screen, model, libraries)
+        Text(stringResource(R.string.catalog_count, screen.page.total), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (screen.page.unavailableServers > 0) Text(stringResource(R.string.partial_results, screen.page.unavailableServers), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) Text(stringResource(R.string.empty))
+        val focusId = screen.focusedId ?: screen.page.items.firstOrNull()?.id
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(120.dp), state = grid, modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            items(count = items.itemCount, key = items.itemKey { it.id }) { index ->
+                val card = items[index]
+                if (card != null) MediaCard(card, model.api,
+                    Modifier.focusInitially(card.id == focusId).onFocusChanged { if (it.hasFocus) model.rememberFocus(card.id, index) },
+                ) { model.openCard(card) }
+            }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                val loading = items.loadState.append is LoadState.Loading || items.loadState.refresh is LoadState.Loading
+                val error = (items.loadState.append as? LoadState.Error)?.error ?: (items.loadState.refresh as? LoadState.Error)?.error
+                if (loading) CircularProgressIndicator(modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.primary)
+                if (error != null) Column(Modifier.padding(12.dp)) {
+                    Text(if (error is ClientException) LocalContext.current.errorMessage(error) else stringResource(R.string.error_network), color = MaterialTheme.colorScheme.error)
+                    Action(R.string.retry) { items.retry() }
+                }
+            }
+        }
+    }
+}
