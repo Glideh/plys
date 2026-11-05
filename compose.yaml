@@ -73,8 +73,54 @@ services:
     volumes:
       - ./api:/src
 
+  android-build: &android-build
+    image: plys-android-tools:dev
+    platform: linux/amd64
+    build:
+      context: ./android-tv/docker
+      target: build
+    profiles: [android]
+    environment:
+      LOCAL_UID: ${UID:-1000}
+      LOCAL_GID: ${GID:-1000}
+    volumes:
+      - ./android-tv:/workspace
+      - android-gradle:/root/.gradle
+      - android-home:/root/.android
+    security_opt: ["no-new-privileges:true"]
+
+  android-emulator:
+    <<: *android-build
+    image: plys-android-emulator:dev
+    build:
+      context: ./android-tv/docker
+      target: emulator
+    profiles: [android-test]
+    devices:
+      - /dev/kvm:/dev/kvm
+    command: [emulator]
+    healthcheck:
+      test: ["CMD-SHELL", "adb -s emulator-5554 shell getprop sys.boot_completed | grep -q '^1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+  android-test:
+    <<: *android-build
+    profiles: [android-test]
+    network_mode: service:android-emulator
+    depends_on:
+      android-emulator:
+        condition: service_healthy
+    command: [":app:connectedDebugAndroidTest"]
+
 volumes:
   db-data:
   go-cache:
   api-cache:
   web-node-modules:
+  android-gradle:
+    name: plys-android-gradle
+  android-home:
+    name: plys-android-avd

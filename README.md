@@ -180,6 +180,11 @@ docker compose up
 - API: http://localhost:8080 (hot reload with air, migrations applied at startup)
 - PostgreSQL: `localhost:5432`
 
+Android TV tooling is optional and does not start with the web stack. Build its image
+with `docker compose --profile android build android-build`, then generate the APK
+with `docker compose --profile android run --rm android-build :app:assembleDebug`.
+See the [Android TV README](android-tv/README.md) for tests and the optional emulator.
+
 ### Everyday commands
 
 ```sh

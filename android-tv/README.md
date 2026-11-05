@@ -6,31 +6,41 @@ The API contract is documented in [OpenAPI](../docs/openapi.yaml).
 
 ## Build
 
-- JDK 17 and Gradle 8.11.1 available in `PATH` (no Gradle wrapper is included).
-- Android SDK platform 35 and build-tools 35.0.0, with licenses accepted.
-- Set `ANDROID_HOME`, or `sdk.dir` in an untracked `android-tv/local.properties`.
-
-Open this directory in Android Studio, or run from the repository root:
+Only Docker with Compose is required. From the repository root:
 
 ```sh
-gradle -p android-tv :app:assembleDebug
+docker compose --profile android build android-build
+docker compose --profile android run --rm android-build :app:assembleDebug
 ```
 
 Output: `android-tv/app/build/outputs/apk/debug/app-debug.apk`.
 
-The APK is debug-signed. Keep the same debug keystore between builds to update an
-existing installation without uninstalling it and losing its session.
+The image includes JDK 17, Gradle 8.11.1 and SDK 35. Build files use the host
+UID/GID from `.env`. Gradle caches and the debug signing key persist in Docker
+volumes; keep them to preserve signed updates and installed sessions. The build
+image uses Linux/amd64; ARM hosts need Docker's amd64 emulation. This does not
+restrict the architectures supported by the APK.
+
+For native builds, use the same tool versions, SDK build-tools 35.0.0 and set
+`ANDROID_HOME` or `sdk.dir` in `local.properties`. No Gradle wrapper is included.
 
 ## Tests
 
 ```sh
-gradle -p android-tv :app:testDebugUnitTest :app:lintDebug
-# Requires a connected TV or emulator:
-gradle -p android-tv :app:connectedDebugAndroidTest
+docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
+# Optional headless TV emulator (Linux x86_64 with /dev/kvm):
+docker compose --profile android-test build android-build android-emulator
+docker compose --profile android-test run --rm android-test
+docker compose --profile android-test stop android-emulator
 ```
 
-Instrumented tests use fixture data. Also verify D-pad navigation, real-media
-playback, resume and background/foreground transitions on the target device.
+`android-test` starts the emulator and waits for Android to boot. No ADB ports are
+published; the profiles do not affect a normal `docker compose up`. Existing
+volumes from earlier standalone builds are reused (Compose may warn that it did
+not create them). Do not run builds and instrumented tests concurrently on the same checkout.
+
+Instrumented tests use fixture data. Also check real-media playback, resume and
+background/foreground transitions on the target device.
 
 ## Run on a TV
 
