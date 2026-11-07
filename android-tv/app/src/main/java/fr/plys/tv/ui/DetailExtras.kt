@@ -1,7 +1,25 @@
 package fr.plys.tv.ui
 
+import android.view.KeyEvent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.window.Dialog
+import androidx.tv.material3.Border
+import androidx.tv.material3.ClickableSurfaceDefaults
+import androidx.tv.material3.Surface
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,15 +56,93 @@ import fr.plys.tv.data.ServerRef
 fun MediaTrack.trackLabel(): String = listOfNotNull(
     language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() },
     "#${index + 1}".takeIf { language.isBlank() && title.isBlank() },
-    codec.uppercase().takeIf { it.isNotBlank() }, "$channels ch".takeIf { channels > 0 },
+    codec.uppercase().takeIf { it.isNotBlank() }, channelLayout(channels),
 ).joinToString(" · ")
+
+fun channelLayout(channels: Int): String? = when (channels) {
+    0 -> null
+    1 -> "Mono"
+    2 -> "2.0"
+    6 -> "5.1"
+    8 -> "7.1"
+    else -> "$channels ch"
+}
+
+/** Resolution and formats of the version that will play, e.g. "1080p · HDR · HEVC · EAC3 5.1". */
+fun versionSummary(item: ItemDetail, selection: PlaybackSelection): String {
+    val chosen = selection.normalized(item)
+    val version = chosen.version(item) ?: return ""
+    val audio = version.audio.firstOrNull { it.index == chosen.audioIndex }
+    return listOfNotNull(
+        version.resolution.takeIf { it.isNotBlank() }, "HDR".takeIf { version.hdr },
+        version.videoCodec.uppercase().takeIf { it.isNotBlank() },
+        audio?.let { listOfNotNull(it.codec.uppercase().takeIf { codec -> codec.isNotBlank() }, channelLayout(it.channels)).joinToString(" ") }?.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+}
+
+@Composable
+fun VersionSummary(item: ItemDetail, selection: PlaybackSelection) {
+    val summary = versionSummary(item, selection)
+    if (summary.isNotEmpty()) Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+/** The overview, shortened; selecting it shows the whole text. */
+@Composable
+fun Synopsis(text: String, open: () -> Unit) {
+    val palette = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(6.dp)
+    Surface(
+        // Shifted by its padding so the text lines up with the title while the focus frame surrounds it.
+        onClick = open, modifier = Modifier.fillMaxWidth().offset(x = (-8).dp),
+        shape = ClickableSurfaceDefaults.shape(shape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, palette.primary), shape = shape)),
+        colors = ClickableSurfaceDefaults.colors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent, contentColor = palette.onSurface,
+            focusedContainerColor = palette.onSurface.copy(alpha = 0.08f), focusedContentColor = palette.onSurface,
+        ),
+    ) {
+        Text(text, modifier = Modifier.padding(8.dp), maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+fun SynopsisDialog(title: String, text: String, dismiss: () -> Unit) {
+    val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
+    var focused by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = dismiss) {
+        androidx.tv.material3.Surface(colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = 460.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                // The text is focusable so the remote scrolls long overviews.
+                Text(text, style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f, fill = false)
+                        .border(2.dp, if (focused) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(6.dp))
+                        .focusInitially()
+                        .onFocusChanged { focused = it.isFocused }
+                        .onKeyEvent { event ->
+                            val step = when (event.nativeKeyEvent.keyCode) { KeyEvent.KEYCODE_DPAD_DOWN -> 160f; KeyEvent.KEYCODE_DPAD_UP -> -160f; else -> 0f }
+                            if (step != 0f && event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN && scroll.canScroll(step)) {
+                                scope.launch { scroll.animateScrollBy(step) }; true
+                            } else false
+                        }
+                        .focusable().verticalScroll(scroll).padding(8.dp))
+                Action(R.string.back, onClick = dismiss)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.foundation.ScrollState.canScroll(step: Float) = if (step > 0) value < maxValue else value > 0
 
 @Composable
 fun PlaybackSelectionControls(item: ItemDetail, selection: PlaybackSelection, select: (PlaybackSelection) -> Unit) {
     val chosen = selection.normalized(item)
     val version = chosen.version(item) ?: return
+    if (item.versions.size <= 1 && version.audio.size <= 1 && version.subtitles.isEmpty()) return
     var menu by remember { mutableStateOf("") }
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = RowFocusPadding) {
         if (item.versions.size > 1) item {
             PlysButton(onClick = { menu = "version" }) { Text("${stringResource(R.string.version)} : ${version.label}", maxLines = 1) }
         }
@@ -77,22 +173,30 @@ fun PlaybackSelectionControls(item: ItemDetail, selection: PlaybackSelection, se
     }
 }
 
+/** Cast, directors or creators, each in a disc with the name below. */
 @Composable
-fun CastRow(cast: List<CastMember>, api: PlysApi, source: ServerRef?) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.cast), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(4.dp)) {
-            items(cast) { actor ->
+fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: ServerRef?) {
+    Column {
+        Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = FocusGutter))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = RowFocusPadding) {
+            items(people) { person ->
                 var focused by remember { mutableStateOf(false) }
-                Column(Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }.focusable(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(Modifier.size(72.dp).clip(RoundedCornerShape(6.dp))
-                        .border(if (focused) 2.dp else 0.dp, if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))) {
-                        Poster(actor.photoUrl, api, Modifier.size(72.dp), source)
-                        if (actor.photoUrl == null) Text(actor.name.take(1), modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }.focusable(),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(Modifier.size(80.dp).clip(CircleShape)
+                        .border(if (focused) 3.dp else 1.dp, if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), CircleShape)) {
+                        // Pictures are portraits: crop them to fill the disc.
+                        if (person.photoUrl != null) coil.compose.AsyncImage(model = api.posterUrl(person.photoUrl, source), contentDescription = null,
+                            modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                        else Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant)) {
+                            Text(person.name.take(1), modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
-                    Text(actor.name, modifier = Modifier.height(40.dp), style = MaterialTheme.typography.bodyMedium,
+                    Text(person.name, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
-                    if (actor.character.isNotBlank()) Text(actor.character, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (person.character.isNotBlank()) Text(person.character, style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

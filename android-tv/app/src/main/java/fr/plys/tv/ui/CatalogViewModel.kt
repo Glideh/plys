@@ -36,7 +36,13 @@ sealed interface Screen {
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
-    data class Detail(val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList(), val selection: PlaybackSelection = PlaybackSelection()) : Screen
+    // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
+    data class Detail(
+        val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList(),
+        val selection: PlaybackSelection = PlaybackSelection(), val target: ItemDetail? = null,
+    ) : Screen {
+        val playable: ItemDetail get() = target ?: item
+    }
 }
 
 data class CatalogState(
@@ -175,24 +181,54 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     }
 
     fun openItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
-        navigate(Screen.Detail(api.item(id, source), source, sources))
+        val item = api.item(id, source)
+        navigate(Screen.Detail(item, source, sources, target = playTarget(item, source)))
     }
 
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
-        mutableState.value = mutableState.value.copy(screen = screen.copy(item = api.item(source.itemId, source), source = source, selection = PlaybackSelection()))
+        val item = api.item(source.itemId, source)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = PlaybackSelection(), target = playTarget(item, source)))
+    }
+
+    /** The episode a series or season would play; null for playable items or when it cannot be loaded. */
+    private suspend fun playTarget(item: ItemDetail, source: ServerRef?): ItemDetail? {
+        val target = item.playTarget?.takeIf { item.playableVersion == null && it.id != item.id } ?: return null
+        return try { api.item(target.id, source) } catch (_: ClientException) { null }
+    }
+
+    private suspend fun refreshed(screen: Screen.Detail): Screen.Detail {
+        val item = api.item(screen.item.id, screen.source)
+        val target = playTarget(item, screen.source)
+        // Keep the chosen tracks while the same episode stays next; a new episode follows them by language.
+        val selection = when {
+            target == null -> screen.selection.normalized(item)
+            screen.target?.id == target.id -> screen.selection.normalized(target)
+            screen.target != null -> screen.selection.forNext(screen.target, target)
+            else -> PlaybackSelection().normalized(target)
+        }
+        return screen.copy(item = item, target = target, selection = selection)
     }
 
     fun selectPlayback(selection: PlaybackSelection) {
         val screen = mutableState.value.screen as? Screen.Detail ?: return
-        mutableState.value = mutableState.value.copy(screen = screen.copy(selection = selection.normalized(screen.item)))
+        mutableState.value = mutableState.value.copy(screen = screen.copy(selection = selection.normalized(screen.playable)))
+    }
+
+    fun toggleWatched() = perform {
+        val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
+        api.setWatched(screen.item.id, !screen.item.watched, screen.source)
+        mutableState.value = mutableState.value.copy(screen = refreshed(screen))
     }
 
     fun play(item: ItemDetail, restart: Boolean = false) = perform {
         val target = item.playTarget
-        val source = (mutableState.value.screen as? Screen.Detail)?.source
-        val playable = if (target != null) api.item(target.id, source) else item
-        val selection = (mutableState.value.screen as? Screen.Detail)?.selection ?: PlaybackSelection()
+        val screen = mutableState.value.screen as? Screen.Detail
+        val source = screen?.source
+        val chosenFor = screen?.playable ?: item
+        val playable = if (target == null) item
+            else screen?.target?.takeIf { it.id == target.id } ?: api.item(target.id, source)
+        val selection = screen?.selection ?: PlaybackSelection()
         if (playable.playableVersion == null) {
             throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
         }
@@ -200,7 +236,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
             playback = playable,
             playbackPosition = if (restart) 0.0 else target?.positionSeconds ?: playable.positionSeconds,
             playbackSource = source,
-            playbackSelection = if (playable.id == item.id) selection.normalized(playable) else selection.forNext(item, playable),
+            playbackSelection = if (playable.id == chosenFor.id) selection.normalized(playable) else selection.forNext(chosenFor, playable),
         )
     }
 
@@ -208,7 +244,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         mutableState.value = mutableState.value.copy(playback = null)
         val screen = mutableState.value.screen
         if (screen is Screen.Detail) perform {
-            mutableState.value = mutableState.value.copy(screen = screen.copy(item = api.item(screen.item.id, screen.source)))
+            mutableState.value = mutableState.value.copy(screen = refreshed(screen))
         }
     }
 
@@ -226,7 +262,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 is Screen.Home -> { loadHome(); mutableState.value.screen }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
                 is Screen.Catalog -> screen
-                is Screen.Detail -> screen.copy(item = api.item(screen.item.id, screen.source))
+                is Screen.Detail -> refreshed(screen)
             }
             mutableState.value = mutableState.value.copy(screen = refreshed)
         }

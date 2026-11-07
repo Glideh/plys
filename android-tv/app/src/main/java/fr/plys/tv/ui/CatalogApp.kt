@@ -3,6 +3,15 @@ package fr.plys.tv.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,7 +59,9 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Pause
-import androidx.compose.material.icons.outlined.Stop
+import androidx.compose.material.icons.outlined.Done
+import androidx.compose.material.icons.outlined.RemoveDone
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material3.Icon
 import fr.plys.tv.R
 import fr.plys.tv.data.ItemCard
@@ -105,7 +116,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                     }
                 }
                 is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
-                is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { Detail(screen.item, model, screen.source, screen.sources, screen.selection) }
+                is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { Detail(screen.item, model, screen.source, screen.sources, screen.selection, screen.target) }
             }
         }
     }
@@ -138,45 +149,62 @@ private fun Login(model: CatalogViewModel, loading: Boolean) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?, sources: List<ServerRef>, selection: fr.plys.tv.data.PlaybackSelection) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?, sources: List<ServerRef>, selection: fr.plys.tv.data.PlaybackSelection, target: ItemDetail?) {
+    val playable = target ?: item
+    val list = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var synopsis by remember { mutableStateOf(false) }
+    // The play button takes the initial focus; focusing anything above it brings the whole header back in view.
+    // Waits a frame so this scroll comes after, and replaces, the one bringing the focused element into view.
+    val showTop = Modifier.onFocusChanged {
+        if (it.hasFocus) scope.launch { androidx.compose.runtime.withFrameNanos { }; list.animateScrollToItem(0) }
+    }
+    val canPlay = item.playableVersion != null || item.playTarget != null
+    CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalScroll) {
+    LazyColumn(state = list, verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = FocusGutter)) {
+        item("header") {
+            Row(Modifier.padding(horizontal = FocusGutter).then(showTop), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Poster(item.posterUrl, model.api, Modifier.size(140.dp, 210.dp), source)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(item.title, style = androidx.tv.material3.MaterialTheme.typography.headlineMedium)
-                    item.year?.let { Text(it.toString()) }
-                    if (source?.serverName?.isNotBlank() == true) Text(source.serverName)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(detailTitle(item), style = androidx.tv.material3.MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    val facts = listOfNotNull(item.year?.toString(), source?.serverName?.takeIf { it.isNotBlank() },
+                        stringResource(R.string.watched).takeIf { item.watched })
+                    if (facts.isNotEmpty()) Text(facts.joinToString(" · "), color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    VersionSummary(playable, selection)
                     if (sources.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         sources.forEach { available -> Button(onClick = { model.selectSource(available) }) { Text(available.serverName) } }
                     }
-                    if (item.watched) Text(stringResource(R.string.watched))
-                    item.overview?.let { Text(it, maxLines = 5, overflow = TextOverflow.Ellipsis) }
-                    PlaybackSelectionControls(item, selection, model::selectPlayback)
-                    if (item.playableVersion != null || item.playTarget != null) {
-                        val position = item.playTarget?.positionSeconds ?: item.positionSeconds
-                        Button(onClick = { model.play(item) }, modifier = Modifier.focusInitially()) {
-                            Text(if (position > 0) stringResource(R.string.resume, clock(position)) else stringResource(R.string.play))
-                        }
-                        if (position > 0 && item.playableVersion != null) {
-                            Action(R.string.restart) { model.play(item, restart = true) }
-                        }
-                    } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable))
+                    item.overview?.takeIf { it.isNotBlank() }?.let { Synopsis(it) { synopsis = true } }
                 }
             }
         }
-        if (item.cast.isNotEmpty()) item { CastRow(item.cast, model.api, source) }
-        if (item.directors.isNotEmpty()) item {
-            Text(stringResource(if (item.kind == "series") R.string.created_by else R.string.directed_by, item.directors.joinToString(", ")),
-                color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+        item("tracks") { Box(showTop) { PlaybackSelectionControls(playable, selection, model::selectPlayback) } }
+        item("actions") {
+            Row(Modifier.padding(horizontal = FocusGutter), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (canPlay) {
+                    val position = item.playTarget?.positionSeconds ?: item.positionSeconds
+                    Button(onClick = { model.play(item) }, modifier = Modifier.focusInitially()) {
+                        Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (position > 0) stringResource(R.string.resume, clock(position)) else stringResource(R.string.play))
+                    }
+                    if (position > 0 && item.playableVersion != null) Action(R.string.restart) { model.play(item, restart = true) }
+                } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable))
+                if (item.kind == "episode") Action(if (item.watched) R.string.mark_unwatched else R.string.mark_watched) { model.toggleWatched() }
+            }
+        }
+        if (item.cast.isNotEmpty()) item("cast") { PeopleRow(R.string.cast, item.cast, model.api, source) }
+        val directors = item.directorPeople
+        if (directors.isNotEmpty()) item("directors") {
+            PeopleRow(if (item.kind == "series") R.string.creators_title else R.string.directors_title, directors, model.api, source)
         }
         items(item.children, key = { it.id }) { child ->
             Button(
                 onClick = { model.openItem(child.id, source) },
-                modifier = Modifier.fillMaxWidth().then(
-                    if (item.playableVersion == null && item.playTarget == null && child == item.children.first())
-                        Modifier.focusInitially() else Modifier,
+                modifier = Modifier.padding(horizontal = FocusGutter).fillMaxWidth().then(
+                    if (!canPlay && child == item.children.first()) Modifier.focusInitially() else Modifier,
                 ),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -188,6 +216,34 @@ private fun Detail(item: ItemDetail, model: CatalogViewModel, source: ServerRef?
                 }
             }
         }
+    }
+    }
+    if (synopsis) SynopsisDialog(detailTitle(item), item.overview.orEmpty()) { synopsis = false }
+}
+
+/**
+ * Scrolls only as much as needed to show the focused element. TV's default keeps the focused element about a
+ * third down the screen, which scrolled the top of the detail page away as soon as the play button took focus.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private val MinimalScroll = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val end = offset + size
+        return when {
+            offset >= 0 && end <= containerSize -> 0f
+            offset < 0 || size > containerSize -> offset
+            else -> end - containerSize
+        }
+    }
+}
+
+/** Seasons and episodes without metadata have no title: show their number instead. */
+@Composable
+fun detailTitle(item: ItemDetail): String = item.title.ifBlank {
+    when {
+        item.kind == "season" && item.seasonNumber != null -> stringResource(R.string.season, item.seasonNumber)
+        item.kind == "episode" && item.episodeNumber != null -> stringResource(R.string.episode, item.episodeNumber)
+        else -> ""
     }
 }
 
@@ -230,7 +286,9 @@ fun Action(label: Int, enabled: Boolean = true, onClick: () -> Unit) {
         R.string.cancel -> Icons.Outlined.Close
         R.string.play -> Icons.Outlined.PlayArrow
         R.string.pause -> Icons.Outlined.Pause
-        R.string.stop -> Icons.Outlined.Stop
+        R.string.restart -> Icons.Outlined.Replay
+        R.string.mark_watched -> Icons.Outlined.Done
+        R.string.mark_unwatched -> Icons.Outlined.RemoveDone
         else -> null
     }
     Button(onClick = onClick, enabled = enabled) {

@@ -19,6 +19,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.ConnectionPool
 import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
@@ -55,7 +56,11 @@ class PlysApi(
         .readTimeout(60, TimeUnit.SECONDS)
         .followRedirects(false)
         .followSslRedirects(false)
+        // OkHttp would silently resend any request, refresh tokens included; idempotent ones are retried below.
         .retryOnConnectionFailure(false)
+        // Idle connections outlive proxies by default (OkHttp keeps them 5 min, nginx closes them after 75 s):
+        // the next request then fails on a connection the server already closed.
+        .connectionPool(ConnectionPool(5, 30, TimeUnit.SECONDS))
         .build(),
 ) {
     private val json = Json {
@@ -164,6 +169,11 @@ class PlysApi(
             // Expired sessions are already stopped; deletion is idempotent for the client.
             if (error.failure != Failure.NOT_FOUND) throw error
         }
+        Unit
+    }
+
+    suspend fun setWatched(id: String, watched: Boolean, source: ServerRef? = null) = locked {
+        sourceRequest(source, "items/$id/watched", if (watched) "POST" else "DELETE")
         Unit
     }
 
@@ -297,7 +307,16 @@ class PlysApi(
         return text
     }
 
-    private suspend fun execute(request: Request): Pair<Int, String> = suspendCancellableCoroutine { continuation ->
+    // A request that never reached the server, or one safe to repeat, is sent again once: a pooled connection
+    // may have been closed by the server or a proxy just before being reused. POST is never repeated.
+    private suspend fun execute(request: Request): Pair<Int, String> = try {
+        send(request)
+    } catch (error: ClientException) {
+        if (error.failure != Failure.NETWORK || request.method !in setOf("GET", "PUT", "DELETE")) throw error
+        send(request)
+    }
+
+    private suspend fun send(request: Request): Pair<Int, String> = suspendCancellableCoroutine { continuation ->
         val call = http.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {

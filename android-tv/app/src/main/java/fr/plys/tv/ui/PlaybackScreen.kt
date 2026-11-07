@@ -1,5 +1,9 @@
 package fr.plys.tv.ui
 
+import android.graphics.Typeface
+import android.os.Build
+import android.text.format.DateFormat
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
@@ -11,14 +15,31 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Audiotrack
+import androidx.compose.material.icons.outlined.Forward30
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Replay30
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -26,31 +47,46 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.ui.PlayerView
 import androidx.media3.ui.CaptionStyleCompat
-import androidx.core.content.res.ResourcesCompat
-import fr.plys.tv.ui.PlysButton as Button
+import androidx.media3.ui.PlayerView
+import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import fr.plys.tv.MainActivity
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.R
 import fr.plys.tv.data.ItemDetail
+import fr.plys.tv.data.PlaybackSelection
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
-import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.delay
+import java.util.Date
+import fr.plys.tv.ui.PlysButton as Button
+
+/** Subtitle size, the same whatever the stream or the controls; meant to become a user setting. */
+const val SUBTITLE_TEXT_SIZE_SP = 30f
+
+/** Space kept under subtitles while the controls are hidden, as a fraction of the screen height. */
+private const val SUBTITLE_BOTTOM_MARGIN = 0.06f
+
+/** Seconds moved by one left or right press while the controls are hidden. */
+private const val DPAD_SEEK_SECONDS = 10.0
+
+/** Delay after the last left or right press before the accumulated seek is applied. */
+private const val DPAD_SEEK_DELAY_MS = 700L
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -81,19 +117,32 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     }
     var showControls by remember { mutableStateOf(true) }
     var controlsHeight by remember { mutableIntStateOf(0) }
-    var interaction by remember { mutableStateOf(0) }
+    var interaction by remember { mutableIntStateOf(0) }
+    var menu by remember { mutableStateOf("") }
+    // Left and right presses made while the controls are hidden, applied together once the presses stop.
+    var pendingSeek by remember { mutableDoubleStateOf(0.0) }
+    var seekPresses by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
-    val visible = showControls || state.paused || state.loading || state.error != null || state.ended
-    LaunchedEffect(interaction, state.paused, state.loading, state.error, state.ended) {
-        if (!state.paused && !state.loading && state.error == null && !state.ended) {
+    val visible = showControls || menu.isNotEmpty() || state.paused || state.loading || state.error != null || state.ended
+    LaunchedEffect(interaction, state.paused, state.loading, state.error, state.ended, menu) {
+        if (!state.paused && !state.loading && state.error == null && !state.ended && menu.isEmpty()) {
             delay(5000)
             showControls = false
         }
     }
-    LaunchedEffect(visible, state.loading, state.ended, state.error) {
+    LaunchedEffect(seekPresses) {
+        if (seekPresses == 0) return@LaunchedEffect
+        delay(DPAD_SEEK_DELAY_MS)
+        model.seek(pendingSeek)
+        pendingSeek = 0.0
+        seekPresses = 0
+    }
+    // Focus goes to the first button when the controls appear, or when an error or the end replaces it; a seek
+    // keeps the focus on the button that was pressed, so it can be pressed again.
+    LaunchedEffect(visible, state.ended, state.error != null) {
         androidx.compose.runtime.withFrameNanos { }
-        if (visible && !state.loading) playFocus.requestFocus() else rootFocus.requestFocus()
+        if (visible) playFocus.requestFocus() else rootFocus.requestFocus()
     }
     BackHandler {
         if (visible && !state.paused && !state.loading && state.error == null && !state.ended) {
@@ -106,17 +155,20 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 interaction++
                 when (event.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                        model.togglePause()
-                        showControls = true
-                        true
-                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { model.togglePause(); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_PAUSE -> { model.setPaused(true); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_PLAY -> { model.setPaused(false); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_REWIND -> { model.seek(-30.0); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { model.seek(30.0); showControls = true; true }
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+                    // Hidden controls: left and right move through the video instead of opening the controls.
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        if (visible) false else {
+                            pendingSeek += if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -DPAD_SEEK_SECONDS else DPAD_SEEK_SECONDS
+                            seekPresses++
+                            true
+                        }
+                    }
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
                         val wasHidden = !visible
                         showControls = true
                         wasHidden
@@ -130,46 +182,111 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 player = model.player
                 useController = false
                 isFocusable = false
-                subtitleView?.setStyle(CaptionStyleCompat(android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT,
-                    android.graphics.Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK,
-                    ResourcesCompat.getFont(it, R.font.nunito)))
+                subtitleView?.apply {
+                    // A fixed size: cues and stream styles must not change it, nor the controls' padding.
+                    setApplyEmbeddedFontSizes(false)
+                    setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, SUBTITLE_TEXT_SIZE_SP)
+                    setStyle(CaptionStyleCompat(android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT,
+                        android.graphics.Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK,
+                        boldSubtitleTypeface(it)))
+                }
             } },
             update = {
                 it.player = model.player
-                it.subtitleView?.setPadding(0, 0, 0, if (visible) controlsHeight else 0)
-                it.subtitleView?.setBottomPaddingFraction(0.08f)
+                // WebVTT cues sit on the last line, which ignores the bottom padding fraction: a padding keeps them
+                // above the controls, or off the bottom edge that TVs may crop.
+                it.subtitleView?.setPadding(0, 0, 0, if (visible) controlsHeight else (it.height * SUBTITLE_BOTTOM_MARGIN).toInt())
             },
             modifier = Modifier.fillMaxSize(),
         )
+        if (seekPresses > 0) {
+            val target = (state.position + pendingSeek).coerceIn(0.0, state.duration.takeIf { it > 0 } ?: Double.MAX_VALUE)
+            val sign = if (pendingSeek < 0) "−" else "+"
+            Text("${stringResource(R.string.seek_by, sign + kotlin.math.abs(pendingSeek).toInt())} · ${clock(target)}",
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp)
+                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleMedium)
+        }
         if (visible) Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { controlsHeight = it.height }
-                .background(androidx.tv.material3.MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(state.item.title)
-            state.audioInfo?.let { Text(it, style = androidx.tv.material3.MaterialTheme.typography.bodySmall, color = androidx.tv.material3.MaterialTheme.colorScheme.onSurfaceVariant) }
-            Text("${clock(state.position)} / ${clock(state.duration)}")
-            state.error?.let { Text(it, color = androidx.tv.material3.MaterialTheme.colorScheme.error) }
-            if (state.loading) CircularProgressIndicator(color = androidx.tv.material3.MaterialTheme.colorScheme.primary)
+            Text(detailTitle(state.item))
+            val version = state.selection.version(state.item)
+            listOfNotNull(versionSummary(state.item, state.selection).takeIf { it.isNotBlank() }, state.audioInfo).joinToString(" · ").takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Progress(state.position, state.duration, showEnd = !state.ended)
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (state.loading) CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             if (state.ended) Text(stringResource(R.string.ended))
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 when {
-                    state.error != null -> Button(onClick = model::retry, modifier = Modifier.focusRequester(playFocus)) {
-                        Text(stringResource(R.string.retry))
-                    }
-                    state.ended -> Button(onClick = { model.close(onClosed) }, modifier = Modifier.focusRequester(playFocus)) {
-                        Text(stringResource(R.string.back))
-                    }
-                    else -> Button(
-                        onClick = model::togglePause, enabled = !state.loading,
-                        modifier = Modifier.focusRequester(playFocus),
-                    ) { Text(stringResource(if (state.paused) R.string.play else R.string.pause)) }
+                    state.error != null -> IconAction(Icons.Outlined.Refresh, R.string.retry, Modifier.focusRequester(playFocus), onClick = model::retry)
+                    state.ended -> IconAction(Icons.AutoMirrored.Outlined.ArrowBack, R.string.back, Modifier.focusRequester(playFocus)) { model.close(onClosed) }
+                    // Stays enabled while loading (pausing is ignored then) so it never loses the focus.
+                    else -> IconAction(if (state.paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause, if (state.paused) R.string.play else R.string.pause,
+                        Modifier.focusRequester(playFocus), onClick = model::togglePause)
                 }
-                Action(R.string.rewind, !state.loading) { model.seek(-30.0) }
-                Action(R.string.forward, !state.loading && !state.ended) { model.seek(30.0) }
-                if (state.ended && state.item.next != null) Action(R.string.next_episode) { model.next() }
-                Action(R.string.stop) { model.close(onClosed) }
+                // Seeking while a seek loads moves from the position already requested.
+                IconAction(Icons.Outlined.Replay30, R.string.rewind) { model.seek(-30.0) }
+                IconAction(Icons.Outlined.Forward30, R.string.forward, enabled = !state.ended) { model.seek(30.0) }
+                if (version != null && version.audio.size > 1) IconAction(Icons.Outlined.Audiotrack, R.string.audio) { menu = "audio" }
+                if (version != null && version.subtitles.isNotEmpty()) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
+                if (state.ended && state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }
             }
         }
     }
+    val version = state.selection.version(state.item)
+    if (version != null) when (menu) {
+        "audio" -> ChoiceDialog(stringResource(R.string.audio), { menu = "" }) {
+            items(version.audio, key = { it.index }) { track ->
+                Button(onClick = { model.select(state.selection.copy(audioIndex = track.index)); menu = "" }) {
+                    Text((if (track.index == state.selection.audioIndex) "✓ " else "") + track.trackLabel())
+                }
+            }
+        }
+        "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
+            item {
+                Button(onClick = { model.select(state.selection.copy(subtitleIndex = null)); menu = "" }) {
+                    Text((if (state.selection.subtitleIndex == null) "✓ " else "") + stringResource(R.string.no_subtitles))
+                }
+            }
+            items(version.subtitles, key = { it.index }) { track ->
+                Button(onClick = { model.select(state.selection.copy(subtitleIndex = track.index)); menu = "" }) {
+                    Text((if (track.index == state.selection.subtitleIndex) "✓ " else "") + track.trackLabel())
+                }
+            }
+        }
+    }
+}
+
+/** Position, duration and, while playing, the time the video will end. */
+@Composable
+private fun Progress(position: Double, duration: Double, showEnd: Boolean) {
+    val context = LocalContext.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (duration > 0) LinearProgressIndicator(progress = { (position / duration).toFloat().coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(4.dp), color = MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+        val remaining = (duration - position).coerceAtLeast(0.0)
+        val end = if (showEnd && duration > 0) " · " + stringResource(R.string.ends_at,
+            DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + (remaining * 1000).toLong()))) else ""
+        Text("${clock(position)} / ${clock(duration)}$end")
+    }
+}
+
+@Composable
+private fun IconAction(icon: ImageVector, label: Int, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier, enabled = enabled) {
+        Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(28.dp), tint = androidx.tv.material3.LocalContentColor.current)
+    }
+}
+
+private fun boldSubtitleTypeface(context: android.content.Context): Typeface {
+    val nunito = ResourcesCompat.getFont(context, R.font.nunito) ?: Typeface.DEFAULT
+    // Nunito is a variable font: pick its bold weight rather than a synthetic bold where the platform allows it.
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Typeface.create(nunito, 700, false) else Typeface.create(nunito, Typeface.BOLD)
 }

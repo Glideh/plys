@@ -39,6 +39,7 @@ data class PlayerState(
     val ended: Boolean = false,
     val error: String? = null,
     val audioInfo: String? = null,
+    val selection: PlaybackSelection = PlaybackSelection(),
 )
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -57,7 +58,7 @@ class PlayerController(
         setHandleAudioBecomingNoisy(true)
     }
     private val mutableState = MutableStateFlow(PlayerState(
-        item, initialPosition, selection.version(item)?.durationSeconds ?: 0.0,
+        item, initialPosition, selection.version(item)?.durationSeconds ?: 0.0, selection = selection,
     ))
     val state = mutableState.asStateFlow()
     private var session: PlaybackSession? = null
@@ -157,10 +158,22 @@ class PlayerController(
         player.playWhenReady = !paused
     }
 
+    /** Seeks relative to the current position, or to the position already requested while a seek is loading. */
     fun seek(delta: Double) {
-        if (mutableState.value.loading) return
-        updatePosition()
+        if (closing || disposing) return
+        if (!mutableState.value.loading) updatePosition()
         open(seekPosition(mutableState.value.position, delta, mutableState.value.duration))
+    }
+
+    /** Switches the audio or subtitle track: the server session is reopened at the current position. */
+    fun select(choice: PlaybackSelection) {
+        if (closing || disposing) return
+        val next = choice.normalized(mutableState.value.item)
+        if (next == selection) return
+        selection = next
+        mutableState.value = mutableState.value.copy(selection = next)
+        if (!mutableState.value.loading && !mutableState.value.ended) updatePosition()
+        open(mutableState.value.position)
     }
 
     fun retry() = open(mutableState.value.position)
@@ -177,7 +190,7 @@ class PlayerController(
                     val nextItem = api.item(next.id, source)
                     selection = selection.forNext(mutableState.value.item, nextItem)
                     mutableState.value = PlayerState(
-                        nextItem, next.positionSeconds, nextItem.playableVersion?.durationSeconds ?: 0.0,
+                        nextItem, next.positionSeconds, nextItem.playableVersion?.durationSeconds ?: 0.0, selection = selection,
                     )
                     lastReported = -1.0
                     openSession(next.positionSeconds)
@@ -205,7 +218,8 @@ class PlayerController(
     private fun open(position: Double) {
         if (closing || disposing) return
         if (!mutableState.value.loading && !mutableState.value.ended) updatePosition()
-        mutableState.value = mutableState.value.copy(loading = true, error = null)
+        // The requested position is shown at once and is the base of any further seek while loading.
+        mutableState.value = mutableState.value.copy(loading = true, error = null, position = position, ended = false)
         player.pause()
         scope.launch {
             operations.withLock {
@@ -221,6 +235,7 @@ class PlayerController(
 
     private suspend fun openSession(position: Double) {
         selection = selection.normalized(mutableState.value.item)
+        mutableState.value = mutableState.value.copy(selection = selection)
         val version = selection.version(mutableState.value.item)
             ?: throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
         val opened = api.start(version.id, position, deviceCaps(application), source, selection.audioIndex, selection.subtitleIndex)

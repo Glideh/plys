@@ -253,13 +253,18 @@ class CatalogJourneyTest {
             rule.onAllNodesWithText(text(R.string.back)).assertCountEquals(0)
             rule.onNodeWithText("Sigourney Weaver").assertIsDisplayed()
             rule.onNodeWithText("Tom Skerritt").assertIsDisplayed()
-            val director = rule.onNodeWithText(rule.activity.getString(R.string.directed_by, "Ridley Scott"))
+            // Directors follow the cast, each in a disc; the page scrolls down to them.
+            val detailList = rule.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            detailList.performScrollToNode(hasText("Ridley Scott"))
+            rule.onNodeWithText(text(R.string.directors_title)).assertIsDisplayed()
+            val director = rule.onNodeWithText("Ridley Scott")
             director.assertIsDisplayed()
             assertTrue(director.getUnclippedBoundsInRoot().top > rule.onNodeWithText("Sigourney Weaver").getUnclippedBoundsInRoot().bottom)
+            detailList.performScrollToIndex(0)
             rule.onNode(hasText("${text(R.string.version)} : ", substring = true)).activate()
             rule.onNodeWithText("720p").activate()
             rule.onNode(hasText("${text(R.string.audio)} : ", substring = true)).activate()
-            rule.onNodeWithText("fr · AAC · 2 ch").activate()
+            rule.onNodeWithText("fr · AAC · 2.0").activate()
             rule.onAllNodes(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange)).onFirst().performScrollToIndex(2)
             rule.onNode(hasText("${text(R.string.subtitles)} : ", substring = true)).activate()
             rule.onNodeWithText("fr · SUBRIP").activate()
@@ -280,24 +285,26 @@ class CatalogJourneyTest {
                 ready
             }
             rule.runOnIdle { findPlayer(rule.activity.window.decorView)?.player?.pause() }
-            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }
+            // The controls are icons: the play button is found by its description.
+            rule.waitUntil(10000) { rule.onAllNodesWithContentDescription(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }
             var receivedChannels = 0
             rule.runOnIdle { receivedChannels = (findPlayer(rule.activity.window.decorView)?.player as? androidx.media3.exoplayer.ExoPlayer)?.audioFormat?.channelCount ?: 0 }
             assertTrue(receivedChannels > 0)
-            rule.onNodeWithText(rule.activity.getString(R.string.audio_stream_info, "AAC", receivedChannels)).assertIsDisplayed()
-            val stopTop = rule.onNodeWithText(text(R.string.stop)).fetchSemanticsNode().boundsInWindow.top
+            rule.onNodeWithText(rule.activity.getString(R.string.audio_stream_info, "AAC", receivedChannels), substring = true).assertIsDisplayed()
+            val controlsTop = rule.onNodeWithContentDescription(text(R.string.play)).fetchSemanticsNode().boundsInWindow.top
             var captionsAboveControls = false
             rule.waitUntil(10000) {
                 rule.runOnIdle {
                     val canvas = findPlayer(rule.activity.window.decorView)?.subtitleView?.getChildAt(0)
                     val position = IntArray(2)
                     canvas?.getLocationInWindow(position)
-                    captionsAboveControls = canvas != null && position[1] + canvas.height <= stopTop
+                    captionsAboveControls = canvas != null && position[1] + canvas.height <= controlsTop
                 }
                 captionsAboveControls
             }
             screenshot("playback-subtitles")
-            rule.onNodeWithText(text(R.string.stop)).activate()
+            // There is no stop button any more: back closes the paused player.
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(10000) { rule.onAllNodesWithText(rule.activity.getString(R.string.filters_count, 2)).fetchSemanticsNodes().isNotEmpty() }

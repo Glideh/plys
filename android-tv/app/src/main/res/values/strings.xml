@@ -6,8 +6,6 @@
     <string name="subtitles">Subtitles</string>
     <string name="no_subtitles">Off</string>
     <string name="cast">Cast</string>
-    <string name="directed_by">Directed by: %1$s</string>
-    <string name="created_by">Created by: %1$s</string>
     <string name="no_filter">No filter</string>
     <string name="error_home_unavailable">This server does not provide the home screen API. Check its address and update Plys Server. Catalogs remain available.</string>
     <string name="title_count_pending">Titles: —</string>
@@ -83,7 +81,6 @@
     <string name="pause">Pause</string>
     <string name="rewind">−30 s</string>
     <string name="forward">+30 s</string>
-    <string name="stop">Stop</string>
     <string name="ended">Playback finished.</string>
     <string name="next_episode">Next episode / part</string>
     <string name="unavailable">No playable version is available.</string>
@@ -98,4 +95,10 @@
     <string name="error_response">Unexpected server response.</string>
     <string name="error_server">Server error (HTTP %1$d).</string>
     <string name="error_playback">Playback failed (%1$s). Check the connection and try again.</string>
+    <string name="mark_watched">Mark as watched</string>
+    <string name="mark_unwatched">Mark as unwatched</string>
+    <string name="ends_at">Ends at %1$s</string>
+    <string name="directors_title">Directed by</string>
+    <string name="creators_title">Created by</string>
+    <string name="seek_by">%1$s s</string>
 </resources>
