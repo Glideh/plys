@@ -56,7 +56,11 @@ data class CatalogState(
     val playbackSelection: PlaybackSelection = PlaybackSelection(),
     val libraries: List<Library> = emptyList(),
     val catalogCounts: Map<CatalogKind, CatalogCount> = emptyMap(),
+    /** Latest additions of each kind, shown on the home screen. */
+    val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
 )
+
+private const val RECENT_ITEMS = 20
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
@@ -99,7 +103,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
         countsJob?.cancel()
-        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap())
+        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         clearCatalogState()
         api.login(server, username, password)
         loadHome()
@@ -108,7 +112,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private suspend fun loadHome() {
         countsJob?.cancel()
         mutableState.value = mutableState.value.copy(libraries = api.libraries())
-        mutableState.value = mutableState.value.copy(screen = Screen.Home(HomeResponse()), catalogCounts = emptyMap())
+        mutableState.value = mutableState.value.copy(screen = Screen.Home(HomeResponse()))
         try {
             mutableState.value = mutableState.value.copy(screen = Screen.Home(api.home()))
         } catch (error: ClientException) {
@@ -119,13 +123,18 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         refreshCatalogCounts()
     }
 
+    /** One request per kind gives both its title count and its latest additions. */
     private fun refreshCatalogCounts() {
         countsJob?.cancel()
         countsJob = viewModelScope.launch {
             for (kind in CatalogKind.entries) {
                 try {
-                    val count = api.catalogCount(kind)
-                    mutableState.value = mutableState.value.copy(catalogCounts = mutableState.value.catalogCounts + (kind to count))
+                    val page = api.catalog(CatalogQuery(kind, sort = "added"), limit = RECENT_ITEMS)
+                    val state = mutableState.value
+                    mutableState.value = state.copy(
+                        catalogCounts = state.catalogCounts + (kind to CatalogCount(page.total, page.unavailableServers > 0)),
+                        recent = state.recent + (kind to page.items),
+                    )
                 } catch (_: ClientException) {}
             }
         }
@@ -143,7 +152,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun logout() = perform {
         countsJob?.cancel()
-        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap())
+        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         api.logout()
         clearCatalogState()
         history.clear()
