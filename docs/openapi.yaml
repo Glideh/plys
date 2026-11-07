@@ -1188,6 +1188,17 @@ components:
         rating: { type: [number, "null"] }
         genres: { type: array, items: { type: string } }
         directors: { type: array, items: { type: string }, description: Directors of a movie or creators of a series }
+        directorCredits:
+          type: array
+          description: >
+            The same people as directors, with their picture. Empty for titles whose metadata was not refreshed since
+            this field was added, and absent from older servers; clients then fall back to directors.
+          items:
+            type: object
+            required: [name, photoUrl]
+            properties:
+              name: { type: string }
+              photoUrl: { type: [string, "null"] }
         cast:
           type: array
           items:

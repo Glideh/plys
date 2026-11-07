@@ -123,8 +123,9 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 	if req.Source.Duration > 0 {
 		start = min(start, max(req.Source.Duration-1, 0))
 	}
-	// A copied video can only start on a keyframe; starting exactly there keeps clock and subtitles in sync.
-	if plan.CopyVideo && start > 0 && req.Source.Video != nil {
+	// A copied stream starts at the keyframe ffmpeg seeks to, even when the other stream is decoded from the
+	// requested time: starting the session on that keyframe keeps clock, audio and subtitles in sync.
+	if (plan.CopyVideo || plan.CopyAudio) && start > 0 && req.Source.Video != nil {
 		start = m.keyframeBefore(ctx, req.Source.Path, req.Source.Video.Index, start)
 	}
 	sess.Start = start

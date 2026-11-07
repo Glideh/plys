@@ -166,3 +166,38 @@ func TestLibraryAccessControl(t *testing.T) {
 		t.Errorf("unknown user: expected 400, got %d", r.status)
 	}
 }
+
+func TestItemDirectorCredits(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+	writeFiles(t, e.root, "films/Alien.1979.mkv", "films/Blade.Runner.1982.mkv")
+	films := e.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	_, err := e.srv.Pool.Exec(context.Background(), `UPDATE items SET directors = '{Ridley Scott}',
+		director_members = '[{"name": "Ridley Scott", "profilePath": "/rs.jpg"}]' WHERE library_id = $1 AND title = 'Alien'`, films)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for _, it := range do(t, e.h, http.MethodGet, "/api/v1/libraries/"+films+"/items", admin, nil).body["items"].([]any) {
+		m := it.(map[string]any)
+		ids[m["title"].(string)] = m["id"].(string)
+	}
+
+	r := do(t, e.h, http.MethodGet, "/api/v1/items/"+ids["Alien"], admin, nil)
+	credits, _ := r.body["directorCredits"].([]any)
+	if r.status != http.StatusOK || len(credits) != 1 {
+		t.Fatalf("director credits: %d %v", r.status, r.body["directorCredits"])
+	}
+	if c := credits[0].(map[string]any); c["name"] != "Ridley Scott" || c["photoUrl"] != "/api/v1/images/tmdb/w185/rs.jpg" {
+		t.Errorf("director credit: %v", c)
+	}
+	// Titles not refreshed since director pictures were added still answer an empty list, not null.
+	r = do(t, e.h, http.MethodGet, "/api/v1/items/"+ids["Blade Runner"], admin, nil)
+	if credits, ok := r.body["directorCredits"].([]any); !ok || len(credits) != 0 {
+		t.Errorf("missing director credits must be an empty list: %v", r.body["directorCredits"])
+	}
+	// The image proxy serves director pictures like cast pictures.
+	if known, err := e.srv.q.IsImagePathReferenced(context.Background(), "/rs.jpg"); err != nil || !known {
+		t.Errorf("director picture must be a referenced image: %v %v", known, err)
+	}
+}

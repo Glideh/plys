@@ -249,10 +249,16 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 		return err
 	}
 	creators := make([]Genre, 0)
+	directorPeople := make([]castMember, 0)
 	for _, member := range m.Credits.Crew {
 		if member.Job == "Director" {
 			creators = append(creators, Genre{ID: member.ID, Name: member.Name})
+			directorPeople = append(directorPeople, castMember{Name: member.Name, ProfilePath: member.ProfilePath})
 		}
+	}
+	directors, err := json.Marshal(directorPeople)
+	if err != nil {
+		return err
 	}
 	countries := make([]string, 0, len(m.ProductionCountries))
 	for _, country := range m.ProductionCountries {
@@ -265,7 +271,7 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 			Title: m.Title, SortTitle: scanner.SortTitle(m.Title), OriginalTitle: opt(m.OriginalTitle),
 			Year: optYear(m.ReleaseDate), Overview: opt(m.Overview), Tagline: opt(m.Tagline),
 			ReleaseDate: parseDate(m.ReleaseDate), RuntimeMinutes: optInt(m.Runtime), Rating: optRating(m.VoteAverage),
-			Genres: genreNames(m.Genres), CastMembers: cast, Directors: crewNames(m.Credits, "Director"),
+			Genres: genreNames(m.Genres), CastMembers: cast, Directors: crewNames(m.Credits, "Director"), DirectorMembers: directors,
 			PosterPath: opt(m.PosterPath), BackdropPath: opt(m.BackdropPath),
 			MatchStatus: status, MetadataLanguage: &lang,
 		})
@@ -366,9 +372,15 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 	}
 	creators := make([]string, 0, len(tv.CreatedBy))
 	creatorIDs := make([]Genre, 0, len(tv.CreatedBy))
+	creatorPeople := make([]castMember, 0, len(tv.CreatedBy))
 	for _, cr := range tv.CreatedBy {
 		creators = append(creators, cr.Name)
 		creatorIDs = append(creatorIDs, Genre{ID: cr.ID, Name: cr.Name})
+		creatorPeople = append(creatorPeople, castMember{Name: cr.Name, ProfilePath: cr.ProfilePath})
+	}
+	creatorMembers, err := json.Marshal(creatorPeople)
+	if err != nil {
+		return err
 	}
 	runtime := 0
 	if len(tv.EpisodeRunTime) > 0 {
@@ -383,7 +395,7 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 			Title: tv.Name, SortTitle: scanner.SortTitle(tv.Name), OriginalTitle: opt(tv.OriginalName),
 			Year: optYear(tv.FirstAirDate), Overview: opt(tv.Overview), Tagline: opt(tv.Tagline),
 			ReleaseDate: parseDate(tv.FirstAirDate), RuntimeMinutes: optInt(runtime), Rating: optRating(tv.VoteAverage),
-			Genres: genreNames(tv.Genres), CastMembers: cast, Directors: creators,
+			Genres: genreNames(tv.Genres), CastMembers: cast, Directors: creators, DirectorMembers: creatorMembers,
 			PosterPath: opt(tv.PosterPath), BackdropPath: opt(tv.BackdropPath),
 			MatchStatus: status, MetadataLanguage: &lang,
 		})

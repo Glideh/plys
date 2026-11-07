@@ -159,9 +159,10 @@ type CastMember struct {
 type Credits struct {
 	Cast []CastMember `json:"cast"`
 	Crew []struct {
-		ID   int    `json:"id"`
-		Job  string `json:"job"`
-		Name string `json:"name"`
+		ID          int    `json:"id"`
+		Job         string `json:"job"`
+		Name        string `json:"name"`
+		ProfilePath string `json:"profile_path"`
 	} `json:"crew"`
 }
 
@@ -215,8 +216,9 @@ type TV struct {
 	BackdropPath   string            `json:"backdrop_path"`
 	Seasons        []TVSeasonSummary `json:"seasons"`
 	CreatedBy      []struct {
-		ID   int    `json:"id"`
-		Name string `json:"name"`
+		ID          int    `json:"id"`
+		Name        string `json:"name"`
+		ProfilePath string `json:"profile_path"`
 	} `json:"created_by"`
 	Credits     Credits `json:"credits"`
 	ExternalIDs struct {
