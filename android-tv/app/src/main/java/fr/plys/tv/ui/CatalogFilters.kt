@@ -22,6 +22,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -105,6 +109,7 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
 fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
     var search by remember(screen.query.kind, screen.query.libraryId) { mutableStateOf(screen.query.query) }
     var dialog by remember { mutableStateOf("") }
+    var searchFocused by remember { mutableStateOf(false) }
     val searchLabel = stringResource(R.string.search)
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(search) {
@@ -116,8 +121,9 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         BasicTextField(search, { search = it },
             modifier = Modifier.weight(1f).height(40.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(6.dp))
-                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                .background(if (searchFocused) Plys.Surface700 else Plys.Surface800, Plys.Small)
+                .border(if (searchFocused) 2.dp else 1.dp, if (searchFocused) Plys.Accent400 else Plys.Hairline, Plys.Small)
+                .onFocusChanged { searchFocused = it.isFocused }
                 .padding(horizontal = 12.dp).semantics { contentDescription = searchLabel },
             singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -132,13 +138,11 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
                 }
             },
         )
-        Button(onClick = { dialog = "library" }) {
-            Text(libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries))
-        }
-        Button(onClick = { dialog = "sort" }) { Text(stringResource(R.string.sort)) }
-        if (screen.query.kind != CatalogKind.OTHER) Button(onClick = { dialog = "filters" }) {
-            Text(stringResource(R.string.filters_count, screen.query.filters.count))
-        }
+        if (libraries.count { it.kind == screen.query.kind.value } > 1) ToolbarButton(Icons.Outlined.VideoLibrary,
+            libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries)) { dialog = "library" }
+        ToolbarButton(Icons.AutoMirrored.Outlined.Sort, "${stringResource(R.string.sort)} : ${stringResource(sortLabel(screen.query.sort))}") { dialog = "sort" }
+        if (screen.query.kind != CatalogKind.OTHER) ToolbarButton(Icons.Outlined.FilterList, stringResource(R.string.filters_count, screen.query.filters.count),
+            highlighted = screen.query.filters.count > 0) { dialog = "filters" }
     }
     if (screen.query.filters.count > 0) {
         val filters = screen.query.filters
@@ -161,14 +165,14 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
     }
     when (dialog) {
         "library" -> ChoiceDialog(stringResource(R.string.libraries), { dialog = "" }) {
-            item { Button(onClick = { model.changeQuery(screen.query.copy(libraryId = null, offset = 0)); dialog = "" }) { Text(stringResource(R.string.all_libraries)) } }
+            item { Choice(stringResource(R.string.all_libraries), screen.query.libraryId == null) { model.changeQuery(screen.query.copy(libraryId = null, offset = 0)); dialog = "" } }
             items(libraries.filter { it.kind == screen.query.kind.value }, key = { it.id }) { library ->
-                Button(onClick = { model.changeQuery(screen.query.copy(libraryId = library.id, offset = 0)); dialog = "" }) { Text(library.name) }
+                Choice(library.name, library.id == screen.query.libraryId) { model.changeQuery(screen.query.copy(libraryId = library.id, offset = 0)); dialog = "" }
             }
         }
         "sort" -> ChoiceDialog(stringResource(R.string.sort), { dialog = "" }) {
-            items(listOf("title" to R.string.sort_title, "year" to R.string.sort_year, "added" to R.string.sort_added, "rating" to R.string.sort_rating)) { (value, label) ->
-                Button(onClick = { model.changeQuery(screen.query.copy(sort = value, offset = 0)); dialog = "" }) { Text(stringResource(label)) }
+            items(listOf("title", "year", "added", "rating")) { value ->
+                Choice(stringResource(sortLabel(value)), value == screen.query.sort) { model.changeQuery(screen.query.copy(sort = value, offset = 0)); dialog = "" }
             }
         }
         "filters" -> FiltersDialog(screen.query, model.api, { dialog = "" }) {
@@ -177,13 +181,31 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
     }
 }
 
+private fun sortLabel(sort: String): Int = when (sort) {
+    "year" -> R.string.sort_year
+    "added" -> R.string.sort_added
+    "rating" -> R.string.sort_rating
+    else -> R.string.sort_title
+}
+
+@Composable
+private fun ToolbarButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, highlighted: Boolean = false, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = Modifier.height(40.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp)) {
+        val content = androidx.tv.material3.LocalContentColor.current
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp),
+            tint = if (highlighted && content == Plys.Text) Plys.Accent400 else content)
+        androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+    }
+}
+
 @Composable
 fun ChoiceDialog(title: String, dismiss: () -> Unit, entries: androidx.compose.foundation.lazy.LazyListScope.() -> Unit) {
     Dialog(onDismissRequest = dismiss) {
-        Surface(color = MaterialTheme.colorScheme.surface) {
+        Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 700.dp).fillMaxWidth().heightIn(max = 460.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(12.dp), content = entries)
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = Plys.TextStrong)
+                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp), content = entries)
                 Action(R.string.back, onClick = dismiss)
             }
         }
@@ -198,7 +220,7 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     var editingNumber by remember { mutableStateOf<String?>(null) }
     var invalid by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = dismiss) {
-        Surface(color = MaterialTheme.colorScheme.surface) {
+        Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.advanced_filters), style = MaterialTheme.typography.titleLarge)
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -249,7 +271,7 @@ private fun FilterInputDialog(title: String, initial: String, keyboardType: Keyb
     val close = { keyboard?.hide(); dismiss() }
     val save = { keyboard?.hide(); apply(value) }
     Dialog(onDismissRequest = close) {
-        Surface(color = MaterialTheme.colorScheme.surface) {
+        Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge)
                 OutlinedTextField(value, { value = it }, Modifier.fillMaxWidth().focusInitially(), singleLine = true,
@@ -299,7 +321,7 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
         finally { loading = false }
     }
     Dialog(onDismissRequest = dismiss) {
-        Surface(color = MaterialTheme.colorScheme.surface) {
+        Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 700.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(filterLabel(category, query.kind), style = MaterialTheme.typography.titleLarge)
                 Button(onClick = { editingSearch = true }, modifier = Modifier.fillMaxWidth().focusInitially()) {

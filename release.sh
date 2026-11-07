@@ -46,4 +46,4 @@ read -r -p "Continue? [y/N] " answer
 [[ "$answer" == "y" || "$answer" == "Y" ]] || exit 1
 
 docker buildx bake -f docker-bake.hcl --push
-echo "Published. Tag the revision too: git tag v${VERSION} && git push origin v${VERSION}"
+echo "Published. Tag the revision too: git tag ${VERSION} && git push origin ${VERSION}"

@@ -101,4 +101,17 @@
     <string name="directors_title">Directed by</string>
     <string name="creators_title">Created by</string>
     <string name="seek_by">%1$s s</string>
+    <string name="brand">Plys</string>
+    <string name="sign_in_title">Sign in to your media server</string>
+    <string name="recent_movies">Recently added movies</string>
+    <string name="recent_series">Recently added series</string>
+    <string name="recent_other">Recently added videos</string>
+    <string name="time_left">%1$s left</string>
+    <string name="seasons">Seasons</string>
+    <string name="episodes">Episodes</string>
+    <string name="parts">Parts</string>
+    <string name="available_on">Also on</string>
+    <string name="up_next">Next episode</string>
+    <string name="up_next_in">Starts in %1$d s</string>
+    <string name="play_next_now">Play now</string>
 </resources>

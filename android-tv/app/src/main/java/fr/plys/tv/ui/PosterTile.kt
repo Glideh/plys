@@ -13,11 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
@@ -39,34 +40,54 @@ import androidx.tv.material3.Text
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
 
+/** Focused tiles grow by this factor: rows and grids keep [FocusGutter] around them so nothing is clipped. */
+private const val FOCUSED_SCALE = 1.08f
+
+/**
+ * A poster (2:3) or a thumbnail (16:9) with its title, mirroring the web's `PosterCard`: rounded artwork, a
+ * watched check or the count of episodes left, and a resume bar. Focus lifts the tile and rings it with the accent.
+ */
 @Composable
 fun PosterTile(
     title: String, image: String?, api: PlysApi, modifier: Modifier = Modifier,
     subtitle: String? = null, source: ServerRef? = null, landscape: Boolean = false,
-    progress: Float? = null, watched: Boolean = false, onClick: () -> Unit,
+    progress: Float? = null, watched: Boolean = false, unwatched: Int? = null, label: String? = null,
+    onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(if (focused) 1.025f else 1f, label = "posterFocus")
-    val palette = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(6.dp)
+    val scale by animateFloatAsState(if (focused) FOCUSED_SCALE else 1f, label = "posterFocus")
+    val shape = Plys.Card
     Column(modifier.fillMaxWidth().onFocusChanged { focused = it.hasFocus }.clickable(
         interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick,
     )) {
         Box(Modifier.fillMaxWidth().aspectRatio(if (landscape) 16f / 9f else 2f / 3f)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .shadow(if (focused) 10.dp else 3.dp, shape)
-            .clip(shape).border(if (focused) 2.dp else 1.dp, if (focused) palette.primary else palette.onSurface.copy(alpha = 0.08f), shape)) {
-            Poster(image, api, Modifier.fillMaxSize(), source)
-            if (image == null) Text(title.take(1).uppercase(), modifier = Modifier.align(Alignment.Center), style = MaterialTheme.typography.headlineLarge, color = palette.onSurfaceVariant)
-            if (watched) Icon(Icons.Default.Check, contentDescription = null, tint = palette.primary,
-                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(4.dp)).padding(4.dp).size(16.dp))
-            if (progress != null) LinearProgressIndicator(progress = { progress.coerceIn(0f, 1f) },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp), color = palette.primary, trackColor = Color.Black.copy(alpha = 0.6f))
+            .shadow(if (focused) 18.dp else 4.dp, shape, ambientColor = if (focused) Plys.Accent500 else Color.Black, spotColor = if (focused) Plys.Accent500 else Color.Black)
+            .clip(shape)
+            .border(if (focused) 3.dp else 1.dp, if (focused) Plys.Accent300 else Plys.Hairline, shape)) {
+            if (image != null) Poster(image, api, Modifier.fillMaxSize(), source)
+            else Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Plys.Surface700, Plys.Surface900)))) {
+                Text(title.trim().take(1).uppercase().ifEmpty { "?" }, modifier = Modifier.align(Alignment.Center),
+                    style = MaterialTheme.typography.displaySmall, color = Color.White.copy(alpha = 0.2f))
+            }
+            if (label != null) Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color.White,
+                modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+            when {
+                unwatched != null && unwatched > 0 -> Text(unwatched.toString(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold,
+                    color = Plys.Surface950, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                        .background(Plys.Accent500, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 1.dp))
+                watched -> Icon(Icons.Default.Check, contentDescription = null, tint = Plys.Accent300,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(26.dp).background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(4.dp))
+            }
+            if (progress != null && progress > 0f) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(5.dp).background(Color.Black.copy(alpha = 0.6f))) {
+                Box(Modifier.fillMaxWidth(progress.coerceIn(0f, 1f)).height(5.dp).background(Plys.Accent400))
+            }
         }
-        Text(title, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold, color = if (focused) Color.White else palette.onSurface,
+        Text(title, modifier = Modifier.padding(top = 10.dp), style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold, color = if (focused) Plys.TextStrong else Plys.Text,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
-            color = palette.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            color = if (focused) Plys.Muted else Plys.Subtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
