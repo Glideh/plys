@@ -304,6 +304,7 @@ type itemDetailDTO struct {
 	Rating           *float32      `json:"rating"`
 	Genres           []string      `json:"genres"`
 	Directors        []string      `json:"directors"`
+	DirectorCredits  []castDTO     `json:"directorCredits"`
 	Cast             []castDTO     `json:"cast"`
 	PosterURL        *string       `json:"posterUrl"`
 	BackdropURL      *string       `json:"backdropUrl"`
@@ -364,6 +365,10 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		PartNumber: it.PartNumber, Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
 	}
 	if dto.Cast, err = castFromJSON(it.CastMembers); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	if dto.DirectorCredits, err = castFromJSON(it.DirectorMembers); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}

@@ -3,6 +3,7 @@ package playback
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -261,4 +262,77 @@ func TestSubtitleExtraction(t *testing.T) {
 	if !strings.HasPrefix(string(data), "WEBVTT") || !strings.Contains(string(data), "Au revoir") {
 		t.Errorf("unexpected WebVTT:\n%s", data)
 	}
+}
+
+// TestSeekStartsEveryStreamOnTheKeyframe covers sessions started past zero: with B-frames, ffmpeg seeks
+// before -ss, so asked for the keyframe itself it landed on the previous one. A copied stream then started
+// seconds early while a decoded one started on time, putting audio and video seconds apart.
+func TestSeekStartsEveryStreamOnTheKeyframe(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	input := filepath.Join(t.TempDir(), "movie.mkv")
+	// Keyframes every 2 s, B-frames on (x264 default), so 6 s is a keyframe preceded by another at 4 s.
+	if output, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc2=duration=12:size=320x180:rate=25",
+		"-f", "lavfi", "-i", "sine=duration=12", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "film", "-bf", "3",
+		"-g", "50", "-keyint_min", "50", "-sc_threshold", "0", "-c:a", "aac", input).CombinedOutput(); err != nil {
+		t.Fatalf("generate input: %v %s", err, output)
+	}
+	source := probe(t, input)
+	cases := map[string]ClientCaps{
+		"copy video and audio":                      {VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac"}},
+		"copy video, transcode audio":               {VideoCodecs: []string{"h264"}, AudioCodecs: []string{"opus"}},
+		"transcode video, copy audio":               {VideoCodecs: []string{"av1"}, AudioCodecs: []string{"aac"}},
+		"transcode video and audio (no seek nudge)": {VideoCodecs: []string{"av1"}, AudioCodecs: []string{"opus"}},
+	}
+	for name, caps := range cases {
+		t.Run(name, func(t *testing.T) {
+			plan := Decide(source, caps)
+			directory := t.TempDir()
+			if output, err := exec.Command(ffmpeg, Args(plan, source, 6, Encoder{Accel: AccelNone}, directory)...).CombinedOutput(); err != nil {
+				t.Fatalf("plan %+v: %v %s", plan, err, output)
+			}
+			segments, _ := filepath.Glob(filepath.Join(directory, "seg_*.m4s"))
+			combined := filepath.Join(t.TempDir(), "out.mp4")
+			data, err := os.ReadFile(filepath.Join(directory, "init.mp4"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, segment := range segments {
+				chunk, err := os.ReadFile(segment)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = append(data, chunk...)
+			}
+			if err := os.WriteFile(combined, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// The session starts at 6 s of a 12 s file: both streams must hold the last 6 s, not 8.
+			for _, stream := range []string{"v", "a"} {
+				if span := streamSpan(t, combined, stream); span < 5.7 || span > 6.3 {
+					t.Errorf("plan %+v: stream %s spans %.2f s, want 6 s", plan, stream, span)
+				}
+			}
+		})
+	}
+}
+
+// streamSpan returns the presentation time covered by one stream (v or a) of a media file.
+func streamSpan(t *testing.T, path, stream string) float64 {
+	t.Helper()
+	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", stream, "-show_entries", "frame=pts_time",
+		"-of", "csv=p=0", path).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, last := 1e9, -1e9
+	for _, line := range strings.Fields(string(out)) {
+		var v float64
+		if _, err := fmt.Sscanf(strings.TrimSuffix(line, ","), "%f", &v); err == nil {
+			first, last = min(first, v), max(last, v)
+		}
+	}
+	return last - first
 }

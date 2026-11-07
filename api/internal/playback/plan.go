@@ -15,6 +15,10 @@ import (
 const (
 	SegmentSeconds  = 4
 	maxOutputHeight = 1080
+	// copySeekNudge is added to a keyframe start when a stream is copied. With B-frames, ffmpeg seeks 3/23 s
+	// before -ss; asked for the keyframe itself, it lands on the previous one, so the copied stream starts
+	// seconds earlier than the session while decoded streams start on time.
+	copySeekNudge = 0.2
 )
 
 // Accel is the hardware acceleration used for transcoding.
@@ -151,8 +155,12 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 		}
 	}
 
+	nudge := 0.0
 	if start > 0 {
-		args = append(args, "-ss", formatSeconds(start))
+		if p.CopyVideo || p.CopyAudio {
+			nudge = copySeekNudge
+		}
+		args = append(args, "-ss", formatSeconds(start+nudge))
 	}
 	args = append(args, "-i", src.Path)
 
@@ -207,10 +215,14 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 		"-hls_segment_filename", filepath.Join(outDir, "seg_%05d.m4s"),
 		filepath.Join(outDir, "index.m3u8"),
 	)
-	// Timestamps restart at zero after -ss, so these cues already match the stream clock.
+	// Timestamps restart at zero after -ss, so these cues already match the stream clock. The stream starts
+	// on the keyframe, before the nudged -ss, so the cues are shifted by the nudge.
 	if src.TextSubtitle != nil {
-		args = append(args, "-map", fmt.Sprintf("0:%d", src.TextSubtitle.Index), "-c:s", "webvtt",
-			"-flush_packets", "1", "-f", "webvtt", filepath.Join(outDir, LiveSubtitleFile))
+		args = append(args, "-map", fmt.Sprintf("0:%d", src.TextSubtitle.Index), "-c:s", "webvtt", "-flush_packets", "1")
+		if nudge > 0 {
+			args = append(args, "-output_ts_offset", formatSeconds(nudge))
+		}
+		args = append(args, "-f", "webvtt", filepath.Join(outDir, LiveSubtitleFile))
 	}
 	return args
 }

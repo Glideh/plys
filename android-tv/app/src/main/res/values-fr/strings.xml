@@ -6,8 +6,6 @@
     <string name="subtitles">Sous-titres</string>
     <string name="no_subtitles">Sans sous-titres</string>
     <string name="cast">Acteurs</string>
-    <string name="directed_by">Réalisation : %1$s</string>
-    <string name="created_by">Création : %1$s</string>
     <string name="no_filter">Sans filtre</string>
     <string name="error_home_unavailable">Ce serveur ne fournit pas l’API de l’accueil. Vérifiez son adresse et mettez à jour le serveur Plys. Les catalogues restent accessibles.</string>
     <string name="title_count_pending">Titres : —</string>
@@ -83,7 +81,6 @@
     <string name="pause">Pause</string>
     <string name="rewind">−30 s</string>
     <string name="forward">+30 s</string>
-    <string name="stop">Arrêter</string>
     <string name="ended">Lecture terminée.</string>
     <string name="next_episode">Épisode / partie suivante</string>
     <string name="unavailable">Aucune version lisible disponible.</string>
@@ -98,4 +95,10 @@
     <string name="error_response">Réponse inattendue du serveur.</string>
     <string name="error_server">Erreur du serveur (HTTP %1$d).</string>
     <string name="error_playback">Échec de lecture (%1$s). Vérifiez la connexion et réessayez.</string>
+    <string name="mark_watched">Marquer comme vu</string>
+    <string name="mark_unwatched">Marquer comme non vu</string>
+    <string name="ends_at">Fin à %1$s</string>
+    <string name="directors_title">Réalisation</string>
+    <string name="creators_title">Création</string>
+    <string name="seek_by">%1$s s</string>
 </resources>

@@ -2,6 +2,7 @@ package fr.plys.tv.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +34,11 @@ import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.pluralStringResource
 
+// Focused tiles grow and draw a border and a shadow: rows keep this room around them so nothing is clipped,
+// and every element of the screen starts at the same horizontal gutter.
+val FocusGutter = 12.dp
+val RowFocusPadding = PaddingValues(horizontal = FocusGutter, vertical = FocusGutter)
+
 fun kindLabel(kind: CatalogKind): Int = when (kind) {
     CatalogKind.MOVIES -> R.string.movies
     CatalogKind.SERIES -> R.string.series
@@ -44,8 +50,8 @@ fun HomeScreen(data: HomeResponse, model: CatalogViewModel, libraries: List<Libr
     val firstRail = data.continueWatching.ifEmpty { data.nextUp }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val sideBySide = maxWidth >= 640.dp && data.continueWatching.isNotEmpty() && data.nextUp.isNotEmpty()
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (data.unavailableServers > 0) item { Text(stringResource(R.string.partial_results, data.unavailableServers), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(32.dp), contentPadding = PaddingValues(bottom = FocusGutter)) {
+        if (data.unavailableServers > 0) item { Text(stringResource(R.string.partial_results, data.unavailableServers), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = FocusGutter)) }
         if (sideBySide) item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 HomeRail(R.string.continue_watching, data.continueWatching, model, true, Modifier.weight(1f))
@@ -59,7 +65,7 @@ fun HomeScreen(data: HomeResponse, model: CatalogViewModel, libraries: List<Libr
             HomeRail(R.string.next_up, data.nextUp, model, data.continueWatching.isEmpty())
         }
         item {
-            Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            Row(Modifier.padding(horizontal = FocusGutter, vertical = FocusGutter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 CatalogKind.entries.forEach { kind ->
                     Button(onClick = { model.openKind(kind) }, modifier = Modifier.width(204.dp).height(80.dp).focusInitially(firstRail.isEmpty() && kind == CatalogKind.MOVIES)) {
                         Icon(when (kind) { CatalogKind.MOVIES -> Icons.Outlined.Movie; CatalogKind.SERIES -> Icons.Outlined.Tv; CatalogKind.OTHER -> Icons.Outlined.VideoLibrary },
@@ -84,9 +90,10 @@ fun HomeScreen(data: HomeResponse, model: CatalogViewModel, libraries: List<Libr
 
 @Composable
 private fun HomeRail(title: Int, entries: List<HomeItem>, model: CatalogViewModel, requestInitial: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(vertical = 2.dp)) {
+    Column(modifier) {
+        Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = FocusGutter))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = RowFocusPadding) {
             items(entries, key = { it.source.serverId + it.id }) { item ->
                 PosterTile(title = item.showTitle.ifBlank { item.title }, image = item.posterUrl, api = model.api, source = item.source,
                     modifier = Modifier.width(144.dp).focusInitially(requestInitial && item == entries.first()), landscape = true,

@@ -104,6 +104,7 @@ data class FederatedToken(val token: String, val expiresAt: String)
 data class Version(
     val id: String, val label: String, val durationSeconds: Double? = null, val error: String? = null,
     val audio: List<MediaTrack> = emptyList(), val subtitles: List<MediaTrack> = emptyList(),
+    val resolution: String = "", val hdr: Boolean = false, val videoCodec: String = "",
 )
 
 @Serializable
@@ -169,8 +170,13 @@ data class ItemDetail(
     val next: PlayTarget? = null,
     val cast: List<CastMember> = emptyList(),
     val directors: List<String> = emptyList(),
+    // Absent from older servers and empty until the title's metadata is refreshed: fall back to directors.
+    val directorCredits: List<CastMember> = emptyList(),
+    val seasonNumber: Int? = null,
+    val episodeNumber: Int? = null,
 ) {
     val playableVersion: Version? get() = versions.firstOrNull { it.error == null }
+    val directorPeople: List<CastMember> get() = directorCredits.ifEmpty { directors.map { CastMember(it) } }
 }
 
 @Serializable

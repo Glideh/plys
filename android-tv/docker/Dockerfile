@@ -23,8 +23,30 @@ ENTRYPOINT ["/usr/local/bin/android-tools"]
 CMD [":app:assembleDebug"]
 
 FROM build AS emulator
+# Pinned: emulator 37.x hangs its vCPUs before the guest kernel starts on some KVM hosts
+# (Linux 7.0, Haswell-E). sdkmanager only offers the latest build, so the archive replaces it; its
+# package.xml is kept, with the pinned revision, because avdmanager refuses to create an AVD without it.
+ARG EMULATOR_BUILD=14214601
+ARG EMULATOR_REVISION=36.2.12
+ARG EMULATOR_SHA256=55e7ce272dd27413855c81b4629c107a1553d07a2f77fa55a6049fdca22f4221
 ENV ANDROID_SYSTEM_IMAGE="system-images;android-34;android-tv;x86" \
     ANDROID_AVD=plys-tv
-RUN sdkmanager "emulator" "${ANDROID_SYSTEM_IMAGE}"
+RUN sdkmanager "emulator" "${ANDROID_SYSTEM_IMAGE}" \
+    && curl --fail --location --silent --show-error \
+        "https://dl.google.com/android/repository/emulator-linux_x64-${EMULATOR_BUILD}.zip" -o /tmp/emulator.zip \
+    && echo "${EMULATOR_SHA256}  /tmp/emulator.zip" | sha256sum --check \
+    && mv "${ANDROID_HOME}/emulator/package.xml" /tmp/package.xml \
+    && rm -rf "${ANDROID_HOME}/emulator" \
+    && unzip -q /tmp/emulator.zip -d "${ANDROID_HOME}" \
+    && major="$(echo "${EMULATOR_REVISION}" | cut -d. -f1)" \
+    && minor="$(echo "${EMULATOR_REVISION}" | cut -d. -f2)" \
+    && micro="$(echo "${EMULATOR_REVISION}" | cut -d. -f3)" \
+    && sed -e "s|<major>[0-9]*</major>|<major>${major}</major>|" \
+        -e "s|<minor>[0-9]*</minor>|<minor>${minor}</minor>|" \
+        -e "s|<micro>[0-9]*</micro>|<micro>${micro}</micro>|" \
+        /tmp/package.xml > "${ANDROID_HOME}/emulator/package.xml" \
+    && rm /tmp/emulator.zip /tmp/package.xml \
+    && "${ANDROID_HOME}/emulator/emulator" -version | head -1 \
+    && grep -o '<revision>.*</revision>' "${ANDROID_HOME}/emulator/package.xml"
 COPY --chmod=755 emulator.sh /usr/local/bin/android-emulator
 CMD ["emulator"]

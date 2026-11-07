@@ -51,6 +51,7 @@ type Item struct {
 	VoteCount         *int32
 	FilterLabels      []byte
 	EnrichmentVersion int32
+	DirectorMembers   []byte
 }
 
 type Library struct {

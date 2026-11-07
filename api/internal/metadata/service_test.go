@@ -63,7 +63,7 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 				"vote_count": 5000, "original_language": "en", "production_countries": []map[string]any{{"iso_3166_1": "GB", "name": "United Kingdom"}},
 				"keywords": map[string]any{"keywords": []map[string]any{{"id": 123, "name": "space"}}},
 				"genres":   []map[string]any{{"id": 27, "name": "Horreur"}, {"id": 878, "name": "Science-Fiction"}},
-				"credits":  map[string]any{"cast": []map[string]any{{"id": 10205, "name": "Sigourney Weaver", "character": "Ripley", "profile_path": "/sw.jpg"}}, "crew": []map[string]any{{"id": 578, "job": "Director", "name": "Ridley Scott"}}},
+				"credits":  map[string]any{"cast": []map[string]any{{"id": 10205, "name": "Sigourney Weaver", "character": "Ripley", "profile_path": "/sw.jpg"}}, "crew": []map[string]any{{"id": 578, "job": "Director", "name": "Ridley Scott", "profile_path": "/rs.jpg"}}},
 			})
 		case r.URL.Path == "/movie/78":
 			respond(w, map[string]any{"id": 78, "title": "Blade Runner", "overview": "Los Angeles, 2019.", "release_date": "1982-06-25", "imdb_id": "tt0083658"})
@@ -178,10 +178,10 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 1 {
+	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 2 {
 		t.Fatalf("missing enrichment: %+v", item)
 	}
-	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 0, match_status = 'manual', keyword_ids = '{}' WHERE id = $1`, itemID); err != nil {
+	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 1, match_status = 'manual', keyword_ids = '{}', director_members = '[]' WHERE id = $1`, itemID); err != nil {
 		t.Fatal(err)
 	}
 	env.svc.BackfillFilters(context.Background())
@@ -189,8 +189,12 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.EnrichmentVersion != 1 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
+	if item.EnrichmentVersion != 2 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
 		t.Fatalf("backfill: %+v", item)
+	}
+	// Titles enriched before director pictures existed get them on the next pass.
+	if !strings.Contains(string(item.DirectorMembers), `"profilePath": "/rs.jpg"`) {
+		t.Fatalf("director pictures not backfilled: %s", item.DirectorMembers)
 	}
 }
 
