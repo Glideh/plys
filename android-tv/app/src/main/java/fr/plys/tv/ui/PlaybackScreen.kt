@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
@@ -85,6 +88,9 @@ private const val SUBTITLE_BOTTOM_MARGIN = 0.06f
 /** Seconds moved by one left or right press while the controls are hidden. */
 private const val DPAD_SEEK_SECONDS = 10.0
 
+/** Seconds before the next episode starts by itself at the end of one. */
+private const val AUTO_NEXT_SECONDS = 10
+
 /** Delay after the last left or right press before the accumulated seek is applied. */
 private const val DPAD_SEEK_DELAY_MS = 700L
 
@@ -119,6 +125,15 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     var controlsHeight by remember { mutableIntStateOf(0) }
     var interaction by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf("") }
+    var autoNext by remember(state.item.id) { mutableStateOf(true) }
+    var countdown by remember(state.item.id) { mutableIntStateOf(AUTO_NEXT_SECONDS) }
+    val upNext = state.ended && state.item.next != null && autoNext && state.error == null && !state.loading
+    LaunchedEffect(upNext) {
+        if (!upNext) return@LaunchedEffect
+        countdown = AUTO_NEXT_SECONDS
+        while (countdown > 0) { delay(1000); countdown-- }
+        model.next()
+    }
     // Left and right presses made while the controls are hidden, applied together once the presses stop.
     var pendingSeek by remember { mutableDoubleStateOf(0.0) }
     var seekPresses by remember { mutableIntStateOf(0) }
@@ -140,7 +155,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     }
     // Focus goes to the first button when the controls appear, or when an error or the end replaces it; a seek
     // keeps the focus on the button that was pressed, so it can be pressed again.
-    LaunchedEffect(visible, state.ended, state.error != null) {
+    LaunchedEffect(visible, state.ended, state.error != null, upNext) {
         androidx.compose.runtime.withFrameNanos { }
         if (visible) playFocus.requestFocus() else rootFocus.requestFocus()
     }
@@ -204,38 +219,53 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             val sign = if (pendingSeek < 0) "−" else "+"
             Text("${stringResource(R.string.seek_by, sign + kotlin.math.abs(pendingSeek).toInt())} · ${clock(target)}",
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp)
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f), RoundedCornerShape(6.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .background(Plys.Surface900.copy(alpha = 0.9f), Plys.Card)
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
                 style = MaterialTheme.typography.titleMedium)
+        }
+        // Scrims keep the text readable over bright pictures without hiding the video behind a solid bar.
+        if (visible) {
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(160.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent))))
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.45f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)))))
+            Column(Modifier.align(Alignment.TopStart).padding(horizontal = 48.dp, vertical = 32.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val context = listOfNotNull(
+                    state.item.ancestors.firstOrNull()?.title?.takeIf { it.isNotBlank() },
+                    episodeCode(state.item.seasonNumber.takeIf { state.item.kind == "episode" }, state.item.episodeNumber),
+                ).joinToString(" · ")
+                if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.titleMedium, color = Plys.Accent300)
+                Text(detailTitle(state.item), style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            }
         }
         if (visible) Column(
             Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged { controlsHeight = it.height }
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.92f)).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 48.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(detailTitle(state.item))
             val version = state.selection.version(state.item)
             listOfNotNull(versionSummary(state.item, state.selection).takeIf { it.isNotBlank() }, state.audioInfo).joinToString(" · ").takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(it, style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
             }
             Progress(state.position, state.duration, showEnd = !state.ended)
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-            if (state.loading) CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-            if (state.ended) Text(stringResource(R.string.ended))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (state.ended && !upNext) Text(stringResource(R.string.ended), color = Plys.Muted)
+            if (upNext) UpNext(countdown, Modifier.focusRequester(playFocus), playNow = model::next, cancel = { autoNext = false })
+            else Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
                     state.error != null -> IconAction(Icons.Outlined.Refresh, R.string.retry, Modifier.focusRequester(playFocus), onClick = model::retry)
                     state.ended -> IconAction(Icons.AutoMirrored.Outlined.ArrowBack, R.string.back, Modifier.focusRequester(playFocus)) { model.close(onClosed) }
                     // Stays enabled while loading (pausing is ignored then) so it never loses the focus.
                     else -> IconAction(if (state.paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause, if (state.paused) R.string.play else R.string.pause,
-                        Modifier.focusRequester(playFocus), onClick = model::togglePause)
+                        Modifier.focusRequester(playFocus), primary = true, onClick = model::togglePause)
                 }
                 // Seeking while a seek loads moves from the position already requested.
                 IconAction(Icons.Outlined.Replay30, R.string.rewind) { model.seek(-30.0) }
                 IconAction(Icons.Outlined.Forward30, R.string.forward, enabled = !state.ended) { model.seek(30.0) }
                 if (version != null && version.audio.size > 1) IconAction(Icons.Outlined.Audiotrack, R.string.audio) { menu = "audio" }
                 if (version != null && version.subtitles.isNotEmpty()) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
-                if (state.ended && state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }
+                if (state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }
+                if (state.loading) CircularProgressIndicator(Modifier.size(28.dp), color = Plys.Accent400, strokeWidth = 3.dp)
             }
         }
     }
@@ -243,44 +273,56 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     if (version != null) when (menu) {
         "audio" -> ChoiceDialog(stringResource(R.string.audio), { menu = "" }) {
             items(version.audio, key = { it.index }) { track ->
-                Button(onClick = { model.select(state.selection.copy(audioIndex = track.index)); menu = "" }) {
-                    Text((if (track.index == state.selection.audioIndex) "✓ " else "") + track.trackLabel())
-                }
+                Choice(track.trackLabel(), track.index == state.selection.audioIndex) { model.select(state.selection.copy(audioIndex = track.index)); menu = "" }
             }
         }
         "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
-            item {
-                Button(onClick = { model.select(state.selection.copy(subtitleIndex = null)); menu = "" }) {
-                    Text((if (state.selection.subtitleIndex == null) "✓ " else "") + stringResource(R.string.no_subtitles))
-                }
-            }
+            item { Choice(stringResource(R.string.no_subtitles), state.selection.subtitleIndex == null) { model.select(state.selection.copy(subtitleIndex = null)); menu = "" } }
             items(version.subtitles, key = { it.index }) { track ->
-                Button(onClick = { model.select(state.selection.copy(subtitleIndex = track.index)); menu = "" }) {
-                    Text((if (track.index == state.selection.subtitleIndex) "✓ " else "") + track.trackLabel())
-                }
+                Choice(track.trackLabel(), track.index == state.selection.subtitleIndex) { model.select(state.selection.copy(subtitleIndex = track.index)); menu = "" }
             }
         }
     }
 }
 
-/** Position, duration and, while playing, the time the video will end. */
+/** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */
+@Composable
+private fun UpNext(countdown: Int, modifier: Modifier, playNow: () -> Unit, cancel: () -> Unit) {
+    Row(Modifier.background(Plys.Surface900.copy(alpha = 0.92f), Plys.Card).padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(260.dp)) {
+            Text(stringResource(R.string.up_next), style = MaterialTheme.typography.titleMedium, color = Plys.TextStrong)
+            Text(stringResource(R.string.up_next_in, countdown), style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
+            LinearProgressIndicator(progress = { 1f - countdown / AUTO_NEXT_SECONDS.toFloat() }, modifier = Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp),
+                color = Plys.Accent400, trackColor = Color.White.copy(alpha = 0.15f))
+        }
+        Action(R.string.play_next_now, modifier = modifier, primary = true, onClick = playNow)
+        Action(R.string.cancel, onClick = cancel)
+    }
+}
+
+/** Position, duration and, while playing, the time left and the time the video will end. */
 @Composable
 private fun Progress(position: Double, duration: Double, showEnd: Boolean) {
     val context = LocalContext.current
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (duration > 0) LinearProgressIndicator(progress = { (position / duration).toFloat().coerceIn(0f, 1f) },
-            modifier = Modifier.fillMaxWidth().height(4.dp), color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f))
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (duration > 0) Box(Modifier.fillMaxWidth().height(6.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(3.dp))) {
+            Box(Modifier.fillMaxWidth((position / duration).toFloat().coerceIn(0f, 1f)).height(6.dp).background(Plys.Accent400, RoundedCornerShape(3.dp)))
+        }
         val remaining = (duration - position).coerceAtLeast(0.0)
-        val end = if (showEnd && duration > 0) " · " + stringResource(R.string.ends_at,
-            DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + (remaining * 1000).toLong()))) else ""
-        Text("${clock(position)} / ${clock(duration)}$end")
+        Row(Modifier.fillMaxWidth()) {
+            Text("${clock(position)} / ${clock(duration)}", style = MaterialTheme.typography.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
+            if (showEnd && duration > 0) Text("−${clock(remaining)} · " + stringResource(R.string.ends_at,
+                DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + (remaining * 1000).toLong()))),
+                style = MaterialTheme.typography.bodyMedium, color = Plys.Muted)
+        }
     }
 }
 
 @Composable
-private fun IconAction(icon: ImageVector, label: Int, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier, enabled = enabled) {
+private fun IconAction(icon: ImageVector, label: Int, modifier: Modifier = Modifier, enabled: Boolean = true, primary: Boolean = false, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier, enabled = enabled, primary = primary, shape = androidx.compose.foundation.shape.CircleShape,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
         Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(28.dp), tint = androidx.tv.material3.LocalContentColor.current)
     }
 }

@@ -16,6 +16,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.window.Dialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Audiotrack
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Subtitles
+import androidx.compose.material3.Icon
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
@@ -112,9 +118,9 @@ fun SynopsisDialog(title: String, text: String, dismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var focused by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = dismiss) {
-        androidx.tv.material3.Surface(colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)) {
+        androidx.tv.material3.Surface(colors = androidx.tv.material3.SurfaceDefaults.colors(containerColor = Plys.Surface900), shape = Plys.Large) {
             Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = 460.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(title, style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.headlineSmall, color = Plys.TextStrong)
                 // The text is focusable so the remote scrolls long overviews.
                 Text(text, style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.weight(1f, fill = false)
@@ -142,34 +148,56 @@ fun PlaybackSelectionControls(item: ItemDetail, selection: PlaybackSelection, se
     val version = chosen.version(item) ?: return
     if (item.versions.size <= 1 && version.audio.size <= 1 && version.subtitles.isEmpty()) return
     var menu by remember { mutableStateOf("") }
+    val subtitle = version.subtitles.firstOrNull { it.index == chosen.subtitleIndex }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = RowFocusPadding) {
         if (item.versions.size > 1) item {
-            PlysButton(onClick = { menu = "version" }) { Text("${stringResource(R.string.version)} : ${version.label}", maxLines = 1) }
+            TrackButton(Icons.Outlined.HighQuality, "${stringResource(R.string.version)} : ${version.label}") { menu = "version" }
         }
         if (version.audio.size > 1) item {
-            PlysButton(onClick = { menu = "audio" }) { Text("${stringResource(R.string.audio)} : ${version.audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel().orEmpty()}", maxLines = 1) }
+            TrackButton(Icons.Outlined.Audiotrack, "${stringResource(R.string.audio)} : ${version.audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel().orEmpty()}") { menu = "audio" }
         }
         if (version.subtitles.isNotEmpty()) item {
-            PlysButton(onClick = { menu = "subtitles" }) { Text("${stringResource(R.string.subtitles)} : ${version.subtitles.firstOrNull { it.index == chosen.subtitleIndex }?.trackLabel() ?: stringResource(R.string.no_subtitles)}", maxLines = 1) }
+            TrackButton(Icons.Outlined.Subtitles, "${stringResource(R.string.subtitles)} : ${subtitle?.trackLabel() ?: stringResource(R.string.no_subtitles)}") { menu = "subtitles" }
         }
     }
     when (menu) {
         "version" -> ChoiceDialog(stringResource(R.string.version), { menu = "" }) {
             items(item.versions, key = { it.id }) { candidate ->
-                PlysButton(onClick = { select(PlaybackSelection(candidate.id).normalized(item)); menu = "" }, enabled = candidate.error == null) { Text(candidate.label) }
+                Choice(candidate.label, candidate.id == version.id, enabled = candidate.error == null) { select(PlaybackSelection(candidate.id).normalized(item)); menu = "" }
             }
         }
         "audio" -> ChoiceDialog(stringResource(R.string.audio), { menu = "" }) {
             items(version.audio, key = { it.index }) { track ->
-                PlysButton(onClick = { select(chosen.copy(audioIndex = track.index)); menu = "" }) { Text(track.trackLabel()) }
+                Choice(track.trackLabel(), track.index == chosen.audioIndex) { select(chosen.copy(audioIndex = track.index)); menu = "" }
             }
         }
         "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
-            item { PlysButton(onClick = { select(chosen.copy(subtitleIndex = null)); menu = "" }) { Text(stringResource(R.string.no_subtitles)) } }
+            item { Choice(stringResource(R.string.no_subtitles), chosen.subtitleIndex == null) { select(chosen.copy(subtitleIndex = null)); menu = "" } }
             items(version.subtitles, key = { it.index }) { track ->
-                PlysButton(onClick = { select(chosen.copy(subtitleIndex = track.index)); menu = "" }) { Text(track.trackLabel()) }
+                Choice(track.trackLabel(), track.index == chosen.subtitleIndex) { select(chosen.copy(subtitleIndex = track.index)); menu = "" }
             }
         }
+    }
+}
+
+@Composable
+private fun TrackButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    PlysButton(onClick = onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current)
+        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+        Text(label, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** One entry of a choice dialog; the current one is checked and takes the focus when the dialog opens. */
+@Composable
+fun Choice(label: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    PlysButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().focusInitially(selected)) {
+        Box(Modifier.size(22.dp)) {
+            if (selected) Icon(Icons.Outlined.Check, contentDescription = null, tint = androidx.tv.material3.LocalContentColor.current, modifier = Modifier.fillMaxSize())
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
+        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -177,15 +205,14 @@ fun PlaybackSelectionControls(item: ItemDetail, selection: PlaybackSelection, se
 @Composable
 fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: ServerRef?) {
     Column {
-        Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = FocusGutter))
+        RailTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = RowFocusPadding) {
             items(people) { person ->
                 var focused by remember { mutableStateOf(false) }
                 Column(Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }.focusable(),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(Modifier.size(80.dp).clip(CircleShape)
-                        .border(if (focused) 3.dp else 1.dp, if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), CircleShape)) {
+                        .border(if (focused) 3.dp else 1.dp, if (focused) Plys.Accent300 else Plys.Hairline, CircleShape)) {
                         // Pictures are portraits: crop them to fill the disc.
                         if (person.photoUrl != null) coil.compose.AsyncImage(model = api.posterUrl(person.photoUrl, source), contentDescription = null,
                             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant), contentScale = androidx.compose.ui.layout.ContentScale.Crop)

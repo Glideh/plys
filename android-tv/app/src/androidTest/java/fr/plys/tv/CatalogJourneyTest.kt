@@ -26,7 +26,6 @@ import org.junit.Assert.assertEquals
 import org.json.JSONObject
 import org.json.JSONArray
 import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.unit.dp
 import androidx.activity.compose.setContent
 import androidx.lifecycle.ViewModelProvider
 import fr.plys.tv.data.HomeItem
@@ -53,7 +52,7 @@ class CatalogJourneyTest {
         File(rule.activity.getExternalFilesDir(null), "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Test fun homeRowsAdaptToAvailableWidth() {
+    @Test fun homeRowsStackVertically() {
         val data = HomeResponse(
             continueWatching = listOf(HomeItem("resume", "movie", "Resume fixture", ServerRef("local"))),
             nextUp = listOf(HomeItem("next", "episode", "Next fixture", ServerRef("local"))),
@@ -64,14 +63,10 @@ class CatalogJourneyTest {
         }
         val continued = rule.onNodeWithText(text(R.string.continue_watching)).getUnclippedBoundsInRoot()
         val next = rule.onNodeWithText(text(R.string.next_up)).getUnclippedBoundsInRoot()
-        val root = rule.onRoot().getUnclippedBoundsInRoot()
-        if (root.right - root.left >= 640.dp) {
-            assertEquals(continued.top, next.top)
-            assertTrue(next.left > continued.right)
-        } else {
-            assertTrue(next.top > continued.bottom)
-        }
-        screenshot("home-adaptive")
+        // Full-width rows, one under the other: up and down change row, left and right browse it.
+        assertTrue(next.top > continued.bottom)
+        assertEquals(continued.left, next.left)
+        screenshot("home-rows")
     }
 
     @Test fun missingHomeStillShowsCatalogCounts() {
@@ -174,31 +169,29 @@ class CatalogJourneyTest {
                 throw failure
             }
             val titleCount = { count: Int -> rule.activity.resources.getQuantityString(R.plurals.title_count, count, count) }
+            val homeList = rule.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            homeList.performScrollToNode(hasText(text(R.string.movies)))
             rule.waitUntil(10000) { rule.onAllNodesWithText(titleCount(65)).fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText(titleCount(0)).assertIsDisplayed()
             rule.waitUntil(10000) { rule.onAllNodesWithText("≥ ${titleCount(2)}").fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText(rule.activity.resources.getQuantityString(R.plurals.library_count, 1, 1)).assertIsDisplayed()
             screenshot("home")
-            val continueBounds = rule.onNodeWithText(text(R.string.continue_watching)).getUnclippedBoundsInRoot()
-            val nextBounds = rule.onNodeWithText(text(R.string.next_up)).getUnclippedBoundsInRoot()
-            val rootBounds = rule.onRoot().getUnclippedBoundsInRoot()
-            if (rootBounds.right - rootBounds.left >= 736.dp) {
-                assertEquals(continueBounds.top, nextBounds.top)
-                assertTrue(nextBounds.left > continueBounds.right)
-            } else {
-                assertTrue(nextBounds.top > continueBounds.bottom)
-            }
-            assertTrue(rule.onNodeWithText(text(R.string.other)).getUnclippedBoundsInRoot().bottom <= rule.onRoot().getUnclippedBoundsInRoot().bottom)
+            // The latest additions follow the libraries.
+            homeList.performScrollToNode(hasText(text(R.string.recent_movies)))
+            rule.onNodeWithText(text(R.string.recent_movies)).assertIsDisplayed()
+            homeList.performScrollToNode(hasText(text(R.string.movies)))
+            rule.onNodeWithText(text(R.string.other)).assertIsDisplayed()
             rule.onNodeWithText(text(R.string.movies)).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             rule.onNodeWithText(text(R.string.movies)).performKeyInput { pressKey(Key.DirectionRight) }
             rule.onNodeWithText(text(R.string.series)).assertIsFocused()
             rule.onNodeWithText(text(R.string.movies)).activate()
+            rule.waitUntil(10000) { rule.onAllNodesWithContentDescription(text(R.string.search)).fetchSemanticsNodes().isNotEmpty() }
             rule.waitUntil(10000) { rule.onAllNodesWithText("Alien").fetchSemanticsNodes().isNotEmpty() }
             rule.onAllNodesWithText("Plys TV").assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.back)).assertCountEquals(0)
             val searchBounds = rule.onNodeWithContentDescription(text(R.string.search)).getUnclippedBoundsInRoot()
-            val sortBounds = rule.onNodeWithText(text(R.string.sort)).getUnclippedBoundsInRoot()
+            val sortBounds = rule.onNodeWithText("${text(R.string.sort)} : ${text(R.string.sort_title)}").getUnclippedBoundsInRoot()
             assertEquals(searchBounds.bottom - searchBounds.top, sortBounds.bottom - sortBounds.top)
             screenshot("catalog")
             val layouts = mutableListOf<TextLayoutResult>()
@@ -251,10 +244,13 @@ class CatalogJourneyTest {
             rule.onAllNodesWithText("Plys TV").assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.back)).assertCountEquals(0)
+            // The overview, the play button and the tracks fit above the fold; the cast follows when scrolling down.
+            val detailList = rule.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+            rule.onNodeWithText("A crew encounters an unknown life form.").assertIsDisplayed()
+            detailList.performScrollToNode(hasText("Sigourney Weaver"))
             rule.onNodeWithText("Sigourney Weaver").assertIsDisplayed()
             rule.onNodeWithText("Tom Skerritt").assertIsDisplayed()
             // Directors follow the cast, each in a disc; the page scrolls down to them.
-            val detailList = rule.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
             detailList.performScrollToNode(hasText("Ridley Scott"))
             rule.onNodeWithText(text(R.string.directors_title)).assertIsDisplayed()
             val director = rule.onNodeWithText("Ridley Scott")
