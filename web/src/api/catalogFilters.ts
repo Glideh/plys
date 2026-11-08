@@ -1,7 +1,11 @@
+export const resolutions = ['2160p', '1080p', '720p', 'SD'] as const
+export type Resolution = typeof resolutions[number]
+export const audioFormats = ['atmos', 'truehd', 'eac3', 'ac3', 'dtsHdMa', 'dts', 'flac', 'pcm', 'aac', 'opus', 'mp3'] as const
+export type AudioFormat = typeof audioFormats[number]
+
 export interface CatalogFilters {
   genres?: number[]
   excludeGenres?: number[]
-  genreMode?: 'any' | 'all'
   actors?: number[]
   creators?: number[]
   keywords?: number[]
@@ -13,6 +17,8 @@ export interface CatalogFilters {
   votesMin?: number
   runtimeMin?: number
   runtimeMax?: number
+  resolution?: Resolution
+  audio?: AudioFormat
 }
 
 export const selectionKeys = ['genres', 'excludeGenres', 'actors', 'creators', 'keywords', 'languages', 'countries'] as const
@@ -22,6 +28,10 @@ export interface FilterOption { id: string; label: string }
 export interface FilterOptionsPage { options: Partial<Record<FilterCategory, FilterOption[]>>; unavailableServers: number }
 export const numberKeys = ['yearMin', 'yearMax', 'ratingMin', 'votesMin', 'runtimeMin', 'runtimeMax'] as const
 export type NumberKey = typeof numberKeys[number]
+/** Technical criteria picked from a fixed list of values. */
+export const choiceKeys = ['resolution', 'audio'] as const
+export type ChoiceKey = typeof choiceKeys[number]
+export const choiceValues: { resolution: readonly Resolution[]; audio: readonly AudioFormat[] } = { resolution: resolutions, audio: audioFormats }
 
 export function parseFilters(raw: unknown): CatalogFilters {
   if (typeof raw !== 'string') return {}
@@ -43,7 +53,8 @@ export function parseFilters(raw: unknown): CatalogFilters {
       const value = source[key]
       if (typeof value === 'number' && Number.isFinite(value)) filters[key] = value
     }
-    if (source.genreMode === 'all') filters.genreMode = 'all'
+    if (resolutions.includes(source.resolution as Resolution)) filters.resolution = source.resolution as Resolution
+    if (audioFormats.includes(source.audio as AudioFormat)) filters.audio = source.audio as AudioFormat
     return filters
   } catch { return {} }
 }
@@ -57,10 +68,12 @@ export function serializeFilters(filters: CatalogFilters): string | undefined {
     else result[key] = [...new Set(filters[key])].sort((left, right) => left - right)
   }
   for (const key of numberKeys) if (filters[key] !== undefined) result[key] = filters[key]
-  if (result.genres?.length && filters.genreMode === 'all') result.genreMode = 'all'
+  if (filters.resolution) result.resolution = filters.resolution
+  if (filters.audio) result.audio = filters.audio
   return Object.keys(result).length ? JSON.stringify(result) : undefined
 }
 
 export function filterCount(filters: CatalogFilters): number {
   return selectionKeys.filter((key) => filters[key]?.length).length + numberKeys.filter((key) => filters[key] !== undefined).length
+    + choiceKeys.filter((key) => filters[key]).length
 }

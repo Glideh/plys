@@ -1025,7 +1025,7 @@ components:
     CatalogFilters:
       name: filters
       in: query
-      description: URL-encoded JSON object, at most 8192 bytes. Criteria use AND; selections within one criterion use OR, except genres in all mode. Missing values fail active inclusion or range criteria; excluded genres only remove known matches. For duplicate TMDB titles, at least one source must satisfy all criteria.
+      description: URL-encoded JSON object, at most 8192 bytes. Criteria use AND; selections within one criterion use OR. Resolution and audio match a title when at least one of its available files (a movie version or a series episode) matches. Missing values fail active inclusion or range criteria; excluded genres only remove known matches. For duplicate TMDB titles, at least one source must satisfy all criteria.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/CatalogFilters" }
@@ -1070,10 +1070,10 @@ components:
     CatalogFilters:
       type: object
       additionalProperties: false
+      description: The genreMode key sent by clients up to 0.3 is still accepted and ignored.
       properties:
         genres: { $ref: "#/components/schemas/TMDBFilterIDs" }
         excludeGenres: { $ref: "#/components/schemas/TMDBFilterIDs" }
-        genreMode: { type: string, enum: [any, all], default: any }
         actors: { $ref: "#/components/schemas/TMDBFilterIDs" }
         creators: { $ref: "#/components/schemas/TMDBFilterIDs", description: Movie directors or series creators }
         keywords: { $ref: "#/components/schemas/TMDBFilterIDs" }
@@ -1085,6 +1085,14 @@ components:
         votesMin: { type: integer, minimum: 0, maximum: 2147483647 }
         runtimeMin: { type: integer, minimum: 0, maximum: 10000, description: "Minutes, movies only" }
         runtimeMax: { type: integer, minimum: 0, maximum: 10000, description: "Minutes, movies only" }
+        resolution:
+          type: string
+          enum: ["2160p", "1080p", "720p", "SD"]
+          description: Resolution class of the first video stream of a file; the width counts too, so 1920x800 is 1080p
+        audio:
+          type: string
+          enum: [atmos, truehd, eac3, ac3, dtsHdMa, dts, flac, pcm, aac, opus, mp3]
+          description: "Sound format of one of the audio streams of a file: atmos (Dolby Atmos, over TrueHD or E-AC-3), truehd (Dolby TrueHD), eac3 (Dolby Digital Plus), ac3 (Dolby Digital), dtsHdMa (DTS-HD Master Audio), dts (any DTS, HD included), pcm (uncompressed)"
     TMDBFilterIDs:
       type: array
       maxItems: 20
