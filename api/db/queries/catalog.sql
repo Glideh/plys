@@ -212,8 +212,8 @@ FROM media_files f
 WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL;
 
 -- name: ListItemFiles :many
--- Paths stay server-side: clients only see technical details.
-SELECT id, item_id, size, duration_seconds, container, streams, edition, probe_error
+-- The path is only exposed to local admins (see versions in internal/api/catalog.go).
+SELECT id, item_id, path, size, duration_seconds, container, streams, edition, probe_error
 FROM media_files
 WHERE item_id = ANY(@item_ids::uuid[]) AND missing_since IS NULL
 ORDER BY size DESC;

@@ -112,6 +112,8 @@ export default {
     none: 'Aucun',
     forced: 'forcés',
     unreadable: 'Fichier illisible',
+    fileName: 'Fichier',
+    folder: 'Dossier',
     seasons: 'Saisons',
     episodes: 'Épisodes',
     parts: 'Parties',

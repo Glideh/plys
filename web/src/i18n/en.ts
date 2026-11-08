@@ -114,6 +114,8 @@ export default {
     none: 'None',
     forced: 'forced',
     unreadable: 'Unreadable file',
+    fileName: 'File',
+    folder: 'Folder',
     seasons: 'Seasons',
     episodes: 'Episodes',
     parts: 'Parts',
