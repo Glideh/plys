@@ -114,7 +114,7 @@
     <string name="seasons">Seasons</string>
     <string name="episodes">Episodes</string>
     <string name="parts">Parts</string>
-    <string name="available_on">Also on</string>
+    <string name="server_name">Server</string>
     <string name="up_next">Next episode</string>
     <string name="up_next_in">Starts in %1$d s</string>
     <string name="play_next_now">Play now</string>
