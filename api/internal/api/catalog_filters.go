@@ -118,7 +118,7 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 				label = display.Regions(language.Make(locale)).Name(region)
 			}
 		}
-		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(strings.ToLower(label), strings.ToLower(query)) && !slices.Contains(selected, row.ID) {
+		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(foldSearch(label), foldSearch(query)) && !slices.Contains(selected, row.ID) {
 			continue
 		}
 		response.Options[row.Category] = append(response.Options[row.Category], metadata.FilterOption{ID: row.ID, Label: label})
