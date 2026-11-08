@@ -19,6 +19,10 @@
     </plurals>
     <string name="catalog_count">Titles: %1$d</string>
     <string name="search">Search</string>
+    <string name="search_everything">Search movies, TV shows and videos</string>
+    <string name="search_hint">Type at least %1$d characters to search.</string>
+    <string name="no_results">No results.</string>
+    <string name="see_all">See all</string>
     <string name="sort">Sort</string>
     <string name="sort_title">Title</string>
     <string name="sort_year">Year</string>

@@ -30,6 +30,10 @@ export default {
     submit: 'Sign in',
   },
   home: {
+    search: 'Search movies, TV shows and videos…',
+    searchHint: 'Type at least {n} characters to search.',
+    searchResults: 'Search results',
+    seeAll: 'See all',
     continueWatching: 'Continue watching',
     nextUp: 'Next up',
     libraries: 'Libraries',
