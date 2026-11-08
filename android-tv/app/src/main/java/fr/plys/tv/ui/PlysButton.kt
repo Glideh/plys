@@ -1,37 +1,50 @@
 package fr.plys.tv.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Border
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.MaterialTheme
 
+/**
+ * Buttons follow the web's `BaseButton`: the primary one is filled with the accent, the others are quiet glass.
+ * On a TV the focus must read from the couch, so a focused button fills with a light colour and grows slightly
+ * instead of only drawing a thin outline.
+ */
 @Composable
 fun PlysButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    primary: Boolean = false,
+    shape: Shape = Plys.Small,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val palette = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(6.dp)
     androidx.tv.material3.Button(
         onClick = onClick, modifier = modifier, enabled = enabled,
         shape = ButtonDefaults.shape(shape = shape),
-        scale = ButtonDefaults.scale(focusedScale = 1f),
+        scale = ButtonDefaults.scale(focusedScale = 1.05f, pressedScale = 0.98f),
+        contentPadding = contentPadding,
         border = ButtonDefaults.border(
-            border = Border(BorderStroke(1.dp, palette.onSurface.copy(alpha = 0.1f)), shape = shape),
-            focusedBorder = Border(BorderStroke(2.dp, palette.primary), shape = shape),
+            border = Border(BorderStroke(1.dp, if (primary) Color.Transparent else Plys.Hairline), shape = shape),
+            focusedBorder = Border(BorderStroke(2.dp, if (primary) Plys.Accent300 else Color.White), shape = shape),
         ),
-        colors = ButtonDefaults.colors(
-            containerColor = palette.onSurface.copy(alpha = 0.05f), contentColor = palette.onSurface,
-            focusedContainerColor = palette.onSurface.copy(alpha = 0.1f), focusedContentColor = palette.onSurface,
-            disabledContainerColor = palette.onSurface.copy(alpha = 0.025f),
-            disabledContentColor = palette.onSurfaceVariant.copy(alpha = 0.75f),
+        colors = if (primary) ButtonDefaults.colors(
+            containerColor = Plys.Accent500, contentColor = Plys.Surface950,
+            focusedContainerColor = Plys.Accent300, focusedContentColor = Plys.Surface950,
+            pressedContainerColor = Plys.Accent400, pressedContentColor = Plys.Surface950,
+            disabledContainerColor = Plys.Accent600.copy(alpha = 0.4f), disabledContentColor = Plys.Surface950.copy(alpha = 0.7f),
+        ) else ButtonDefaults.colors(
+            containerColor = Color.White.copy(alpha = 0.07f), contentColor = Plys.Text,
+            focusedContainerColor = Plys.Text, focusedContentColor = Plys.Surface950,
+            pressedContainerColor = Plys.Muted, pressedContentColor = Plys.Surface950,
+            disabledContainerColor = Color.White.copy(alpha = 0.03f), disabledContentColor = Plys.Subtle.copy(alpha = 0.75f),
         ),
         content = content,
     )

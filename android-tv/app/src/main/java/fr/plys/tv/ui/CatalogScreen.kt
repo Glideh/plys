@@ -1,7 +1,12 @@
 package fr.plys.tv.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,15 +48,19 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
         }
     }
     Column(Modifier.fillMaxSize()) {
-        Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
+            Text(pluralStringResource(R.plurals.title_count, screen.page.total, screen.page.total), style = MaterialTheme.typography.bodyLarge,
+                color = Plys.Muted, modifier = Modifier.padding(bottom = 4.dp))
+            if (screen.page.unavailableServers > 0) Text(stringResource(R.string.partial_results, screen.page.unavailableServers),
+                style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
+        }
         CatalogToolbar(screen, model, libraries)
-        Text(stringResource(R.string.catalog_count, screen.page.total), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (screen.page.unavailableServers > 0) Text(stringResource(R.string.partial_results, screen.page.unavailableServers), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) Text(stringResource(R.string.empty))
+        if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) EmptyState(stringResource(R.string.empty), Modifier.padding(top = 12.dp))
         val focusId = screen.focusedId ?: screen.page.items.firstOrNull()?.id
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(120.dp), state = grid, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(8.dp), horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp),
+            columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(FocusGutter), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             items(count = items.itemCount, key = items.itemKey { it.id }) { index ->
                 val card = items[index]
@@ -62,11 +71,11 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
             item(span = { GridItemSpan(maxLineSpan) }) {
                 val loading = items.loadState.append is LoadState.Loading || items.loadState.refresh is LoadState.Loading
                 val error = (items.loadState.append as? LoadState.Error)?.error ?: (items.loadState.refresh as? LoadState.Error)?.error
-                if (loading) CircularProgressIndicator(modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.primary)
-                if (error != null) Column(Modifier.padding(12.dp)) {
-                    Text(if (error is ClientException) LocalContext.current.errorMessage(error) else stringResource(R.string.error_network), color = MaterialTheme.colorScheme.error)
-                    Action(R.string.retry) { items.retry() }
+                if (loading) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(32.dp), color = Plys.Accent400, strokeWidth = 3.dp)
                 }
+                if (error != null) ErrorBanner(if (error is ClientException) LocalContext.current.errorMessage(error) else stringResource(R.string.error_network),
+                    { items.retry() })
             }
         }
     }

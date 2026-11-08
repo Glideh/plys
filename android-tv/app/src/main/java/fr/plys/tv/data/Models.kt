@@ -149,7 +149,15 @@ data class ChildItem(
     val episodeNumber: Int? = null,
     val partNumber: Int? = null,
     val watched: Boolean = false,
+    val overview: String? = null,
+    val runtimeMinutes: Int? = null,
+    val positionSeconds: Double = 0.0,
+    /** Episodes of a season the caller has not watched yet. */
+    val unwatchedCount: Int? = null,
 )
+
+@Serializable
+data class Ancestor(val id: String, val kind: String, val title: String, val seasonNumber: Int? = null)
 
 @Serializable
 data class PlayTarget(val id: String, val positionSeconds: Double = 0.0)
@@ -174,6 +182,15 @@ data class ItemDetail(
     val directorCredits: List<CastMember> = emptyList(),
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
+    val originalTitle: String? = null,
+    val tagline: String? = null,
+    val runtimeMinutes: Int? = null,
+    val rating: Double? = null,
+    val genres: List<String> = emptyList(),
+    val backdropUrl: String? = null,
+    val thumbUrl: String? = null,
+    /** Series then season for an episode; movie for a part. */
+    val ancestors: List<Ancestor> = emptyList(),
 ) {
     val playableVersion: Version? get() = versions.firstOrNull { it.error == null }
     val directorPeople: List<CastMember> get() = directorCredits.ifEmpty { directors.map { CastMember(it) } }
