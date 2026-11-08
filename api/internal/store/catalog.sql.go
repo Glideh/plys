@@ -311,6 +311,8 @@ visible AS (
     JOIN libs ON libs.id = x.library_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL
+      AND (($3::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = $3::jsonb->>'resolution')
+      AND (($3::jsonb->>'audio') IS NULL OR ($3::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 unwatched AS (
     SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
@@ -340,10 +342,7 @@ WHERE i.parent_id IS NULL
   AND (($3::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($3::jsonb->>'votesMin')::integer)
   AND (($3::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($3::jsonb->>'runtimeMin')::integer))
   AND (($3::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($3::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length($3::jsonb->'genres'), 0) = 0 OR
-       CASE WHEN $3::jsonb->>'genreMode' = 'all'
-       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres'))
-       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres')) END)
+  AND (coalesce(jsonb_array_length($3::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres')))
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length($3::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'actors')))
   AND (coalesce(jsonb_array_length($3::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'creators')))
@@ -467,6 +466,8 @@ WITH visible AS (
     JOIN items x ON x.id = f.item_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL AND x.library_id = $2
+      AND (($4::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = $4::jsonb->>'resolution')
+      AND (($4::jsonb->>'audio') IS NULL OR ($4::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 unwatched AS (
     SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
@@ -493,10 +494,7 @@ WHERE i.library_id = $2 AND i.parent_id IS NULL
   AND (($4::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($4::jsonb->>'votesMin')::integer)
   AND (($4::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($4::jsonb->>'runtimeMin')::integer))
   AND (($4::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($4::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length($4::jsonb->'genres'), 0) = 0 OR
-       CASE WHEN $4::jsonb->>'genreMode' = 'all'
-       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres'))
-       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres')) END)
+  AND (coalesce(jsonb_array_length($4::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres')))
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length($4::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'actors')))
   AND (coalesce(jsonb_array_length($4::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'creators')))
@@ -539,6 +537,7 @@ type ListLibraryItemsRow struct {
 
 // Top-level entries of a library; entries whose files are all missing are hidden.
 // Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
+// Technical filters (resolution, audio) narrow the files: an entry matches when one of its files does.
 // Episodes still to watch per series, for the badge of the grid.
 func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsParams) ([]ListLibraryItemsRow, error) {
 	rows, err := q.db.Query(ctx, listLibraryItems,
