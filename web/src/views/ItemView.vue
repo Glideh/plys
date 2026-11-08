@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { Heart } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
@@ -207,6 +208,7 @@ async function toggleWatched(id: string, watched: boolean) {
 }
 
 const togglingWatchlist = ref(false)
+const watchlistLabel = computed(() => t(item.value?.inWatchlist ? 'catalog.removeFromWatchlist' : 'catalog.addToWatchlist'))
 
 /** Adds or removes the title on the server it is read from, without reloading the page. */
 async function toggleWatchlist() {
@@ -312,11 +314,15 @@ async function onMatched(merged: boolean) {
               </BaseButton>
               <BaseButton
                 v-if="item.ancestors.length === 0"
+                class="!px-2.5"
+                :class="item.inWatchlist ? '!text-rose-400 hover:!text-rose-300' : ''"
                 :loading="togglingWatchlist"
                 :aria-pressed="item.inWatchlist"
+                :aria-label="watchlistLabel"
+                :title="watchlistLabel"
                 @click="toggleWatchlist"
               >
-                {{ item.inWatchlist ? `✓ ${t('catalog.removeFromWatchlist')}` : `+ ${t('catalog.addToWatchlist')}` }}
+                <Heart v-if="!togglingWatchlist" class="size-5" :fill="item.inWatchlist ? 'currentColor' : 'none'" aria-hidden="true" />
               </BaseButton>
               <template v-if="auth.isAdmin && !server && hasOwnMetadata">
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>

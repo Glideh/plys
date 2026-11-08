@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Heart } from '@lucide/vue'
 import { isRemote, serverQuery, type ServerRef } from '@/api/federation'
 import type { WatchlistItem } from '@/api/watchlist'
 import PosterCard from '@/components/PosterCard.vue'
@@ -14,7 +15,9 @@ function remote(it: WatchlistItem): ServerRef | null {
 
 <template>
   <section class="min-w-0">
-    <h2 class="mb-4 text-lg font-semibold">{{ title }}</h2>
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-semibold">
+      <Heart class="size-5 text-rose-400" fill="currentColor" aria-hidden="true" />{{ title }}
+    </h2>
     <ul class="-mx-4 flex gap-4 overflow-x-auto px-4 pb-3 sm:-mx-8 sm:px-8">
       <li v-for="it in items" :key="`${it.source.serverId}/${it.id}`" class="w-36 shrink-0 sm:w-40">
         <PosterCard

@@ -21,12 +21,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.BookmarkAdd
-import androidx.compose.material.icons.outlined.BookmarkRemove
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Pause
@@ -223,13 +223,17 @@ fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, p
         R.string.restart -> Icons.Outlined.Replay
         R.string.mark_watched -> Icons.Outlined.Done
         R.string.mark_unwatched -> Icons.Outlined.RemoveDone
-        R.string.add_to_watchlist -> Icons.Outlined.BookmarkAdd
-        R.string.remove_from_watchlist -> Icons.Outlined.BookmarkRemove
+        // The heart is outlined while the title is not in the watchlist, filled once it is.
+        R.string.add_to_watchlist -> Icons.Outlined.FavoriteBorder
+        R.string.remove_from_watchlist -> Icons.Filled.Favorite
         R.string.next_episode, R.string.play_next_now -> Icons.Outlined.SkipNext
         else -> null
     }
     Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary) {
-        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = LocalContentColor.current); Spacer(Modifier.width(8.dp)) }
+        if (icon != null) {
+            val tint = if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint); Spacer(Modifier.width(8.dp))
+        }
         Text(stringResource(label))
     }
 }

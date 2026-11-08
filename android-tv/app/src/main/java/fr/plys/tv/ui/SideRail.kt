@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -84,7 +84,7 @@ fun SideRail(
         ) {
             Brand(expanded, Modifier.padding(start = 8.dp, bottom = 24.dp))
             RailItem(Icons.Outlined.Home, R.string.home, current == Section.HOME, expanded, requesters.getValue(Section.HOME), home)
-            RailItem(Icons.Outlined.BookmarkBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), watchlist)
+            RailItem(Icons.Outlined.FavoriteBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), watchlist)
             CatalogKind.entries.forEach { kind ->
                 val section = sectionOf(kind)
                 RailItem(kindIcon(kind), kindLabel(kind), current == section, expanded, requesters.getValue(section)) { openKind(kind) }
