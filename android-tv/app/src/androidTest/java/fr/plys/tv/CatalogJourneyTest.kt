@@ -33,6 +33,7 @@ import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ServerRef
 import fr.plys.tv.ui.CatalogViewModel
 import fr.plys.tv.ui.HomeScreen
+import fr.plys.tv.ui.Screen
 import fr.plys.tv.ui.PlysTheme
 import java.io.ByteArrayOutputStream
 
@@ -96,6 +97,57 @@ class CatalogJourneyTest {
             rule.onNodeWithText(text(R.string.error_home_unavailable)).assertIsDisplayed()
             rule.onAllNodesWithText(text(R.string.error_not_found)).assertCountEquals(0)
             screenshot("home-api-unavailable")
+            rule.runOnIdle { model.logout() }
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
+    @Test fun watchlistFromSideRailAndDetail() {
+        val listed = AtomicBoolean(true)
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.requestUrl!!.encodedPath
+                    val body = when {
+                        path == "/api/v1/setup/status" -> """{"needsSetup":false}"""
+                        path == "/api/v1/auth/login" -> """{"accessToken":"watchlist-fixture","refreshToken":"watchlist-refresh","user":{"id":"viewer","username":"Viewer","locale":"en"}}"""
+                        path == "/api/v1/auth/logout" -> "{}"
+                        path == "/api/v1/server" -> """{"id":"local"}"""
+                        path == "/api/v1/libraries" -> """{"items":[]}"""
+                        path == "/api/v1/me/home" -> """{"continueWatching":[],"nextUp":[]}"""
+                        path.startsWith("/api/v1/kinds/") -> """{"items":[],"total":0,"offset":0,"limit":1}"""
+                        path == "/api/v1/me/watchlist" -> if (listed.get()) {
+                            """{"items":[{"id":"film","kind":"movie","title":"Alien","year":1979,"addedAt":"2026-01-01T00:00:00Z","source":{"serverId":"local","serverName":"Home","itemId":"film"}}],"unavailableServers":0}"""
+                        } else """{"items":[],"unavailableServers":0}"""
+                        path == "/api/v1/items/film" -> """{"id":"film","kind":"movie","title":"Alien","year":1979,"inWatchlist":${listed.get()},"versions":[],"children":[]}"""
+                        path == "/api/v1/items/film/watchlist" -> {
+                            listed.set(request.method == "POST")
+                            return MockResponse().setResponseCode(204)
+                        }
+                        else -> return MockResponse().setResponseCode(404)
+                    }
+                    return MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+                }
+            }
+            server.start()
+            val serverAddress = server.url("/").toString()
+            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+            rule.waitUntil(10000) { !model.state.value.loading }
+            rule.runOnIdle { model.login(serverAddress, "viewer", "fixture-password") }
+            // Navigation is ignored while the home screen loads.
+            rule.waitUntil(10000) { model.state.value.screen is Screen.Home && !model.state.value.loading }
+            rule.onNodeWithContentDescription(text(R.string.watchlist)).activate()
+            rule.waitUntil(10000) { rule.onAllNodesWithText("Alien").fetchSemanticsNodes().isNotEmpty() }
+            screenshot("watchlist")
+            rule.onNodeWithText("Alien").activate()
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.remove_from_watchlist)).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText(text(R.string.remove_from_watchlist)).activate()
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.add_to_watchlist)).fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(!listed.get())
+            // Going back reloads the watchlist, now without the removed title.
+            rule.runOnIdle { model.back() }
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.watchlist_empty)).fetchSemanticsNodes().isNotEmpty() }
+            rule.onAllNodesWithText("Alien").assertCountEquals(0)
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }

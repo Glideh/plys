@@ -122,6 +122,8 @@ export interface ItemDetail {
   children: ChildItem[]
   watched: boolean
   positionSeconds: number
+  /** Set on top-level titles (movies, series, videos) the user added to their watchlist. */
+  inWatchlist: boolean
   /** What "play" starts on a series, season or multi-part movie. */
   playTarget: PlayTarget | null
   /** Follows an episode or part in viewing order. */

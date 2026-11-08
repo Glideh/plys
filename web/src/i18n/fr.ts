@@ -30,6 +30,7 @@ export default {
   home: {
     continueWatching: 'Reprendre la lecture',
     nextUp: 'Épisodes suivants',
+    watchlist: 'Ma liste',
     libraries: 'Bibliothèques',
     emptyLibraries: "Aucune bibliothèque pour l'instant.",
     emptyLibrariesAdmin: 'Ajoutez une bibliothèque depuis l’administration pour lancer la découverte de vos vidéos.',
@@ -100,6 +101,8 @@ export default {
     rewatch: 'Revoir',
     markWatched: 'Marquer comme vu',
     markUnwatched: 'Marquer comme non vu',
+    addToWatchlist: 'Ajouter à ma liste',
+    removeFromWatchlist: 'Retirer de ma liste',
     watched: 'Vu',
     unwatchedCount: '{n} à voir',
     version: 'Version',

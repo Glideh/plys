@@ -126,6 +126,14 @@ class PlysApi(
         }
     }
 
+    /** The watchlist across the server and its peers; local entries come without a server URL, like the home rails. */
+    suspend fun watchlist(): WatchlistResponse = locked { decode(request("me/watchlist")) }
+
+    suspend fun setWatchlisted(id: String, listed: Boolean, source: ServerRef? = null) = locked {
+        sourceRequest(source, "items/$id/watchlist", if (listed) "POST" else "DELETE")
+        Unit
+    }
+
     suspend fun catalogCount(kind: CatalogKind): CatalogCount {
         val page = catalog(CatalogQuery(kind), limit = 1)
         return CatalogCount(page.total, page.unavailableServers > 0)

@@ -32,7 +32,9 @@ const (
 
 var (
 	errPeerUnreachable = errors.New("peer unreachable")
-	errPeerRejected    = errors.New("peer rejected the pairing")
+	// errPeerNotFound reports a 404 from a peer, such as an endpoint its version does not have yet.
+	errPeerNotFound = errors.New("peer answered not found")
+	errPeerRejected = errors.New("peer rejected the pairing")
 )
 
 // pairingCode is exchanged between admins out of band and contains only public information.

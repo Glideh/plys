@@ -583,6 +583,52 @@ paths:
         "204": { description: Unmarked }
         "404": { $ref: "#/components/responses/Error" }
 
+  /items/{id}/watchlist:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: addToWatchlist
+      summary: Add a movie, series or video to the caller's watchlist
+      description: Idempotent; adding again keeps the first date. Accepts a federated token, so a title held by a paired server is listed on that server for the caller's shadow user.
+      responses:
+        "204": { description: Listed }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: removeFromWatchlist
+      summary: Remove a title from the caller's watchlist
+      description: Idempotent.
+      responses:
+        "204": { description: Not listed }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /me/watchlist:
+    get:
+      operationId: getWatchlist
+      summary: The caller's watchlist aggregated across compatible servers, most recently added first
+      description: At most 100 titles per server, in libraries the caller can access. A peer that does not support the watchlist yet adds nothing; unreachable or incompatible peers are counted in unavailableServers.
+      responses:
+        "200":
+          description: Local and federated watchlist entries with their source
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Watchlist" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /federation/watchlist:
+    get:
+      operationId: getPeerWatchlist
+      summary: Local watchlist of the shadow user named by a compatible peer's federated token
+      description: Does not query or re-export other peers. Library access rules apply to the authenticated shadow user.
+      responses:
+        "200":
+          description: Local watchlist only
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Watchlist" }
+        "401": { $ref: "#/components/responses/Error" }
+
   /me/home:
     get:
       operationId: getHome
@@ -1231,6 +1277,7 @@ components:
         versions: { type: array, items: { $ref: "#/components/schemas/Version" } }
         watched: { type: boolean, description: "The item, or everything under a series or season, is watched by the caller" }
         positionSeconds: { type: number, description: "Resume point of a playable item, 0 when none (under 30 s or watched)" }
+        inWatchlist: { type: boolean, description: "A top-level title (movie, series, video) the caller added to their watchlist on this server" }
         playTarget:
           description: What "play" starts on a series, season or movie with parts. Null for playable items and when nothing is available.
           oneOf: [{ $ref: "#/components/schemas/PlayTarget" }, { type: "null" }]
@@ -1295,6 +1342,23 @@ components:
       properties:
         continueWatching: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
         nextUp: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
+        unavailableServers: { type: integer, minimum: 0 }
+    WatchlistItem:
+      type: object
+      required: [id, kind, title, year, posterUrl, addedAt, source]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/ItemKind" }
+        title: { type: string }
+        year: { type: [integer, "null"] }
+        posterUrl: { type: [string, "null"] }
+        addedAt: { type: string, format: date-time }
+        source: { $ref: "#/components/schemas/MediaSource" }
+    Watchlist:
+      type: object
+      required: [items, unavailableServers]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/WatchlistItem" } }
         unavailableServers: { type: integer, minimum: 0 }
     HomeItem:
       type: object

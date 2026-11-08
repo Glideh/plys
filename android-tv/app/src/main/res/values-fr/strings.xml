@@ -96,6 +96,10 @@
     <string name="error_server">Erreur du serveur (HTTP %1$d).</string>
     <string name="error_playback">Échec de lecture (%1$s). Vérifiez la connexion et réessayez.</string>
     <string name="mark_watched">Marquer comme vu</string>
+    <string name="watchlist">Ma liste</string>
+    <string name="add_to_watchlist">Ajouter à ma liste</string>
+    <string name="remove_from_watchlist">Retirer de ma liste</string>
+    <string name="watchlist_empty">Votre liste est vide. Ajoutez des films et des séries depuis leur fiche.</string>
     <string name="mark_unwatched">Marquer comme non vu</string>
     <string name="ends_at">Fin à %1$s</string>
     <string name="directors_title">Réalisation</string>

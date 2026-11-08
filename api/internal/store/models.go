@@ -150,3 +150,9 @@ type UserAvatar struct {
 	UserID uuid.UUID
 	Data   []byte
 }
+
+type Watchlist struct {
+	UserID  uuid.UUID
+	ItemID  uuid.UUID
+	AddedAt time.Time
+}

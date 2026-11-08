@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { loadLocalServer } from '@/api/federation'
 import { librariesApi, type Library, type LibraryKind } from '@/api/libraries'
 import { progressApi, type HomeItem } from '@/api/progress'
+import { watchlistApi, type WatchlistItem } from '@/api/watchlist'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import HomeRail from '@/components/HomeRail.vue'
+import WatchlistRail from '@/components/WatchlistRail.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { useLibrarySummary } from '@/composables/useLibrarySummary'
 import { useAuthStore } from '@/stores/auth'
@@ -27,8 +30,13 @@ const gradients: Record<LibraryKind, string> = {
 const continueItems = ref<HomeItem[]>([])
 const nextItems = ref<HomeItem[]>([])
 const railsLoading = ref(true)
+const watchlistItems = ref<WatchlistItem[]>([])
 
 onMounted(async () => {
+  // Telling local titles from those of paired servers needs this server's identity.
+  Promise.all([loadLocalServer(), watchlistApi.list()])
+    .then(([, list]) => (watchlistItems.value = list.items))
+    .catch(() => undefined)
   // A failing rail must not hide the libraries.
   progressApi
     .continueWatching()
@@ -54,6 +62,8 @@ onMounted(async () => {
       <HomeRail v-if="continueItems.length > 0" :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="false" resume />
       <HomeRail v-if="nextItems.length > 0" :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="false" />
     </div>
+
+    <WatchlistRail v-if="watchlistItems.length > 0" :title="t('home.watchlist')" :items="watchlistItems" />
 
     <section>
       <h2 class="mb-4 text-lg font-semibold">{{ t('home.libraries') }}</h2>

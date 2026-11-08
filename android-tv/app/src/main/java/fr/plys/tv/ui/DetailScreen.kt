@@ -102,6 +102,7 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                                     if (position > 0 && item.playableVersion != null) Action(R.string.restart) { model.play(item, restart = true) }
                                 } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable), color = Plys.Warning)
                                 if (canPlay || item.kind == "episode") Action(if (item.watched) R.string.mark_unwatched else R.string.mark_watched) { model.toggleWatched() }
+                                if (item.canWatchlist) Action(if (item.inWatchlist) R.string.remove_from_watchlist else R.string.add_to_watchlist) { model.toggleWatchlist() }
                                 item.next?.let { next -> Action(R.string.next_episode) { model.openItem(next.id, source) } }
                             }
                             if (screen.sources.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {

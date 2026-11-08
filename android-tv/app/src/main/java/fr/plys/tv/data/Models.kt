@@ -53,6 +53,16 @@ data class HomeItem(
 )
 
 @Serializable
+data class WatchlistItem(
+    val id: String, val kind: String, val title: String,
+    val source: ServerRef,
+    val year: Int? = null, val posterUrl: String? = null,
+)
+
+@Serializable
+data class WatchlistResponse(val items: List<WatchlistItem> = emptyList(), val unavailableServers: Int = 0)
+
+@Serializable
 data class HomeResponse(
     val continueWatching: List<HomeItem> = emptyList(),
     val nextUp: List<HomeItem> = emptyList(),
@@ -191,7 +201,11 @@ data class ItemDetail(
     val thumbUrl: String? = null,
     /** Series then season for an episode; movie for a part. */
     val ancestors: List<Ancestor> = emptyList(),
+    /** Set on top-level titles the user added to their watchlist; absent from servers older than the watchlist. */
+    val inWatchlist: Boolean = false,
 ) {
+    /** Movies, series and videos can be watchlisted; seasons, episodes and parts cannot. */
+    val canWatchlist: Boolean get() = ancestors.isEmpty() && kind in setOf("movie", "series", "video")
     val playableVersion: Version? get() = versions.firstOrNull { it.error == null }
     val directorPeople: List<CastMember> get() = directorCredits.ifEmpty { directors.map { CastMember(it) } }
 }
