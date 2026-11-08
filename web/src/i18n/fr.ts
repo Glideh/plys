@@ -266,7 +266,8 @@ export default {
       'Donnez ce code à l’administrateur de l’autre serveur. Il contient le nom, l’adresse publique et la clé publique de ce serveur, sans aucun secret.',
     codeLabel: 'Code d’appairage',
     paired: 'Serveurs appairés',
-    pairedHelp: 'Les utilisateurs de chaque serveur appairé sont synchronisés avec le vôtre.',
+    pairedHelp:
+      'Les utilisateurs de chaque serveur appairé sont synchronisés avec le vôtre. L’appairage est mutuel : chaque serveur doit ajouter le code de l’autre.',
     empty: 'Aucun serveur appairé.',
     sync: 'Synchroniser',
     synced: '{n} utilisateur synchronisé | {n} utilisateurs synchronisés',
@@ -280,10 +281,12 @@ export default {
     removeConfirm: 'Retirer « {name} » des serveurs appairés ?',
     addTitle: 'Appairer un serveur',
     addHelp:
-      'Collez le code généré par l’autre serveur, puis appairez-le. Les deux serveurs doivent pouvoir se joindre mutuellement.',
+      'Collez le code généré par l’autre serveur, puis appairez-le. Les deux serveurs doivent pouvoir se joindre mutuellement, et l’autre serveur doit aussi appairer celui-ci avec le code de ce serveur.',
     addCode: 'Code d’appairage reçu',
     add: 'Appairer',
     added: 'Serveur « {name} » appairé.',
+    addedPending:
+      'Serveur « {name} » appairé. Rien n’est partagé tant que son administrateur n’a pas aussi appairé ce serveur avec le code de ce serveur.',
   },
   errors: {
     passwordMismatch: 'Les mots de passe ne correspondent pas.',
@@ -309,6 +312,7 @@ export default {
     peer_exists: 'Ce serveur est déjà appairé.',
     peer_rejected: 'Le serveur distant n’a pas prouvé la clé contenue dans le code d’appairage.',
     peer_unreachable: 'Le serveur distant est injoignable.',
+    peer_not_paired: 'Le serveur distant ne reconnaît pas encore ce serveur. Son administrateur doit aussi l’appairer avec le code de ce serveur.',
     peer_requires_https: 'Le serveur distant doit être accessible en HTTPS.',
     peer_url_taken: 'Un autre serveur appairé utilise déjà cette adresse.',
     peer_incompatible: 'Le serveur distant doit être joignable et utiliser la même version majeure.',

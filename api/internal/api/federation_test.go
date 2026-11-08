@@ -23,6 +23,8 @@ type fakePeer struct {
 	version string
 	// users is returned by GET /api/v1/federation/users; tests change it to simulate users added or removed.
 	users []peerUserDTO
+	// unpaired makes signed endpoints answer 401, like a peer that has not added this server.
+	unpaired bool
 }
 
 func newFakePeer(t *testing.T) *fakePeer {
@@ -45,6 +47,11 @@ func newFakePeer(t *testing.T) *fakePeer {
 		_ = json.NewEncoder(w).Encode(map[string]any{"signature": p.sign(handshakeMessage(req.Nonce))})
 	})
 	mux.HandleFunc("GET /api/v1/federation/users", func(w http.ResponseWriter, _ *http.Request) {
+		if p.unpaired {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": "invalid_signature", "message": "invalid peer signature"}})
+			return
+		}
 		users := p.users
 		if users == nil {
 			users = []peerUserDTO{}
@@ -109,7 +116,7 @@ func TestPairingWithPeer(t *testing.T) {
 
 	peer.sign = func(msg []byte) []byte { return ed25519.Sign(peer.priv, msg) }
 	r := do(t, h, http.MethodPost, pairPath, admin, map[string]any{"code": pairingCodeFor(t, peer.srv.URL, peer.pub)})
-	if r.status != http.StatusCreated || r.body["id"] != peer.id.String() {
+	if r.status != http.StatusCreated || r.body["id"] != peer.id.String() || r.body["pairingPending"] != false {
 		t.Fatalf("pair with valid peer: %d %v", r.status, r.body)
 	}
 	if r := do(t, h, http.MethodPost, pairPath, admin, map[string]any{"code": pairingCodeFor(t, peer.srv.URL, peer.pub)}); r.status != http.StatusConflict {
@@ -183,5 +190,32 @@ func TestHandshakeRejectsShortNonce(t *testing.T) {
 	h := newTestServer(t)
 	if r := do(t, h, http.MethodPost, "/api/v1/federation/handshake", "", map[string]any{"nonce": []byte("short")}); r.status != http.StatusBadRequest {
 		t.Fatalf("short nonce: expected 400, got %d", r.status)
+	}
+}
+
+// TestOneWayPairing covers a peer that has not added this server back: pairing succeeds
+// but is reported as pending, and a sync explains why instead of reporting the peer as unreachable.
+func TestOneWayPairing(t *testing.T) {
+	peer := newFakePeer(t)
+	peer.unpaired = true
+	env := newTestEnvWith(t, func(d *Deps) { d.HTTPClient = peer.srv.Client() })
+	admin := setupAdmin(t, env.h).body["accessToken"].(string)
+	if r := do(t, env.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"serverName": "Local", "publicUrl": "https://local.example.org"}); r.status != http.StatusOK {
+		t.Fatalf("set identity: %d", r.status)
+	}
+	const pairPath = "/api/v1/admin/federation/peers"
+	r := do(t, env.h, http.MethodPost, pairPath, admin, map[string]any{"code": pairingCodeFor(t, peer.srv.URL, peer.pub)})
+	if r.status != http.StatusCreated || r.body["pairingPending"] != true {
+		t.Fatalf("one-way pairing: %d %v", r.status, r.body)
+	}
+	syncPath := pairPath + "/" + peer.id.String() + "/sync"
+	r = do(t, env.h, http.MethodPost, syncPath, admin, nil)
+	if errBody, _ := r.body["error"].(map[string]any); r.status != http.StatusBadGateway || errBody["code"] != "peer_not_paired" {
+		t.Fatalf("sync with one-way pairing: %d %v", r.status, r.body)
+	}
+
+	peer.unpaired = false
+	if r := do(t, env.h, http.MethodPost, syncPath, admin, nil); r.status != http.StatusOK {
+		t.Fatalf("sync once paired back: %d %v", r.status, r.body)
 	}
 }
