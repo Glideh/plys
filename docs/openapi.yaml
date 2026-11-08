@@ -1047,7 +1047,7 @@ components:
       name: locale
       in: query
       description: Display and search language for ISO country and language names
-      schema: { type: string, enum: [fr, en], default: fr }
+      schema: { type: string, enum: [fr, en, pt-BR], default: fr }
   securitySchemes:
     bearer:
       type: http
@@ -1150,7 +1150,7 @@ components:
       enum: [admin, user]
     Locale:
       type: string
-      enum: [fr, en]
+      enum: [fr, en, pt-BR]
     Credentials:
       type: object
       required: [username, password]

@@ -123,3 +123,37 @@ func TestPeerKindItemsRejectsUnauthenticatedRequests(t *testing.T) {
 		t.Fatalf("unknown subject: expected 401, got %d", rec.Code)
 	}
 }
+
+func TestFederatedFilterOptionsFallBackToEnglishForOlderPeers(t *testing.T) {
+	env, peer, admin := pairedEnv(t)
+	received := make(chan string, 4)
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/federation/catalog/kinds/movies/filters" {
+			locale := r.URL.Query().Get("locale")
+			received <- locale
+			if locale != "fr" && locale != "en" {
+				// A peer released before pt-BR support rejects the locale.
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"options": map[string]any{"languages": []map[string]any{{"id": "ja", "label": "Japanese"}}}})
+			return
+		}
+		peer.handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(remote.Close)
+	env.srv.HTTPClient = remote.Client()
+	if _, err := env.srv.q.UpdatePeerURL(context.Background(), store.UpdatePeerURLParams{ID: peer.id, Url: remote.URL}); err != nil {
+		t.Fatal(err)
+	}
+	result := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/filters?category=languages&locale=pt-BR", admin, nil)
+	if result.status != http.StatusOK || result.body["unavailableServers"] != float64(0) {
+		t.Fatalf("older peer must answer in English: %d %v", result.status, result.body)
+	}
+	if languages, _ := result.body["options"].(map[string]any)["languages"].([]any); len(languages) != 1 {
+		t.Fatalf("peer suggestions missing: %v", result.body)
+	}
+	if first, second := <-received, <-received; first != "pt-BR" || second != "en" {
+		t.Fatalf("locales sent to the peer: %s then %s", first, second)
+	}
+}

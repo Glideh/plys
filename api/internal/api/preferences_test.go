@@ -51,4 +51,10 @@ func TestLocalePreference(t *testing.T) {
 	if me := e.get(t, admin, "/api/v1/me"); me["locale"] != "en" {
 		t.Errorf("a rejected update must not change the locale: %v", me)
 	}
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/me", admin, map[string]any{"locale": "pt-br"}); r.status != http.StatusOK || r.body["locale"] != "pt-BR" {
+		t.Errorf("pt-BR must be accepted case-insensitively and stored canonically: %d %v", r.status, r.body)
+	}
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/me", admin, map[string]any{"locale": "pt"}); r.status != http.StatusBadRequest {
+		t.Errorf("a bare pt locale must be rejected: %d %v", r.status, r.body)
+	}
 }
