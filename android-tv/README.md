@@ -9,7 +9,7 @@ The API contract is documented in [OpenAPI](../docs/openapi.yaml).
 Only Docker with Compose is required. From the repository root:
 
 ```sh
-docker compose --profile android build android-build
+#docker compose --profile android build android-build
 docker compose --profile android run --rm android-build :app:assembleDebug
 ```
 
