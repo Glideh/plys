@@ -31,6 +31,18 @@ data class ItemCard(
 @Serializable
 data class ItemPage(val items: List<ItemCard>, val total: Int, val offset: Int, val limit: Int, val unavailableServers: Int = 0)
 
+/** The best matches of one library kind; total counts every matching title. */
+@Serializable
+data class SearchGroup(val kind: String, val items: List<ItemCard> = emptyList(), val total: Int = 0) {
+    val catalogKind: CatalogKind? get() = CatalogKind.entries.firstOrNull { it.value == kind }
+}
+
+@Serializable
+data class SearchResult(val groups: List<SearchGroup> = emptyList(), val unavailableServers: Int = 0)
+
+/** Searches shorter than this, once trimmed, are rejected by the API. */
+const val MIN_SEARCH_LENGTH = 3
+
 data class CatalogCount(val total: Int, val partial: Boolean = false)
 
 @Serializable

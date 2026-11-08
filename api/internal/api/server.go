@@ -116,6 +116,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/kinds/{kind}/items", s.listKindItems)
 			r.Get("/kinds/{kind}/filters", s.listCatalogFilterOptions)
 			r.Get("/kinds/{kind}/titles/{tmdbId}/sources", s.listTitleSources)
+			r.Get("/search", s.search)
 			r.Get("/me/continue-watching", s.continueWatching)
 			r.Get("/me/next-up", s.nextUp)
 			r.Get("/me/home", s.home)

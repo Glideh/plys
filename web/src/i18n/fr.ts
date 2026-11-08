@@ -28,6 +28,10 @@ export default {
     submit: 'Se connecter',
   },
   home: {
+    search: 'Rechercher des films, séries et vidéos…',
+    searchHint: 'Saisissez au moins {n} caractères pour rechercher.',
+    searchResults: 'Résultats de recherche',
+    seeAll: 'Tout voir',
     continueWatching: 'Reprendre la lecture',
     nextUp: 'Épisodes suivants',
     libraries: 'Bibliothèques',

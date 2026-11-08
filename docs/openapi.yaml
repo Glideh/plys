@@ -445,6 +445,40 @@ paths:
                   unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers" }
         "400": { $ref: "#/components/responses/Error" }
 
+  /search:
+    get:
+      operationId: search
+      summary: Titles of every kind whose title or original title contains the query, including compatible peers
+      description: >
+        Searches the top-level entries of every readable library and of every paired peer. Versions of the same
+        TMDB title are merged into one card. Within a kind, titles starting with the query come first, then the
+        others in title order.
+      parameters:
+        - { name: query, in: query, required: true, schema: { type: string, minLength: 3 }, description: Case-insensitive substring of the title or original title; at least 3 characters once trimmed }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 12 }, description: Maximum number of items returned per kind }
+      responses:
+        "200":
+          description: Matches grouped by kind
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [groups, unavailableServers]
+                properties:
+                  groups:
+                    type: array
+                    description: Only the kinds with matches, in the order movies, series, other
+                    items:
+                      type: object
+                      required: [kind, items, total]
+                      properties:
+                        kind: { type: string, enum: [movies, series, other] }
+                        items: { type: array, items: { $ref: "#/components/schemas/ItemCard" } }
+                        total: { type: integer, description: Number of matching titles of the kind, beyond the returned items }
+                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
   /kinds/{kind}/filters:
     parameters:
       - { name: kind, in: path, required: true, schema: { type: string, enum: [movies, series] } }

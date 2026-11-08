@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import fr.plys.tv.ui.PlysButton as Button
@@ -105,13 +106,36 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
     else -> R.string.filter_runtime_max
 })
 
+/** A one-line text field in the colours of the web inputs; Done hides the on-screen keyboard. */
+@Composable
+fun SearchField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, height: Dp = 40.dp) {
+    var focused by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    BasicTextField(value, onValueChange,
+        modifier = modifier.height(height)
+            .background(if (focused) Plys.Surface700 else Plys.Surface800, Plys.Small)
+            .border(if (focused) 2.dp else 1.dp, if (focused) Plys.Accent400 else Plys.Hairline, Plys.Small)
+            .onFocusChanged { focused = it.isFocused }
+            .padding(horizontal = 12.dp).semantics { contentDescription = label },
+        singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+        decorationBox = { input ->
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.weight(1f)) {
+                    if (value.isEmpty()) Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    input()
+                }
+            }
+        },
+    )
+}
+
 @Composable
 fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
     var search by remember(screen.query.kind, screen.query.libraryId) { mutableStateOf(screen.query.query) }
     var dialog by remember { mutableStateOf("") }
-    var searchFocused by remember { mutableStateOf(false) }
-    val searchLabel = stringResource(R.string.search)
-    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(search) {
         if (search != screen.query.query) {
             delay(350)
@@ -119,25 +143,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         }
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(search, { search = it },
-            modifier = Modifier.weight(1f).height(40.dp)
-                .background(if (searchFocused) Plys.Surface700 else Plys.Surface800, Plys.Small)
-                .border(if (searchFocused) 2.dp else 1.dp, if (searchFocused) Plys.Accent400 else Plys.Hairline, Plys.Small)
-                .onFocusChanged { searchFocused = it.isFocused }
-                .padding(horizontal = 12.dp).semantics { contentDescription = searchLabel },
-            singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
-            decorationBox = { input ->
-                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Box(Modifier.weight(1f)) {
-                        if (search.isEmpty()) Text(searchLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        input()
-                    }
-                }
-            },
-        )
+        SearchField(search, { search = it }, stringResource(R.string.search), Modifier.weight(1f))
         if (libraries.count { it.kind == screen.query.kind.value } > 1) ToolbarButton(Icons.Outlined.VideoLibrary,
             libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries)) { dialog = "library" }
         ToolbarButton(Icons.AutoMirrored.Outlined.Sort, "${stringResource(R.string.sort)} : ${stringResource(sortLabel(screen.query.sort))}") { dialog = "sort" }

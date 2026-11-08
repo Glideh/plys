@@ -19,8 +19,11 @@ import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.MIN_SEARCH_LENGTH
+import fr.plys.tv.data.SearchResult
 import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +48,17 @@ sealed interface Screen {
     }
 }
 
+/** The global search of the home screen; [result] keeps the previous matches while a new search runs. */
+data class SearchState(
+    val query: String = "",
+    val result: SearchResult? = null,
+    val loading: Boolean = false,
+    val error: ClientException? = null,
+) {
+    val term: String get() = query.trim()
+    val active: Boolean get() = term.codePointCount(0, term.length) >= MIN_SEARCH_LENGTH
+}
+
 data class CatalogState(
     val screen: Screen = Screen.Login,
     val loading: Boolean = false,
@@ -58,9 +72,11 @@ data class CatalogState(
     val catalogCounts: Map<CatalogKind, CatalogCount> = emptyMap(),
     /** Latest additions of each kind, shown on the home screen. */
     val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
+    val search: SearchState = SearchState(),
 )
 
 private const val RECENT_ITEMS = 20
+private const val SEARCH_DEBOUNCE_MS = 350L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
@@ -71,6 +87,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private var retryAction: suspend () -> Unit = { restore() }
     private var activeJob: Job? = null
     private var countsJob: Job? = null
+    private var searchJob: Job? = null
     private var generation = 0
     private data class PageRequest(val query: CatalogQuery, val seed: ItemPage, val revision: Int)
     private val pageRequest = MutableStateFlow<PageRequest?>(null)
@@ -103,6 +120,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
         countsJob?.cancel()
+        clearSearch()
         mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         clearCatalogState()
         api.login(server, username, password)
@@ -140,10 +158,51 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         }
     }
 
-    fun home() = perform { clearCatalogState(); history.clear(); loadHome() }
+    fun home() = perform { clearCatalogState(); clearSearch(); history.clear(); loadHome() }
 
-    fun openKind(kind: CatalogKind) = perform {
-        val query = CatalogQuery(kind)
+    /**
+     * Searches every kind while the viewer types, once the query is long enough; only the last query is answered.
+     * [force] runs it again even when the query did not change, to retry after an error.
+     */
+    fun search(query: String, force: Boolean = false) {
+        val current = mutableState.value.search
+        val next = current.copy(query = query)
+        if (!next.active) {
+            searchJob?.cancel()
+            mutableState.value = mutableState.value.copy(search = SearchState(query))
+            return
+        }
+        if (!force && next.term == current.term && (current.loading || current.result != null)) {
+            mutableState.value = mutableState.value.copy(search = next)
+            return
+        }
+        searchJob?.cancel()
+        mutableState.value = mutableState.value.copy(search = next.copy(loading = true, error = null))
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            try {
+                val result = api.search(next.term)
+                mutableState.value = mutableState.value.copy(search = mutableState.value.search.copy(result = result, loading = false))
+            } catch (error: ClientException) {
+                if (!api.signedIn) {
+                    history.clear()
+                    mutableState.value = mutableState.value.copy(screen = Screen.Login, error = error, search = SearchState())
+                } else {
+                    mutableState.value = mutableState.value.copy(search = mutableState.value.search.copy(error = error, loading = false))
+                }
+            }
+        }
+    }
+
+    fun clearSearch() = search("")
+
+    fun openKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind))
+
+    /** The full listing of one kind for the current search, from the home screen. */
+    fun openSearchKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind, query = mutableState.value.search.term))
+
+    private fun openCatalog(query: CatalogQuery) = perform {
+        val kind = query.kind
         val page = api.catalog(query)
         navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), page, query))
         preparePaging(query, page)
@@ -152,6 +211,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun logout() = perform {
         countsJob?.cancel()
+        clearSearch()
         mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         api.logout()
         clearCatalogState()

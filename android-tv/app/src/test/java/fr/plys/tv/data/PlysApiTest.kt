@@ -190,6 +190,23 @@ class PlysApiTest {
         assertEquals("Bearer access-1", request.getHeader("Authorization"))
     }
 
+    @Test fun `global search trims the query, normalizes local sources and skips unknown kinds`() = runBlocking {
+        login()
+        json("""{"id":"origin"}""")
+        json("""{"groups":[{"kind":"movies","items":[{"id":"film","kind":"movie","title":"Alien","sources":[{"serverId":"origin","serverName":"Home","serverUrl":"https://public.example","itemId":"film"},{"serverId":"peer","serverName":"Friend","serverUrl":"https://peer.example","itemId":"remote"}]}],"total":3},{"kind":"music","items":[],"total":0}],"unavailableServers":2}""")
+        val result = api.search("  Alien & co ", limit = 10)
+        assertEquals(listOf(CatalogKind.MOVIES), result.groups.map { it.catalogKind })
+        assertEquals(3, result.groups.single().total)
+        assertEquals(listOf(null, "https://peer.example"), result.groups.single().items.single().sources.map { it.serverUrl })
+        assertEquals(2, result.unavailableServers)
+        assertEquals("/api/v1/server", server.takeRequest().requestUrl?.encodedPath)
+        val request = server.takeRequest()
+        assertEquals("/api/v1/search", request.requestUrl?.encodedPath)
+        assertEquals("Alien & co", request.requestUrl?.queryParameter("query"))
+        assertEquals("10", request.requestUrl?.queryParameter("limit"))
+        assertEquals("Bearer access-1", request.getHeader("Authorization"))
+    }
+
     @Test fun `filter suggestions preserve selection and locale`() = runBlocking {
         login()
         json("""{"options":{"actors":[{"id":"10205","label":"Sigourney Weaver"}]},"unavailableServers":0}""")
