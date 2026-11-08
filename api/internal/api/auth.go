@@ -4,11 +4,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -37,8 +40,22 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
 		return
 	}
+	ip := clientIP(r)
+	username := strings.ToLower(strings.TrimSpace(req.Username))
+	// The account limiter only counts attempts the address limiter let through.
+	wait := s.loginIPs.allow(ip)
+	if wait == 0 {
+		wait = s.loginUsers.allow(username)
+	}
+	if wait > 0 {
+		slog.WarnContext(r.Context(), "login throttled", "username", username, "client_ip", ip,
+			"retry_after", wait, "request_id", middleware.GetReqID(r.Context()))
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+		httpx.Error(w, http.StatusTooManyRequests, "rate_limited", "too many login attempts")
+		return
+	}
 	if len(req.Password) > maxPasswordLen {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		loginFailed(w, r, username, ip)
 		return
 	}
 
@@ -46,7 +63,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	user, err := s.q.GetUserByUsername(ctx, strings.TrimSpace(req.Username))
 	if errors.Is(err, pgx.ErrNoRows) {
 		auth.BurnPasswordCheck(req.Password)
-		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		loginFailed(w, r, username, ip)
 		return
 	}
 	if err != nil {
@@ -59,7 +76,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
+		loginFailed(w, r, username, ip)
 		return
 	}
 
@@ -68,7 +85,15 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	s.loginUsers.reset(username)
 	s.writeSession(w, http.StatusOK, sess, req.TokenDelivery)
+}
+
+// loginFailed logs the attempt with the client address, for fail2ban or CrowdSec.
+func loginFailed(w http.ResponseWriter, r *http.Request, username, ip string) {
+	slog.WarnContext(r.Context(), "login failed", "username", username, "client_ip", ip,
+		"request_id", middleware.GetReqID(r.Context()))
+	httpx.Error(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 }
 
 type refreshRequest struct {

@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -37,21 +38,31 @@ type Deps struct {
 	HTTPClient *http.Client
 	// PeerUserSyncInterval is the minimum delay between two automatic user syncs of a peer; zero uses one minute.
 	PeerUserSyncInterval time.Duration
+	// TrustedProxies may set X-Forwarded-For; the client address is the right-most hop outside them.
+	TrustedProxies []netip.Prefix
 }
 
 type Server struct {
 	Deps
 	q          *store.Queries
 	handshakes *fixedWindowLimiter
+	loginIPs   *backoffLimiter
+	loginUsers *backoffLimiter
 }
 
 func New(d Deps) *Server {
-	return &Server{Deps: d, q: store.New(d.Pool), handshakes: newFixedWindowLimiter(handshakeLimit, handshakeWindow)}
+	return &Server{
+		Deps:       d,
+		q:          store.New(d.Pool),
+		handshakes: newFixedWindowLimiter(handshakeLimit, handshakeWindow),
+		loginIPs:   newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
+		loginUsers: newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
+	}
 }
 
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, requestLogger, middleware.Recoverer)
+	r.Use(middleware.RequestID, s.resolveClientIP, requestLogger, middleware.Recoverer)
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Pool.Ping(r.Context()); err != nil {
@@ -164,6 +175,7 @@ func requestLogger(next http.Handler) http.Handler {
 			"path", r.URL.Path,
 			"status", ww.Status(),
 			"duration", time.Since(start),
+			"client_ip", clientIP(r),
 			"request_id", middleware.GetReqID(r.Context()),
 		)
 	})

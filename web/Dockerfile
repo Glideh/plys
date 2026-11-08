@@ -19,5 +19,6 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS prod
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/security-headers.inc /etc/nginx/snippets/security-headers.inc
+COPY nginx/real-ip.inc /etc/nginx/snippets/real-ip.inc
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080

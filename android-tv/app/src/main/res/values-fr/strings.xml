@@ -94,6 +94,7 @@
     <string name="error_setup">Initialisez le serveur avec le client web avant la connexion sur votre TV.</string>
     <string name="error_url">Saisissez l’adresse racine du serveur HTTP ou HTTPS, sans identifiants, paramètres ni fragment.</string>
     <string name="error_busy">Le transcodeur est occupé. Veuillez réessayer plus tard.</string>
+    <string name="error_rate_limited">Trop de tentatives. Patientez un instant avant de réessayer.</string>
     <string name="error_not_found">Ce contenu ou cette session de lecture n’est plus disponible.</string>
     <string name="error_storage">Impossible de lire ou d’enregistrer la session sécurisée sur cet appareil.</string>
     <string name="error_response">Réponse inattendue du serveur.</string>

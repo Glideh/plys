@@ -295,6 +295,7 @@ export default {
   errors: {
     passwordMismatch: 'Passwords do not match.',
     invalid_credentials: 'Invalid username or password.',
+    rate_limited: 'Too many attempts. Wait a moment and try again.',
     username_taken: 'This username is already taken.',
     already_initialized: 'The application is already initialized.',
     validation: 'Some fields are invalid.',
