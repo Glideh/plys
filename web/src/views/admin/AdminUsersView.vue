@@ -9,7 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import TextField from '@/components/TextField.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
-import { locales, type Locale } from '@/i18n'
+import { localeLabels, locales, type Locale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 
 const { t, d, locale: uiLocale } = useI18n()
@@ -217,7 +217,7 @@ onUnmounted(() => clearTimeout(syncTimer))
           <label class="block">
             <span class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('common.language') }}</span>
             <select v-model="createForm.locale" :class="selectClass" class="w-full">
-              <option v-for="l in locales" :key="l" :value="l">{{ l === 'fr' ? 'Français' : 'English' }}</option>
+              <option v-for="l in locales" :key="l" :value="l">{{ localeLabels[l] }}</option>
             </select>
           </label>
         </div>

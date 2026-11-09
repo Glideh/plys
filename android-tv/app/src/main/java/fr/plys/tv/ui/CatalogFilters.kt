@@ -316,13 +316,19 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val locale = if (LocalConfiguration.current.locales[0].language == "fr") "fr" else "en"
+    val locale = filterLocale(LocalConfiguration.current.locales[0].language)
     val excluded = when (category) { "genres" -> filterSelection(draft, "excludeGenres"); "excludeGenres" -> filterSelection(draft, "genres"); else -> emptyList() }
     LaunchedEffect(search, locale) {
         delay(300)
         loading = true
         error = ""
-        try { options = api.filterOptions(query.kind, if (category == "excludeGenres") "genres" else category, search, query.libraryId, selected, locale).options[if (category == "excludeGenres") "genres" else category].orEmpty() }
+        val apiCategory = if (category == "excludeGenres") "genres" else category
+        try {
+            val page = try { api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, locale) }
+            // Servers released before pt-BR support reject that locale: fall back to English names.
+            catch (failure: ClientException) { if (locale == "pt-BR") api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, "en") else throw failure }
+            options = page.options[apiCategory].orEmpty()
+        }
         catch (failure: ClientException) { error = context.errorMessage(failure) }
         finally { loading = false }
     }
@@ -357,4 +363,11 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
     if (editingSearch) FilterInputDialog(stringResource(R.string.search), search, KeyboardType.Text,
         dismiss = { editingSearch = false }, apply = { search = it; editingSearch = false },
     )
+}
+
+/** Maps the device language to a filter locale the server understands. */
+internal fun filterLocale(language: String): String = when (language) {
+    "fr" -> "fr"
+    "pt" -> "pt-BR"
+    else -> "en"
 }
