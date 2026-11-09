@@ -19,6 +19,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Audiotrack
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.Icon
@@ -58,6 +59,7 @@ import fr.plys.tv.data.MediaTrack
 import fr.plys.tv.data.PlaybackSelection
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.VersionChoice
 
 fun MediaTrack.trackLabel(): String = listOfNotNull(
     language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() },
@@ -142,39 +144,72 @@ fun SynopsisDialog(title: String, text: String, dismiss: () -> Unit) {
 
 private fun androidx.compose.foundation.ScrollState.canScroll(step: Float) = if (step > 0) value < maxValue else value > 0
 
+/** "Home · 2160p · HDR · HEVC · 18.4 GB": the server is named only when the title is on several. */
 @Composable
-fun PlaybackSelectionControls(item: ItemDetail, selection: PlaybackSelection, select: (PlaybackSelection) -> Unit) {
-    val chosen = selection.normalized(item)
-    val version = chosen.version(item) ?: return
-    if (item.versions.size <= 1 && version.audio.size <= 1 && version.subtitles.isEmpty()) return
+fun versionChoiceLabel(choice: VersionChoice, withServer: Boolean): String {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    return listOfNotNull(
+        choice.copy.source?.serverName?.takeIf { withServer && it.isNotBlank() },
+        choice.version.label.takeIf { it.isNotBlank() },
+        choice.version.size.takeIf { it > 0 }?.let { android.text.format.Formatter.formatFileSize(context, it) },
+    ).joinToString(" · ")
+}
+
+/**
+ * The version, audio and subtitle pickers of the detail screen. Versions gather every server holding the title,
+ * like the web's item page; a series or season, which has no version of its own, picks its server instead.
+ */
+@Composable
+fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
+    val item = screen.playable
+    val chosen = screen.selection.normalized(item)
+    val version = chosen.version(item)
+    val choices = screen.versionChoices
+    val servers = screen.serverChoices
+    val withServer = choices.distinctBy { it.copy.source?.serverId }.size > 1
+    val audio = version?.audio.orEmpty()
+    val subtitles = version?.subtitles.orEmpty()
+    if (choices.size <= 1 && servers.isEmpty() && audio.size <= 1 && subtitles.isEmpty()) return
     var menu by remember { mutableStateOf("") }
-    val subtitle = version.subtitles.firstOrNull { it.index == chosen.subtitleIndex }
+    val current = choices.firstOrNull { it.copy.source?.serverId == screen.source?.serverId && it.copy.item.id == item.id && it.version.id == version?.id }
+    val subtitle = subtitles.firstOrNull { it.index == chosen.subtitleIndex }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = RowFocusPadding) {
-        if (item.versions.size > 1) item {
-            TrackButton(Icons.Outlined.HighQuality, "${stringResource(R.string.version)} : ${version.label}") { menu = "version" }
+        if (servers.isNotEmpty()) item {
+            TrackButton(Icons.Outlined.Dns, "${stringResource(R.string.server_name)} : ${screen.source?.serverName.orEmpty()}") { menu = "server" }
         }
-        if (version.audio.size > 1) item {
-            TrackButton(Icons.Outlined.Audiotrack, "${stringResource(R.string.audio)} : ${version.audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel().orEmpty()}") { menu = "audio" }
+        if (choices.size > 1) item {
+            val label = current?.let { versionChoiceLabel(it, withServer) } ?: version?.label.orEmpty()
+            TrackButton(Icons.Outlined.HighQuality, "${stringResource(R.string.version)} : $label") { menu = "version" }
         }
-        if (version.subtitles.isNotEmpty()) item {
+        if (audio.size > 1) item {
+            TrackButton(Icons.Outlined.Audiotrack, "${stringResource(R.string.audio)} : ${audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel().orEmpty()}") { menu = "audio" }
+        }
+        if (subtitles.isNotEmpty()) item {
             TrackButton(Icons.Outlined.Subtitles, "${stringResource(R.string.subtitles)} : ${subtitle?.trackLabel() ?: stringResource(R.string.no_subtitles)}") { menu = "subtitles" }
         }
     }
     when (menu) {
+        "server" -> ChoiceDialog(stringResource(R.string.server_name), { menu = "" }) {
+            items(servers, key = { "${it.serverId}/${it.itemId}" }) { server ->
+                Choice(server.serverName, server.serverId == screen.source?.serverId) { model.selectSource(server); menu = "" }
+            }
+        }
         "version" -> ChoiceDialog(stringResource(R.string.version), { menu = "" }) {
-            items(item.versions, key = { it.id }) { candidate ->
-                Choice(candidate.label, candidate.id == version.id, enabled = candidate.error == null) { select(PlaybackSelection(candidate.id).normalized(item)); menu = "" }
+            items(choices, key = { "${it.copy.source?.serverId}/${it.version.id}" }) { candidate ->
+                Choice(versionChoiceLabel(candidate, withServer), candidate == current, enabled = candidate.version.error == null) {
+                    model.selectVersion(candidate); menu = ""
+                }
             }
         }
         "audio" -> ChoiceDialog(stringResource(R.string.audio), { menu = "" }) {
-            items(version.audio, key = { it.index }) { track ->
-                Choice(track.trackLabel(), track.index == chosen.audioIndex) { select(chosen.copy(audioIndex = track.index)); menu = "" }
+            items(audio, key = { it.index }) { track ->
+                Choice(track.trackLabel(), track.index == chosen.audioIndex) { model.selectPlayback(chosen.copy(audioIndex = track.index)); menu = "" }
             }
         }
         "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
-            item { Choice(stringResource(R.string.no_subtitles), chosen.subtitleIndex == null) { select(chosen.copy(subtitleIndex = null)); menu = "" } }
-            items(version.subtitles, key = { it.index }) { track ->
-                Choice(track.trackLabel(), track.index == chosen.subtitleIndex) { select(chosen.copy(subtitleIndex = track.index)); menu = "" }
+            item { Choice(stringResource(R.string.no_subtitles), chosen.subtitleIndex == null) { model.selectPlayback(chosen.copy(subtitleIndex = null)); menu = "" } }
+            items(subtitles, key = { it.index }) { track ->
+                Choice(track.trackLabel(), track.index == chosen.subtitleIndex) { model.selectPlayback(chosen.copy(subtitleIndex = track.index)); menu = "" }
             }
         }
     }

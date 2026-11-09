@@ -19,6 +19,8 @@ import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.TitleCopy
+import fr.plys.tv.data.VersionChoice
 import fr.plys.tv.data.MIN_SEARCH_LENGTH
 import fr.plys.tv.data.SearchResult
 import fr.plys.tv.data.PlaybackSelection
@@ -40,11 +42,26 @@ sealed interface Screen {
     data class Home(val data: HomeResponse) : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
+    // copies are the items every server holds for a playable title, the shown one included: their versions are
+    // offered together, and picking one held by another server shows that server's copy.
     data class Detail(
         val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList(),
         val selection: PlaybackSelection = PlaybackSelection(), val target: ItemDetail? = null,
+        val copies: List<TitleCopy> = emptyList(),
     ) : Screen {
         val playable: ItemDetail get() = target ?: item
+
+        /** Versions of the playable item across every server holding it, the shown copy's always up to date. */
+        val versionChoices: List<VersionChoice> get() {
+            val shown = TitleCopy(source, playable)
+            val all = if (target != null || copies.isEmpty()) listOf(shown) else copies.map { if (isShown(it)) shown else it }
+            return all.flatMap { copy -> copy.item.versions.map { VersionChoice(copy, it) } }
+        }
+
+        /** Series and seasons have no version to merge: they switch server as a whole. */
+        val serverChoices: List<ServerRef> get() = if (item.children.isNotEmpty() && sources.size > 1) sources else emptyList()
+
+        fun isShown(copy: TitleCopy): Boolean = copy.source?.serverId == source?.serverId && copy.item.id == item.id
     }
 }
 
@@ -251,13 +268,43 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun openItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
         val item = api.item(id, source)
-        navigate(Screen.Detail(item, source, sources, target = playTarget(item, source)))
+        val copies = copies(item, source, sources)
+        // A copy that cannot play is not shown first when another server's can.
+        val shown = copies.takeIf { item.playableVersion == null }?.firstOrNull { it.item.playableVersion != null } ?: TitleCopy(source, item)
+        navigate(Screen.Detail(shown.item, shown.source, sources, target = playTarget(shown.item, shown.source), copies = copies))
     }
 
+    /** The items each server holds for a playable title, the given one first; servers that fail to answer are left out. */
+    private suspend fun copies(item: ItemDetail, source: ServerRef?, sources: List<ServerRef>): List<TitleCopy> {
+        if (item.children.isNotEmpty() || sources.size < 2) return emptyList()
+        val others = sources
+            .filterNot { it.serverId == source?.serverId && (it.itemId.isBlank() || it.itemId == item.id) }
+            .filter { it.itemId.isNotBlank() }
+            .distinctBy { it.serverId to it.itemId }
+            .mapNotNull { other ->
+                try { TitleCopy(other, api.item(other.itemId, other)) } catch (_: ClientException) { null }
+            }
+        return if (others.isEmpty()) emptyList() else listOf(TitleCopy(source, item)) + others
+    }
+
+    /** Shows a series or season as another server holds it. */
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
         val item = api.item(source.itemId, source)
         mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = PlaybackSelection(), target = playTarget(item, source)))
+    }
+
+    /** Picks a version; one held by another server shows that server's copy, with its own progress and watched state. */
+    fun selectVersion(choice: VersionChoice) {
+        val screen = mutableState.value.screen as? Screen.Detail ?: return
+        val copy = choice.copy
+        val next = if (screen.target != null || screen.isShown(copy)) screen
+            else screen.copy(
+                item = copy.item, source = copy.source,
+                // Keeps what was loaded for the copy left, so coming back to it shows its latest state.
+                copies = screen.copies.map { if (screen.isShown(it)) TitleCopy(screen.source, screen.item) else it },
+            )
+        mutableState.value = mutableState.value.copy(screen = next.copy(selection = PlaybackSelection(choice.version.id).normalized(next.playable)))
     }
 
     /** The episode a series or season would play; null for playable items or when it cannot be loaded. */

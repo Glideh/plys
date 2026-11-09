@@ -396,7 +396,7 @@ paths:
       summary: Top-level entries of a library (movies, series or videos)
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
-        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title }
+        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
@@ -425,7 +425,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: library, in: query, required: false, schema: { type: string, format: uuid }, description: Restrict to one library of this kind }
-        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title }
+        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
@@ -454,7 +454,7 @@ paths:
         TMDB title are merged into one card. Within a kind, titles starting with the query come first, then the
         others in title order.
       parameters:
-        - { name: query, in: query, required: true, schema: { type: string, minLength: 3 }, description: Case-insensitive substring of the title or original title; at least 3 characters once trimmed }
+        - { name: query, in: query, required: true, schema: { type: string, minLength: 3 }, description: Substring of the title or original title, ignoring case and accents; at least 3 characters once trimmed }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 12 }, description: Maximum number of items returned per kind }
       responses:
         "200":
@@ -1037,7 +1037,7 @@ components:
       name: query
       in: query
       schema: { type: string, maxLength: 200 }
-      description: Case-insensitive substring of the suggestion label
+      description: Substring of the suggestion label, ignoring case and accents
     SelectedFilters:
       name: selected
       in: query

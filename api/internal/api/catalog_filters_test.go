@@ -61,7 +61,7 @@ func TestCatalogFilterSuggestionsRespectAccess(t *testing.T) {
 	admin := setupAdmin(t, env.h).body["accessToken"].(string)
 	writeFiles(t, env.root, "films/Alien.1979.mkv")
 	library := env.createScannedLibrary(t, admin, "Private films", "movies", "films", map[string]any{"restricted": true})
-	_, err := env.srv.Pool.Exec(context.Background(), `UPDATE items SET filter_labels = '{"genres":[{"id":"878","label":"Science-fiction"}],"actors":[{"id":"10205","label":"Sigourney Weaver"}],"countries":[{"id":"GB","label":"GB"}],"languages":[{"id":"en","label":"en"}]}' WHERE library_id = $1`, library)
+	_, err := env.srv.Pool.Exec(context.Background(), `UPDATE items SET filter_labels = '{"genres":[{"id":"878","label":"Science-fiction"},{"id":"35","label":"Comédie"}],"actors":[{"id":"10205","label":"Sigourney Weaver"}],"countries":[{"id":"GB","label":"GB"}],"languages":[{"id":"en","label":"en"}]}' WHERE library_id = $1`, library)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,9 @@ func TestCatalogFilterSuggestionsRespectAccess(t *testing.T) {
 	if selected.status != http.StatusOK || len(selected.body["options"].(map[string]any)["actors"].([]any)) != 1 {
 		t.Fatalf("selected labels: %v", selected.body)
 	}
-	for _, test := range []struct{ category, query, locale string }{{"countries", "royaume", "fr"}, {"languages", "anglais", "fr"}, {"languages", "english", "en"}, {"countries", "reino", "pt-BR"}, {"languages", "ingl", "pt-br"}} {
+	for _, test := range []struct{ category, query, locale string }{{"countries", "royaume", "fr"}, {"languages", "anglais", "fr"}, {"languages", "english", "en"}, {"countries", "reino", "pt-BR"}, {"languages", "ingl", "pt-br"}},
+		// Accents are ignored, both in the database labels and in the localized names.
+		{"genres", "comedie", "fr"}, {"countries", "ROYAUM%C3%89", "fr"}} {
 		result := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/filters?category="+test.category+"&query="+test.query+"&locale="+test.locale, admin, nil)
 		if result.status != http.StatusOK || len(result.body["options"].(map[string]any)[test.category].([]any)) != 1 {
 			t.Fatalf("localized search: %v", result.body)

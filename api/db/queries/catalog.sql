@@ -30,7 +30,7 @@ WITH libs AS (
   CROSS JOIN LATERAL jsonb_each(i.filter_labels) AS facet
   CROSS JOIN LATERAL jsonb_array_elements(facet.value) AS entry
   WHERE (@category::text = '' OR facet.key = @category)
-    AND (@query::text = '' OR facet.key IN ('languages', 'countries') OR entry->>'label' ILIKE @query OR entry->>'id' = ANY(@selected::text[]))
+    AND (@query::text = '' OR facet.key IN ('languages', 'countries') OR search_fold(entry->>'label') ILIKE search_fold(@query) OR entry->>'id' = ANY(@selected::text[]))
 ), options AS (
   SELECT DISTINCT ON (category, id) category, id, label FROM entries ORDER BY category, id, label
 ), ranked AS (
@@ -79,7 +79,7 @@ FROM items i
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = @user_id
 WHERE i.library_id = @library_id AND i.parent_id IS NULL
-  AND (@query::text = '' OR i.title ILIKE @query OR i.original_title ILIKE @query)
+  AND (@query::text = '' OR search_fold(i.title) ILIKE search_fold(@query) OR search_fold(i.original_title) ILIKE search_fold(@query))
   AND ((@filters::jsonb->>'yearMin') IS NULL OR i.year >= (@filters::jsonb->>'yearMin')::integer)
   AND ((@filters::jsonb->>'yearMax') IS NULL OR i.year <= (@filters::jsonb->>'yearMax')::integer)
   AND ((@filters::jsonb->>'ratingMin') IS NULL OR i.rating >= (@filters::jsonb->>'ratingMin')::real)
@@ -142,7 +142,7 @@ JOIN libs ON libs.id = i.library_id
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = @user_id
 WHERE i.parent_id IS NULL
-  AND (@query::text = '' OR i.title ILIKE @query OR i.original_title ILIKE @query)
+  AND (@query::text = '' OR search_fold(i.title) ILIKE search_fold(@query) OR search_fold(i.original_title) ILIKE search_fold(@query))
   AND ((@filters::jsonb->>'yearMin') IS NULL OR i.year >= (@filters::jsonb->>'yearMin')::integer)
   AND ((@filters::jsonb->>'yearMax') IS NULL OR i.year <= (@filters::jsonb->>'yearMax')::integer)
   AND ((@filters::jsonb->>'ratingMin') IS NULL OR i.rating >= (@filters::jsonb->>'ratingMin')::real)

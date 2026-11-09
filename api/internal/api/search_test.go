@@ -40,6 +40,8 @@ func TestGlobalSearch(t *testing.T) {
 		"films/Aliens.1986.mkv",
 		"films/The.Alien.Factor.1978.mkv",
 		"films/Blade.Runner.1982.mkv",
+		"films/Amélie.2001.mkv",
+		"films/Une.Amelie.2005.mkv",
 		"private/Alien.Covenant.2017.mkv",
 		"series/Alien.Nation.S01E01.mkv",
 		"series/Show.S01E01.mkv",
@@ -84,6 +86,18 @@ func TestGlobalSearch(t *testing.T) {
 	movieGroup := searchGroups(t, r.body)["movies"]
 	if got := searchTitles(t, movieGroup); len(got) != 1 || movieGroup["total"] != float64(4) {
 		t.Errorf("bob must see the restricted library, one item per kind and the full total: %v", movieGroup)
+	}
+
+	// Accents are ignored both ways, in the match and in the prefix ranking.
+	for _, q := range []string{"amelie", "AM%C3%89LIE"} {
+		r = do(t, e.h, http.MethodGet, "/api/v1/search?query="+q, carol, nil)
+		if got := searchTitles(t, searchGroups(t, r.body)["movies"]); len(got) != 2 || got[0] != "Amélie" || got[1] != "Une Amelie" {
+			t.Errorf("query %q must ignore accents: %v", q, got)
+		}
+	}
+	r = do(t, e.h, http.MethodGet, "/api/v1/kinds/movies/items?query=am%C3%A9lie", carol, nil)
+	if r.status != http.StatusOK || r.body["total"] != float64(2) {
+		t.Errorf("the kind listing must ignore accents too: %d %v", r.status, r.body)
 	}
 
 	if r = do(t, e.h, http.MethodGet, "/api/v1/search?query=nothing%25", carol, nil); r.status != http.StatusOK || len(r.body["groups"].([]any)) != 0 {
@@ -135,5 +149,13 @@ func TestGlobalSearchIncludesPeers(t *testing.T) {
 	r = do(t, env.h, http.MethodGet, "/api/v1/search?query=alien", admin, nil)
 	if r.status != http.StatusOK || len(r.body["groups"].([]any)) != 0 || r.body["unavailableServers"] != float64(1) {
 		t.Fatalf("an incompatible peer must be counted once: %d %v", r.status, r.body)
+	}
+}
+
+func TestFoldSearch(t *testing.T) {
+	for in, want := range map[string]string{"Amélie": "amelie", "ÉTÉ": "ete", "Ça": "ca", "Noël": "noel", "Alien": "alien"} {
+		if got := foldSearch(in); got != want {
+			t.Errorf("foldSearch(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
