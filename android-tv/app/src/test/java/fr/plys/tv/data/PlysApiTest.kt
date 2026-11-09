@@ -11,11 +11,8 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import androidx.paging.PagingSource
-import fr.plys.tv.ui.choiceValue
-import fr.plys.tv.ui.withChoice
 import fr.plys.tv.ui.withFilterSelection
 import fr.plys.tv.ui.audioClientCaps
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -257,10 +254,6 @@ class PlysApiTest {
         assertFalse(CatalogFilters(ratingMin = Double.NaN).valid)
         assertFalse(CatalogFilters(languages = listOf("english")).valid)
         assertEquals(2, CatalogFilters(genres = listOf(27, 878), ratingMin = 0.0).count)
-        assertTrue(CatalogFilters(resolution = "2160p", audio = "atmos").valid)
-        assertFalse(CatalogFilters(resolution = "4k").valid)
-        assertFalse(CatalogFilters(audio = "dolby").valid)
-        assertEquals(2, CatalogFilters(resolution = "1080p", audio = "dts").count)
     }
 
     @Test fun `paging reuses initial page and appends without losing filters`() = runBlocking {
@@ -332,12 +325,6 @@ class PlysApiTest {
         assertTrue(withFilterSelection(first, "genres", emptyList()).genres.isEmpty())
         assertEquals(listOf("fr"), withFilterSelection(first, "languages", listOf("fr", "en")).languages)
         assertEquals(listOf(10205), withFilterSelection(first, "actors", listOf("10205", "578")).actors)
-    }
-
-    @Test fun `technical filters are encoded without the removed genre mode`() {
-        val filters = withChoice(withChoice(withFilterSelection(CatalogFilters(), "genres", listOf("878")), "resolution", "1080p"), "audio", "dtsHdMa")
-        assertEquals("""{"genres":[878],"resolution":"1080p","audio":"dtsHdMa"}""", Json.encodeToString(filters))
-        assertNull(choiceValue(withChoice(filters, "audio", null), "audio"))
     }
 
     @Test fun `details decode cast directors and media tracks`() = runBlocking {

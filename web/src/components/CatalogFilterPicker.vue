@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useId, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronDown, Search } from '@lucide/vue'
+import { ChevronDown, Search, X } from '@lucide/vue'
 import { catalogApi } from '@/api/catalog'
 import type { FilterCategory, FilterOption } from '@/api/catalogFilters'
 import type { LibraryKind } from '@/api/libraries'
@@ -14,7 +14,6 @@ const { t, locale } = useI18n()
 const errorMessage = useErrorMessage()
 const id = useId()
 const searchInput = useTemplateRef<HTMLInputElement>('searchInput')
-const details = useTemplateRef<HTMLDetailsElement>('details')
 const query = ref('')
 const options = ref<FilterOption[]>([])
 const known = ref<Record<string, string>>({})
@@ -29,11 +28,7 @@ function display(option: FilterOption) {
   }
   return option.label
 }
-// Single choice, like on Android TV: the API still takes a list, holding at most one value here.
-const selected = computed(() => {
-  const value = model.value[0]
-  return value === undefined ? undefined : display({ id: value, label: known.value[value] ?? value })
-})
+const selected = computed(() => model.value.map((value) => ({ id: value, label: known.value[value] ?? value })))
 
 async function load() {
   const current = ++generation
@@ -48,9 +43,8 @@ async function load() {
   } catch (err) { if (current === generation) error.value = errorMessage(err) }
   finally { if (current === generation) loading.value = false }
 }
-function choose(value?: string) {
-  model.value = value === undefined ? [] : [value]
-  if (details.value) details.value.open = false
+function toggle(value: string) {
+  model.value = model.value.includes(value) ? model.value.filter((entry) => entry !== value) : [...model.value, value]
 }
 function focusSearch(event: Event) {
   if ((event.currentTarget as HTMLDetailsElement).open) searchInput.value?.focus()
@@ -62,9 +56,9 @@ onUnmounted(() => { ++generation; clearTimeout(timer) })
 
 <template>
   <div class="min-w-0">
-    <details ref="details" class="group relative" @toggle="focusSearch">
+    <details class="group relative" @toggle="focusSearch">
       <summary class="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 rounded-lg border border-white/10 bg-surface-800 px-3 py-2 text-sm text-slate-200">
-        <span class="min-w-0 break-words">{{ label }}<span v-if="selected" class="ml-2 text-accent-400">{{ selected }}</span></span>
+        <span>{{ label }}<span v-if="model.length" class="ml-2 text-accent-400">{{ model.length }}</span></span>
         <ChevronDown class="size-4 shrink-0 transition group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div class="mt-2 border-l border-white/10 pl-3">
@@ -75,18 +69,19 @@ onUnmounted(() => { ++generation; clearTimeout(timer) })
         </div>
         <p v-if="loading" class="py-2 text-xs text-slate-400" role="status">{{ t('common.loading') }}</p>
         <p v-if="error" class="py-2 text-xs text-red-300" role="alert">{{ error }}</p>
-        <div class="mt-2 max-h-44 overflow-y-auto" role="radiogroup" :aria-label="label">
-          <label class="flex min-h-9 cursor-pointer items-start gap-2 py-1.5 text-sm text-slate-400">
-            <input type="radio" :name="`${id}-choice`" class="mt-1 accent-accent-500" :checked="!model.length" @change="choose()" />
-            <span>{{ t('filters.none') }}</span>
-          </label>
+        <div class="mt-2 max-h-44 overflow-y-auto">
           <label v-for="option in options" :key="option.id" class="flex min-h-9 cursor-pointer items-start gap-2 py-1.5 text-sm text-slate-300">
-            <input type="radio" :name="`${id}-choice`" class="mt-1 accent-accent-500" :checked="model.includes(option.id)" :disabled="disabledValues?.includes(option.id)" @change="choose(option.id)" />
+            <input type="checkbox" class="mt-1 accent-accent-500" :checked="model.includes(option.id)" :disabled="disabledValues?.includes(option.id) || (!model.includes(option.id) && model.length >= 20)" @change="toggle(option.id)" />
             <span class="min-w-0 break-words">{{ display(option) }}</span>
           </label>
           <p v-if="!loading && !error && !options.length" class="py-2 text-xs text-slate-500">{{ t('catalog.noResults') }}</p>
         </div>
       </div>
     </details>
+    <div v-if="selected.length" class="mt-2 flex flex-wrap gap-1.5">
+      <button v-for="option in selected" :key="option.id" type="button" class="inline-flex max-w-full items-center gap-1 rounded border border-white/10 px-2 py-1 text-xs text-slate-300 hover:bg-white/5" :aria-label="t('filters.remove', { label: display(option) })" @click="toggle(option.id)">
+        <span class="min-w-0 break-words">{{ display(option) }}</span><X class="size-3 shrink-0" aria-hidden="true" />
+      </button>
+    </div>
   </div>
 </template>

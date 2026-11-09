@@ -53,15 +53,12 @@ INSERT INTO library_access (library_id, user_id) VALUES ($1, $2) ON CONFLICT DO 
 -- name: ListLibraryItems :many
 -- Top-level entries of a library; entries whose files are all missing are hidden.
 -- Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
--- Technical filters (resolution, audio) narrow the files: an entry matches when one of its files does.
 WITH visible AS (
     SELECT DISTINCT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id
     FROM media_files f
     JOIN items x ON x.id = f.item_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL AND x.library_id = @library_id
-      AND ((@filters::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = @filters::jsonb->>'resolution')
-      AND ((@filters::jsonb->>'audio') IS NULL OR (@filters::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 -- Episodes still to watch per series, for the badge of the grid.
 unwatched AS (
@@ -89,7 +86,10 @@ WHERE i.library_id = @library_id AND i.parent_id IS NULL
   AND ((@filters::jsonb->>'votesMin') IS NULL OR i.vote_count >= (@filters::jsonb->>'votesMin')::integer)
   AND ((@filters::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= (@filters::jsonb->>'runtimeMin')::integer))
   AND ((@filters::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= (@filters::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length(@filters::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres')))
+  AND (coalesce(jsonb_array_length(@filters::jsonb->'genres'), 0) = 0 OR
+       CASE WHEN @filters::jsonb->>'genreMode' = 'all'
+       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres'))
+       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres')) END)
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length(@filters::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'actors')))
   AND (coalesce(jsonb_array_length(@filters::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'creators')))
@@ -120,8 +120,6 @@ visible AS (
     JOIN libs ON libs.id = x.library_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL
-      AND ((@filters::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = @filters::jsonb->>'resolution')
-      AND ((@filters::jsonb->>'audio') IS NULL OR (@filters::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 unwatched AS (
     SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
@@ -151,7 +149,10 @@ WHERE i.parent_id IS NULL
   AND ((@filters::jsonb->>'votesMin') IS NULL OR i.vote_count >= (@filters::jsonb->>'votesMin')::integer)
   AND ((@filters::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= (@filters::jsonb->>'runtimeMin')::integer))
   AND ((@filters::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= (@filters::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length(@filters::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres')))
+  AND (coalesce(jsonb_array_length(@filters::jsonb->'genres'), 0) = 0 OR
+       CASE WHEN @filters::jsonb->>'genreMode' = 'all'
+       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres'))
+       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'genres')) END)
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length(@filters::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'actors')))
   AND (coalesce(jsonb_array_length(@filters::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text(@filters::jsonb->'creators')))
