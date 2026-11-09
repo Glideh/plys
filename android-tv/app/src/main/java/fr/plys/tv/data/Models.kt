@@ -117,7 +117,15 @@ data class Version(
     val id: String, val label: String, val durationSeconds: Double? = null, val error: String? = null,
     val audio: List<MediaTrack> = emptyList(), val subtitles: List<MediaTrack> = emptyList(),
     val resolution: String = "", val hdr: Boolean = false, val videoCodec: String = "",
+    /** File size in bytes. */
+    val size: Long = 0,
 )
+
+/** The item a server holds for a title, with the server it is read from (null for the signed-in server). */
+data class TitleCopy(val source: ServerRef?, val item: ItemDetail)
+
+/** A version of a title the user can pick, with the copy holding it. */
+data class VersionChoice(val copy: TitleCopy, val version: Version)
 
 @Serializable
 data class MediaTrack(
