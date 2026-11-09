@@ -247,7 +247,7 @@ func (q *Queries) ListChildItems(ctx context.Context, arg ListChildItemsParams) 
 }
 
 const listItemFiles = `-- name: ListItemFiles :many
-SELECT id, item_id, size, duration_seconds, container, streams, edition, probe_error
+SELECT id, item_id, path, size, duration_seconds, container, streams, edition, probe_error
 FROM media_files
 WHERE item_id = ANY($1::uuid[]) AND missing_since IS NULL
 ORDER BY size DESC
@@ -256,6 +256,7 @@ ORDER BY size DESC
 type ListItemFilesRow struct {
 	ID              uuid.UUID
 	ItemID          *uuid.UUID
+	Path            string
 	Size            int64
 	DurationSeconds *float64
 	Container       *string
@@ -264,7 +265,7 @@ type ListItemFilesRow struct {
 	ProbeError      *string
 }
 
-// Paths stay server-side: clients only see technical details.
+// The path is only exposed to local admins (see versions in internal/api/catalog.go).
 func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]ListItemFilesRow, error) {
 	rows, err := q.db.Query(ctx, listItemFiles, itemIds)
 	if err != nil {
@@ -277,6 +278,7 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItemID,
+			&i.Path,
 			&i.Size,
 			&i.DurationSeconds,
 			&i.Container,

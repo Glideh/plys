@@ -1235,6 +1235,10 @@ components:
         audio: { type: array, items: { $ref: "#/components/schemas/Track" } }
         subtitles: { type: array, items: { $ref: "#/components/schemas/Track" } }
         error: { type: string, description: Analysis error; the version may not play }
+        path:
+          type: string
+          example: /media/movies/Blade Runner (1982)/Blade.Runner.1982.1080p.mkv
+          description: Absolute path of the file on the server (inside its media mount). Only sent to local admins, never to regular users nor to federated peers.
     ItemDetail:
       type: object
       required: [id, kind, libraryId, title, genres, directors, cast, matchStatus, ancestors, versions, children]

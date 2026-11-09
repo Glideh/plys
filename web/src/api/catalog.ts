@@ -79,6 +79,8 @@ export interface Version {
   audio: Track[]
   subtitles: Track[]
   error?: string
+  /** Location of the file on the server, only sent to admins. */
+  path?: string
 }
 
 export interface ChildItem {
