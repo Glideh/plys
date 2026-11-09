@@ -114,6 +114,8 @@ export default {
     none: 'Nenhuma',
     forced: 'forçada',
     unreadable: 'Arquivo ilegível',
+    fileName: 'Arquivo',
+    folder: 'Pasta',
     seasons: 'Temporadas',
     episodes: 'Episódios',
     parts: 'Partes',
