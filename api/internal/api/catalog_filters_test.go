@@ -136,7 +136,7 @@ func TestCatalogFilterSuggestionsRespectAccess(t *testing.T) {
 	if selected.status != http.StatusOK || len(selected.body["options"].(map[string]any)["actors"].([]any)) != 1 {
 		t.Fatalf("selected labels: %v", selected.body)
 	}
-	for _, test := range []struct{ category, query, locale string }{{"countries", "royaume", "fr"}, {"languages", "anglais", "fr"}, {"languages", "english", "en"}, {"countries", "reino", "pt-BR"}, {"languages", "ingl", "pt-br"}},
+	for _, test := range []struct{ category, query, locale string }{{"countries", "royaume", "fr"}, {"languages", "anglais", "fr"}, {"languages", "english", "en"}, {"countries", "reino", "pt-BR"}, {"languages", "ingl", "pt-br"},
 		// Accents are ignored, both in the database labels and in the localized names.
 		{"genres", "comedie", "fr"}, {"countries", "ROYAUM%C3%89", "fr"}} {
 		result := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/filters?category="+test.category+"&query="+test.query+"&locale="+test.locale, admin, nil)

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Plys API
-  version: 0.3.4
+  version: 0.3.5
   description: |
     Media library API used by the web front-end and the native Android TV client.
 
