@@ -11,12 +11,10 @@
     <string name="title_count_pending">Títulos: —</string>
     <plurals name="title_count">
         <item quantity="one">%1$d título</item>
-        <item quantity="many">%1$d títulos</item>
         <item quantity="other">%1$d títulos</item>
     </plurals>
     <plurals name="library_count">
         <item quantity="one">%1$d biblioteca</item>
-        <item quantity="many">%1$d bibliotecas</item>
         <item quantity="other">%1$d bibliotecas</item>
     </plurals>
     <string name="catalog_count">Títulos: %1$d</string>
@@ -52,8 +50,22 @@
     <string name="filter_votes">Número mínimo de votos</string>
     <string name="filter_runtime_min">Duração mínima (minutos)</string>
     <string name="filter_runtime_max">Duração máxima (minutos)</string>
-    <string name="genres_all">Gêneros incluídos: todos</string>
-    <string name="genres_any">Gêneros incluídos: pelo menos um</string>
+    <string name="filter_resolution">Resolução</string>
+    <string name="filter_audio">Áudio</string>
+    <string name="filter_group_year">Ano de lançamento</string>
+    <string name="filter_group_rating">Nota TMDB</string>
+    <string name="filter_group_runtime">Duração (minutos)</string>
+    <string name="filter_from">A partir de</string>
+    <string name="filter_to">Até</string>
+    <string name="filter_min_rating">Nota mínima (0–10)</string>
+    <string name="filter_min_votes">Votos mínimos</string>
+    <string name="filter_minimum">Mínimo</string>
+    <string name="filter_maximum">Máximo</string>
+    <string name="resolution_2160p">4K (2160p)</string>
+    <string name="resolution_1080p">Full HD (1080p)</string>
+    <string name="resolution_720p">HD (720p)</string>
+    <string name="audio_dts_all">DTS (tous)</string>
+    <string name="audio_pcm">PCM (non compressé)</string>
     <string name="invalid_filters">Verifique os limites numéricos e a seleção de gêneros.</string>
     <string name="home">Início</string>
     <string name="movies">Filmes</string>
@@ -96,6 +108,7 @@
     <string name="error_setup">Inicialize o servidor pelo cliente web antes de entrar na sua TV.</string>
     <string name="error_url">Informe o endereço raiz HTTP ou HTTPS do servidor, sem credenciais, parâmetros ou fragmento.</string>
     <string name="error_busy">O transcodificador está ocupado. Tente novamente mais tarde.</string>
+    <string name="error_rate_limited">Muitas tentativas. Tente novamente mais tarde.</string>
     <string name="error_not_found">Este conteúdo ou sessão de reprodução não está mais disponível.</string>
     <string name="error_storage">Não foi possível ler ou salvar a sessão segura neste dispositivo.</string>
     <string name="error_response">Resposta inesperada do servidor.</string>
@@ -116,7 +129,7 @@
     <string name="seasons">Temporadas</string>
     <string name="episodes">Episódios</string>
     <string name="parts">Partes</string>
-    <string name="available_on">Também em</string>
+    <string name="server_name">Servidor</string>
     <string name="up_next">Próximo episódio</string>
     <string name="up_next_in">Começa em %1$d s</string>
     <string name="play_next_now">Reproduzir agora</string>
