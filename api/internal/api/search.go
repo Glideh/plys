@@ -7,7 +7,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
@@ -105,14 +108,26 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 }
 
 // rankSearchResults puts the titles that start with the query first and keeps the title order otherwise.
+// Like the SQL match, the prefix test ignores case and accents.
 func rankSearchResults(cards []catalogCardDTO, query string) []catalogCardDTO {
-	prefix := strings.ToLower(query)
+	prefix := foldSearch(query)
 	rank := func(c catalogCardDTO) int {
-		if strings.HasPrefix(strings.ToLower(c.Title), prefix) {
+		if strings.HasPrefix(foldSearch(c.Title), prefix) {
 			return 0
 		}
 		return 1
 	}
 	slices.SortStableFunc(cards, func(a, b catalogCardDTO) int { return cmp.Compare(rank(a), rank(b)) })
 	return cards
+}
+
+// foldSearch lowercases s and strips its diacritics ("Amélie" becomes "amelie").
+func foldSearch(s string) string {
+	var b strings.Builder
+	for _, r := range norm.NFD.String(strings.ToLower(s)) {
+		if !unicode.Is(unicode.Mn, r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

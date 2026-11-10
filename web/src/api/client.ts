@@ -1,3 +1,5 @@
+import type { Locale } from '@/i18n'
+
 export type ApiErrorCode =
   | 'validation'
   | 'invalid_body'
@@ -36,7 +38,7 @@ export interface User {
   id: string
   username: string
   role: 'admin' | 'user'
-  locale: 'fr' | 'en'
+  locale: Locale
   autoplayNext: boolean
   createdAt: string
   /** Present only when the user has an avatar; used as a cache-busting version. */

@@ -219,9 +219,13 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	if !httpx.DecodeRequired(w, r, &req) {
 		return
 	}
-	if req.Locale != nil && !slices.Contains(supportedLocales, *req.Locale) {
-		httpx.Error(w, http.StatusBadRequest, "validation", "locale must be one of: fr, en")
-		return
+	if req.Locale != nil {
+		locale, ok := canonicalLocale(*req.Locale)
+		if !ok {
+			httpx.Error(w, http.StatusBadRequest, "validation", errUnsupportedLocale.Error())
+			return
+		}
+		req.Locale = &locale
 	}
 	p, _ := auth.PrincipalFrom(r.Context())
 	user, err := s.q.UpdateUserPreferences(r.Context(), store.UpdateUserPreferencesParams{ID: p.UserID, AutoplayNext: req.AutoplayNext, Locale: req.Locale})

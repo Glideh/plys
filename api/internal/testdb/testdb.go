@@ -27,6 +27,9 @@ func New(t *testing.T, schema string) *pgxpool.Pool {
 	}
 	ident := pgx.Identifier{schema}.Sanitize()
 	_, err = admin.Exec(ctx, "DROP SCHEMA IF EXISTS "+ident+" CASCADE; CREATE SCHEMA "+ident)
+	if err == nil {
+		err = createExtensions(ctx, admin)
+	}
 	admin.Close(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -46,4 +49,22 @@ func New(t *testing.T, schema string) *pgxpool.Pool {
 		t.Fatal(err)
 	}
 	return pool
+}
+
+// createExtensions installs the database-wide extensions the migrations need before they run.
+// Test packages migrate in parallel, and concurrent CREATE EXTENSION IF NOT EXISTS calls can fail
+// on a fresh database, so they are serialized with an advisory lock.
+func createExtensions(ctx context.Context, conn *pgx.Conn) error {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtext('plys-testdb-extensions'))"); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, "CREATE EXTENSION IF NOT EXISTS unaccent SCHEMA public"); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

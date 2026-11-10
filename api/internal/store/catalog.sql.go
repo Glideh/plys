@@ -109,7 +109,7 @@ WITH libs AS (
   CROSS JOIN LATERAL jsonb_each(i.filter_labels) AS facet
   CROSS JOIN LATERAL jsonb_array_elements(facet.value) AS entry
   WHERE ($5::text = '' OR facet.key = $5)
-    AND ($6::text = '' OR facet.key IN ('languages', 'countries') OR entry->>'label' ILIKE $6 OR entry->>'id' = ANY($7::text[]))
+    AND ($6::text = '' OR facet.key IN ('languages', 'countries') OR search_fold(entry->>'label') ILIKE search_fold($6) OR entry->>'id' = ANY($7::text[]))
 ), options AS (
   SELECT DISTINCT ON (category, id) category, id, label FROM entries ORDER BY category, id, label
 ), ranked AS (
@@ -247,7 +247,7 @@ func (q *Queries) ListChildItems(ctx context.Context, arg ListChildItemsParams) 
 }
 
 const listItemFiles = `-- name: ListItemFiles :many
-SELECT id, item_id, size, duration_seconds, container, streams, edition, probe_error
+SELECT id, item_id, path, size, duration_seconds, container, streams, edition, probe_error
 FROM media_files
 WHERE item_id = ANY($1::uuid[]) AND missing_since IS NULL
 ORDER BY size DESC
@@ -256,6 +256,7 @@ ORDER BY size DESC
 type ListItemFilesRow struct {
 	ID              uuid.UUID
 	ItemID          *uuid.UUID
+	Path            string
 	Size            int64
 	DurationSeconds *float64
 	Container       *string
@@ -264,7 +265,7 @@ type ListItemFilesRow struct {
 	ProbeError      *string
 }
 
-// Paths stay server-side: clients only see technical details.
+// The path is only exposed to local admins (see versions in internal/api/catalog.go).
 func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]ListItemFilesRow, error) {
 	rows, err := q.db.Query(ctx, listItemFiles, itemIds)
 	if err != nil {
@@ -277,6 +278,7 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItemID,
+			&i.Path,
 			&i.Size,
 			&i.DurationSeconds,
 			&i.Container,
@@ -331,7 +333,7 @@ JOIN libs ON libs.id = i.library_id
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.parent_id IS NULL
-  AND ($2::text = '' OR i.title ILIKE $2 OR i.original_title ILIKE $2)
+  AND ($2::text = '' OR search_fold(i.title) ILIKE search_fold($2) OR search_fold(i.original_title) ILIKE search_fold($2))
   AND (($3::jsonb->>'yearMin') IS NULL OR i.year >= ($3::jsonb->>'yearMin')::integer)
   AND (($3::jsonb->>'yearMax') IS NULL OR i.year <= ($3::jsonb->>'yearMax')::integer)
   AND (($3::jsonb->>'ratingMin') IS NULL OR i.rating >= ($3::jsonb->>'ratingMin')::real)
@@ -484,7 +486,7 @@ FROM items i
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.library_id = $2 AND i.parent_id IS NULL
-  AND ($3::text = '' OR i.title ILIKE $3 OR i.original_title ILIKE $3)
+  AND ($3::text = '' OR search_fold(i.title) ILIKE search_fold($3) OR search_fold(i.original_title) ILIKE search_fold($3))
   AND (($4::jsonb->>'yearMin') IS NULL OR i.year >= ($4::jsonb->>'yearMin')::integer)
   AND (($4::jsonb->>'yearMax') IS NULL OR i.year <= ($4::jsonb->>'yearMax')::integer)
   AND (($4::jsonb->>'ratingMin') IS NULL OR i.rating >= ($4::jsonb->>'ratingMin')::real)

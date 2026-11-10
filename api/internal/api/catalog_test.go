@@ -93,12 +93,20 @@ func TestCatalogBrowsing(t *testing.T) {
 		if len(vm["audio"].([]any)) != 2 || len(vm["subtitles"].([]any)) != 1 {
 			t.Errorf("tracks missing: %v", vm)
 		}
-		if _, leaked := vm["path"]; leaked {
-			t.Error("file paths must not be exposed")
+		if path, _ := vm["path"].(string); filepath.Dir(path) != filepath.Join(e.root, "films") {
+			t.Errorf("admins must see the file path, got %q", path)
 		}
 	}
 	if !labels["1080p · HDR · HEVC"] || !labels["1080p · HDR · HEVC · Final Cut"] {
 		t.Errorf("unexpected version labels: %v", labels)
+	}
+
+	do(t, e.h, http.MethodPost, "/api/v1/users", admin, map[string]any{"username": "bob", "password": "password123"})
+	bob := do(t, e.h, http.MethodPost, "/api/v1/auth/login", "", map[string]any{"username": "bob", "password": "password123"}).body["accessToken"].(string)
+	for _, v := range do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Blade Runner"], bob, nil).body["versions"].([]any) {
+		if _, leaked := v.(map[string]any)["path"]; leaked {
+			t.Error("file paths must not be exposed to regular users")
+		}
 	}
 
 	war := do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Guerre et Paix"], admin, nil).body

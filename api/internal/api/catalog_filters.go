@@ -56,15 +56,15 @@ func (s *Server) peerCatalogFilterOptions(w http.ResponseWriter, r *http.Request
 func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, federated bool) {
 	kind := chi.URLParam(r, "kind")
 	category, query := r.URL.Query().Get("category"), strings.TrimSpace(r.URL.Query().Get("query"))
-	locale := r.URL.Query().Get("locale")
-	if locale == "" {
-		locale = "fr"
+	locale, localeOK := "fr", true
+	if raw := r.URL.Query().Get("locale"); raw != "" {
+		locale, localeOK = canonicalLocale(raw)
 	}
 	selected := []string{}
 	if raw := r.URL.Query().Get("selected"); raw != "" {
 		selected = strings.Split(raw, ",")
 	}
-	if !slices.Contains([]string{"movies", "series"}, kind) || category != "" && !slices.Contains(filterCategories, category) || len(query) > 200 || len(selected) > 20 || len(r.URL.Query().Get("selected")) > 500 || !slices.Contains([]string{"fr", "en"}, locale) {
+	if !slices.Contains([]string{"movies", "series"}, kind) || category != "" && !slices.Contains(filterCategories, category) || len(query) > 200 || len(selected) > 20 || len(r.URL.Query().Get("selected")) > 500 || !localeOK {
 		httpx.Error(w, http.StatusBadRequest, "validation", "invalid filter suggestions parameters")
 		return
 	}
@@ -118,7 +118,7 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 				label = display.Regions(language.Make(locale)).Name(region)
 			}
 		}
-		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(strings.ToLower(label), strings.ToLower(query)) && !slices.Contains(selected, row.ID) {
+		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(foldSearch(label), foldSearch(query)) && !slices.Contains(selected, row.ID) {
 			continue
 		}
 		response.Options[row.Category] = append(response.Options[row.Category], metadata.FilterOption{ID: row.ID, Label: label})
@@ -172,11 +172,22 @@ func (s *Server) peerFilterOptions(ctx context.Context, peer store.Peer, userID 
 	if err != nil {
 		return catalogOptionsResponse{}, err
 	}
-	target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
-	var response catalogOptionsResponse
-	err = s.getPeerCatalog(ctx, target, token, &response)
+	fetch := func(locale string) (catalogOptionsResponse, error) {
+		target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
+		var response catalogOptionsResponse
+		err := s.getPeerCatalog(ctx, target, token, &response)
+		return response, err
+	}
+	response, err := fetch(locale)
+	if err != nil && !slices.Contains(legacyFilterLocales, locale) {
+		// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
+		return fetch("en")
+	}
 	return response, err
 }
+
+// legacyFilterLocales are the filter locales every compatible peer accepts.
+var legacyFilterLocales = []string{"fr", "en"}
 
 func parseCatalogFilters(raw string) (json.RawMessage, error) {
 	if raw == "" {
