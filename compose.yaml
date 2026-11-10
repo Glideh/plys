@@ -34,6 +34,7 @@ services:
       COOKIE_SECURE: "false"
       PLYS_FEDERATION_REQUIRE_HTTPS: "false"
       LOG_LEVEL: debug
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
     volumes:
       - ./api:/src
       - ./VERSION:/version:ro
