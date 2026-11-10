@@ -26,7 +26,8 @@ const numberGroups = computed<NumberGroup[]>(() => [
   { title: 'filters.ratingGroup', fields: [{ key: 'ratingMin', label: 'filters.minRating' }, { key: 'votesMin', label: 'filters.minVotes' }] },
   ...(props.kind === 'movies' ? [{ title: 'filters.runtimeGroup', fields: [{ key: 'runtimeMin', label: 'filters.runtimeFrom' }, { key: 'runtimeMax', label: 'filters.runtimeTo' }] } satisfies NumberGroup] : []),
 ])
-const inputClass = 'mt-1.5 h-10 w-full rounded-lg border border-white/10 bg-surface-800 px-3 text-sm text-slate-100'
+const inputClassNoMarginTop = 'h-10 w-full rounded-lg border border-white/10 bg-surface-800 px-3 text-sm text-slate-100'
+const inputClass = 'mt-1.5 ' + inputClassNoMarginTop
 
 function category(key: SelectionKey): FilterCategory { return key === 'excludeGenres' ? 'genres' : key }
 function fieldLabel(key: SelectionKey | NumberKey | ChoiceKey) {
@@ -136,13 +137,12 @@ watch(() => serializeFilters(model.value), restoreLabels)
         </header>
         <div class="grid min-h-0 min-w-0 flex-1 gap-5 overflow-y-auto sm:grid-cols-2 sm:overflow-visible lg:grid-cols-3">
           <CatalogFilterPicker v-for="key in pickerKeys" :key="key" :kind="kind" :library="library" :category="category(key)" :label="fieldLabel(key)" :model-value="values(key)" :disabled-values="key === 'genres' ? values('excludeGenres') : key === 'excludeGenres' ? values('genres') : undefined" @update:model-value="setValues(key, $event)" @options="remember" />
-          <label v-for="key in choiceKeys" :key="key" class="min-w-0 text-sm text-slate-300" :for="`${id}-${key}`">
-            {{ fieldLabel(key) }}
-            <select :id="`${id}-${key}`" :value="draft[key] ?? ''" :class="inputClass" @change="setChoice(key, $event)">
-              <option value="">{{ t('filters.none') }}</option>
+          <div v-for="key in choiceKeys" :key="key" class="min-w-0">
+            <select :value="draft[key] ?? ''" :class="inputClassNoMarginTop" @change="setChoice(key, $event)">
+              <option value="">{{ fieldLabel(key) }}</option>
               <option v-for="value in choiceValues[key]" :key="value" :value="value">{{ choiceLabel(key, value) }}</option>
             </select>
-          </label>
+          </div>
           <fieldset v-for="group in numberGroups" :key="group.title" class="min-w-0 rounded-lg border border-white/10 px-3 pt-1 pb-3">
             <legend class="px-1 text-sm text-slate-300">{{ t(group.title) }}</legend>
             <div class="grid grid-cols-2 gap-3">
