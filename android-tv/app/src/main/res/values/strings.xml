@@ -94,6 +94,7 @@
     <string name="error_setup">Initialize the server using the web client before signing in on your TV.</string>
     <string name="error_url">Enter the HTTP or HTTPS server root address, without credentials, query or fragment.</string>
     <string name="error_busy">The transcoder is busy. Please try again later.</string>
+    <string name="error_rate_limited">Too many attempts. Wait a moment and try again.</string>
     <string name="error_not_found">This content or playback session is no longer available.</string>
     <string name="error_storage">Cannot read or save the secure session on this device.</string>
     <string name="error_response">Unexpected server response.</string>

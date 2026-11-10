@@ -297,6 +297,7 @@ export default {
   errors: {
     passwordMismatch: 'Les mots de passe ne correspondent pas.',
     invalid_credentials: 'Identifiants incorrects.',
+    rate_limited: 'Trop de tentatives. Patientez un instant avant de réessayer.',
     username_taken: "Ce nom d'utilisateur est déjà pris.",
     already_initialized: "L'application est déjà initialisée.",
     validation: 'Certains champs sont invalides.',

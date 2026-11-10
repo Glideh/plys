@@ -59,7 +59,7 @@ volumes:
   api-cache:
 ```
 
-Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account.
+Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account: do it before exposing the server (see [Exposing Plys to the internet](#exposing-plys-to-the-internet)).
 
 This setup keeps the defaults simple: the database password is `plys`. The complete installation below adds a chosen password, hardening, options and hardware transcoding.
 
@@ -102,6 +102,8 @@ services:
       # How many videos may be converted at the same time.
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Proxies allowed to set X-Forwarded-For (CIDRs, comma-separated); empty means the compose network.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     volumes:
       # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
       - /video/path:/media:ro
@@ -150,7 +152,7 @@ POSTGRES_PASSWORD=choose-a-long-random-password
 docker compose up -d
 ```
 
-**4. Open `http://<this machine>:8096`** and create the administrator account. Do it right away: until then, the first visitor can claim the server. Then add the libraries from the administration screen, and paste a free [TMDB API key](https://www.themoviedb.org/settings/api) in the settings to get posters and synopses.
+**4. Open `http://<this machine>:8096`** and create the administrator account before exposing the server (see [Exposing Plys to the internet](#exposing-plys-to-the-internet)). Then add the libraries from the administration screen, and paste a free [TMDB API key](https://www.themoviedb.org/settings/api) in the settings to get posters and synopses.
 
 ### Options
 
@@ -163,6 +165,51 @@ Set these in `.env` when needed (complete installation):
 | `PLYS_VERSION` | `latest` | Image version, e.g. `0.3.4` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
+| `TRUSTED_PROXIES` | compose network | Proxies allowed to set `X-Forwarded-For`, as comma-separated CIDRs or addresses (`none` trusts none). The API logs and rate-limits the right-most address outside them |
+
+### Exposing Plys to the internet
+
+> **Warning:** Until the administrator account is created, the first visitor can claim the server and, with it, read the media folders and pair it with any server. Create the account on the local network before opening any port.
+
+Plys serves plain http only. Over the internet, passwords and session tokens would travel in clear text, so a TLS reverse proxy in front of it is mandatory:
+
+- Put [Caddy](https://caddyserver.com) or [Traefik](https://traefik.io) in front of the `web` service, with a domain name and a certificate (Let's Encrypt).
+- Set `COOKIE_SECURE=true` in `.env`, so that browsers never send the session cookie over plain http.
+- Send `Strict-Transport-Security` (HSTS) from the proxy, so browsers never fall back to http.
+- Forward only ports 443 (and 80 for the certificate) on the router, to the proxy. Never forward `8096`, nor `8080` and `5432` of the development setup.
+- Keep `PLYS_FEDERATION_REQUIRE_HTTPS=true`, and set the server's public URL to `https://…` in the settings before pairing.
+
+With Caddy, add this service to the `compose.yaml` of the complete installation (and remove the `ports` of `web` if Plys must not be reached over plain http on the local network):
+
+```yaml
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - web
+```
+
+Declare `caddy-data:` and `caddy-config:` under `volumes:` at the end of the file, and create a `Caddyfile` next to it:
+
+```
+plys.example.com {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy web:8080
+}
+```
+
+**Client addresses.** Login is limited to 20 attempts per minute per client address and 5 per minute per account, and each new block doubles the wait (up to 15 minutes). Failed attempts are logged as `login failed` with `client_ip`, which fail2ban or CrowdSec can act on. For these addresses to be right behind a proxy:
+
+- The `web` front-end trusts `X-Forwarded-For` from private addresses, which covers a proxy in the same compose project or on the Docker host. For a proxy reached through a public address, or to trust only yours, mount your own `/etc/nginx/snippets/real-ip.inc` (`set_real_ip_from` lines, see `web/nginx/real-ip.inc`).
+- The API trusts the compose network by default. Set `TRUSTED_PROXIES` only if the front-end reaches the API from another network.
 
 ## Development
 

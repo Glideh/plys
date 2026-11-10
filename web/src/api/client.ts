@@ -19,6 +19,7 @@ export type ApiErrorCode =
   | 'tmdb_unreachable'
   | 'tmdb_not_configured'
   | 'transcoder_busy'
+  | 'rate_limited'
   | 'peer_not_paired'
   | 'internal'
   | 'network'

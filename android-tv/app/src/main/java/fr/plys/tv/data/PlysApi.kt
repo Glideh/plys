@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
+enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
 
 class ClientException(val failure: Failure, val status: Int = 0, cause: Throwable? = null) :
     Exception(failure.name, cause)
@@ -306,6 +306,7 @@ class PlysApi(
             val failure = when (status) {
                 401 -> if (authenticated) Failure.SESSION else Failure.CREDENTIALS
                 404 -> Failure.NOT_FOUND
+                429 -> Failure.RATE_LIMITED
                 503 -> Failure.BUSY
                 else -> Failure.SERVER
             }

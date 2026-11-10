@@ -96,6 +96,17 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: >-
+            Too many attempts (`rate_limited`): 20 per minute per client address and 5 per minute per account.
+            Each new block doubles the wait, up to 15 minutes; a successful login resets the account counter.
+            Retry after the delay in `Retry-After` (seconds).
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /auth/refresh:
     post:
