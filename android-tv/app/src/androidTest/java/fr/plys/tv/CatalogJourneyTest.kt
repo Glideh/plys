@@ -258,12 +258,33 @@ class CatalogJourneyTest {
                 rule.onAllNodesWithText("Feature 55").fetchSemanticsNodes().isNotEmpty()
             }
             screenshot("catalog-scrolled")
+            // Down from the last row stays on the grid instead of reaching the rail's sign out button.
+            grid.performScrollToIndex(64)
+            rule.onNodeWithText("Feature 64").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            rule.onNodeWithText("Feature 64").performKeyInput { pressKey(Key.DirectionDown) }
+            rule.onNodeWithText("Feature 64").assertIsFocused()
+            rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
             grid.performScrollToIndex(0)
+            // Up from the grid focuses the search without editing it; up again stays there; OK starts editing.
+            val searchBox = rule.onNodeWithContentDescription(text(R.string.search))
+            val searchInput = rule.onNode(hasSetTextAction() and hasAnyAncestor(hasContentDescription(text(R.string.search))), useUnmergedTree = true)
+            rule.onNodeWithText("Alien").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            rule.onNodeWithText("Alien").performKeyInput { pressKey(Key.DirectionUp) }
+            searchBox.assertIsFocused()
+            searchInput.assertIsNotFocused()
+            searchBox.performKeyInput { pressKey(Key.DirectionUp) }
+            searchBox.assertIsFocused()
+            rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
+            searchBox.performKeyInput { pressKey(Key.DirectionCenter) }
+            rule.waitUntil(5000) { searchInput.fetchSemanticsNode().config.getOrElse(SemanticsProperties.Focused) { false } }
+            searchInput.performImeAction()
+            searchInput.assertIsNotFocused()
+            searchBox.assertIsFocused()
             rule.onNodeWithText(rule.activity.getString(R.string.filters_count, 0)).activate()
             val dialogInput = hasSetTextAction() and hasAnyAncestor(isDialog())
             rule.onAllNodes(dialogInput).assertCountEquals(0)
             val filterList = rule.onNode(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
-            val numericLabel = "${text(R.string.filter_year_min)} : ${text(R.string.no_filter)}"
+            val numericLabel = "${text(R.string.filter_from)} : ${text(R.string.no_filter)}"
             filterList.performScrollToNode(hasText(numericLabel))
             rule.onNodeWithText(numericLabel).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             rule.onAllNodes(dialogInput).assertCountEquals(0)

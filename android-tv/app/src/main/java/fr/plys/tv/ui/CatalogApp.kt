@@ -48,7 +48,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -86,7 +89,11 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
     Box(modifier) {
         // The detail page draws its backdrop under the rail; the other screens start after it.
         val detail = state.screen is Screen.Detail
-        Column(Modifier.fillMaxSize().padding(start = if (detail) 0.dp else RailWidth + 24.dp, end = if (detail) 0.dp else 40.dp, top = if (detail) 0.dp else 20.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = if (detail) 0.dp else RailWidth + 24.dp, end = if (detail) 0.dp else 40.dp, top = if (detail) 0.dp else 20.dp)
+            // Only left reaches the rail: up or down past the edge of the screen, or below a row still loading, stays put
+            // instead of landing on the nearest rail item (sign out, at the bottom).
+            .focusProperties { onExit = { if (requestedFocusDirection == FocusDirection.Up || requestedFocusDirection == FocusDirection.Down) cancelFocusChange() } }
+            .focusGroup()) {
             state.error?.let {
                 ErrorBanner(LocalContext.current.errorMessage(it), if (state.canRetry) ({ model.retry() }) else null,
                     Modifier.padding(start = if (detail) RailWidth + 24.dp else 0.dp, end = if (detail) 40.dp else 0.dp, top = if (detail) 20.dp else 0.dp, bottom = 12.dp))

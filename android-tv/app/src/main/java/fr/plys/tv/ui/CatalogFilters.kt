@@ -40,7 +40,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -139,30 +148,62 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
     else -> R.string.filter_runtime_max
 })
 
-/** A one-line text field in the colours of the web inputs; Done hides the on-screen keyboard. */
+/**
+ * A one-line text field in the colours of the web inputs. Moving onto it only focuses it: the on-screen keyboard
+ * would otherwise open on the way and block the navigation. Selecting it (OK) starts editing and opens the keyboard;
+ * Done, or moving away, ends it.
+ */
 @Composable
 fun SearchField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, height: Dp = 40.dp) {
     var focused by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    val box = remember { FocusRequester() }
+    val field = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    BasicTextField(value, onValueChange,
-        modifier = modifier.height(height)
+    LaunchedEffect(editing) {
+        if (editing) {
+            field.requestFocus()
+            keyboard?.show()
+        }
+    }
+    val done = {
+        keyboard?.hide()
+        box.requestFocus()
+        editing = false
+    }
+    Box(
+        modifier.height(height)
             .background(if (focused) Plys.Surface700 else Plys.Surface800, Plys.Small)
             .border(if (focused) 2.dp else 1.dp, if (focused) Plys.Accent400 else Plys.Hairline, Plys.Small)
-            .onFocusChanged { focused = it.isFocused }
+            .focusRequester(box)
+            .onFocusChanged { focused = it.hasFocus }
+            .clickable(interactionSource = null, indication = null) { editing = true }
             .padding(horizontal = 12.dp).semantics { contentDescription = label },
-        singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
-        decorationBox = { input ->
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Box(Modifier.weight(1f)) {
-                    if (value.isEmpty()) Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    input()
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        BasicTextField(value, onValueChange,
+            modifier = Modifier.fillMaxSize().focusRequester(field)
+                // Out of the focus path until selected, so the remote passes over it without opening the keyboard.
+                .focusProperties { canFocus = editing }
+                .onFocusChanged { if (!it.isFocused && editing) editing = false }
+                // OK on the field again reopens a keyboard closed with Back.
+                .onPreviewKeyEvent {
+                    if (it.key == Key.DirectionCenter && it.type == KeyEventType.KeyUp) { keyboard?.show(); true } else false
+                },
+            singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { done() }),
+            decorationBox = { input ->
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.weight(1f)) {
+                        if (value.isEmpty()) Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        input()
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @Composable
