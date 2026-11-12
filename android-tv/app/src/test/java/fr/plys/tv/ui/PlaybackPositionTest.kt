@@ -18,6 +18,13 @@ class PlaybackPositionTest {
         assertEquals(150.0, seekPosition(120.0, 30.0, 0.0), 0.001)
     }
 
+    @Test fun `stream start never asks Media3 for its placeholder default position`() {
+        assertEquals(1L, streamStartMs(0.0, 0.0))
+        assertEquals(1L, streamStartMs(112.0, 112.0))
+        assertEquals(1L, streamStartMs(110.0, 112.0))
+        assertEquals(8000L, streamStartMs(120.0, 112.0))
+    }
+
     @Test fun `formats resume times independently of locale`() {
         assertEquals("2:00", clock(120.0))
         assertEquals("1:01:01", clock(3661.0))

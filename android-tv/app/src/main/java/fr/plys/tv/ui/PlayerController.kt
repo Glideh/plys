@@ -266,7 +266,7 @@ class PlayerController(
             .createMediaSource(item.build())
         // HLS is an EVENT playlist and only contains the portion starting at session.start.
         // Always seek by opening a server session, not by seeking into unproduced HLS segments.
-        player.setMediaSource(mediaSource, ((position - opened.start).coerceAtLeast(0.0) * 1000).toLong())
+        player.setMediaSource(mediaSource, streamStartMs(position, opened.start))
         player.prepare()
         player.playWhenReady = !mutableState.value.paused
     }
