@@ -31,8 +31,15 @@ onMounted(async () => {
     loadError.value = errorMessage(err)
     return
   }
-  if (!version.value) loadError.value = t('player.unavailable')
-  else player.init()
+  const v = version.value
+  if (!v) {
+    loadError.value = t('player.unavailable')
+    return
+  }
+  // Tracks from the URL that this version does not have fall back to the server's choice.
+  if (!v.audio.some((a) => a.index === audioIndex.value)) audioIndex.value = null
+  if (!v.subtitles.some((s) => s.index === subtitleIndex.value)) subtitleIndex.value = null
+  player.init()
 })
 
 const version = computed(() => {
@@ -53,12 +60,19 @@ const title = computed(() => {
 
 const startAt = Number(route.query.t) > 0 ? Number(route.query.t) : 0
 
+/** A track index picked on the item page, or null when the query does not hold one. */
+function queryIndex(value: unknown): number | null {
+  if (typeof value !== 'string' || value === '') return null
+  const n = Number(value)
+  return Number.isInteger(n) && n >= 0 ? n : null
+}
+
 const videoEl = useTemplateRef<HTMLVideoElement>('video')
 const stage = useTemplateRef<HTMLElement>('stage')
 
 const player = usePlayback(videoEl, {
   versionId: () => version.value?.id ?? '',
-  initial: { start: startAt },
+  initial: { start: startAt, audioIndex: queryIndex(route.query.a), subtitleIndex: queryIndex(route.query.s) },
   onEnded: finish,
   transport: playbackTransport(server),
 })

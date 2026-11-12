@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { Heart, Info, RotateCcw } from '@lucide/vue'
-import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
+import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Track, type Version } from '@/api/catalog'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
@@ -99,6 +99,29 @@ onMounted(load)
 
 const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
 const version = computed(() => selected.value?.version ?? null)
+
+// Tracks the player opens with: the default audio track and no subtitles, reset when the version changes.
+const audioIndex = ref<number | null>(null)
+const subtitleIndex = ref<number | null>(null)
+watch(
+  version,
+  (v) => {
+    audioIndex.value = (v?.audio.find((a) => a.default) ?? v?.audio[0])?.index ?? null
+    subtitleIndex.value = null
+  },
+  { immediate: true },
+)
+
+const selectClass =
+  'w-full max-w-md truncate rounded-lg border border-white/10 bg-surface-800/80 px-3 py-1.5 text-sm text-slate-100 focus:border-accent-500 focus:outline-none'
+
+function versionLabel(c: VersionChoice): string {
+  return [multiServer.value ? c.server.serverName : null, c.version.label, formatBytes(c.version.size, locale.value)].filter(Boolean).join(' · ')
+}
+
+function subtitleLabel(s: Track): string {
+  return trackLabel(s) + (s.forced ? ` (${t('catalog.forced')})` : '')
+}
 /** File locations of this server's copy, only sent to admins. */
 const paths = computed(() => (server ? [] : (item.value?.versions.map((v) => v.path).filter((p): p is string => !!p) ?? [])))
 const hasLocation = computed(() => !server && (!!item.value?.folder || paths.value.length > 0))
@@ -164,7 +187,13 @@ function play(fromStart = false) {
   void router.push({
     name: 'watch',
     params: { id: c.itemId },
-    query: { ...serverQuery(c.server), v: c.version.id, ...(resumeAt ? { t: Math.floor(resumeAt) } : {}) },
+    query: {
+      ...serverQuery(c.server),
+      v: c.version.id,
+      ...(resumeAt ? { t: Math.floor(resumeAt) } : {}),
+      ...(audioIndex.value !== null ? { a: audioIndex.value } : {}),
+      ...(subtitleIndex.value !== null ? { s: subtitleIndex.value } : {}),
+    },
   })
 }
 
@@ -320,17 +349,6 @@ async function onMatched(merged: boolean) {
               <BaseButton v-else-if="item.playTarget" variant="primary" class="px-6 py-2.5 text-base" @click="playTarget">
                 ▶ {{ primaryLabel }}
               </BaseButton>
-              <label v-if="choices.length > 1" class="flex items-center gap-2 text-sm text-slate-400">
-                {{ t('catalog.version') }}
-                <select
-                  v-model="versionId"
-                  class="rounded-lg border border-white/10 bg-surface-800/80 px-3 py-2 text-sm text-slate-100 focus:border-accent-500 focus:outline-none"
-                >
-                  <option v-for="c in choices" :key="c.version.id" :value="c.version.id">
-                    {{ [multiServer ? c.server.serverName : null, c.version.label, formatBytes(c.version.size, locale)].filter(Boolean).join(' · ') }}
-                  </option>
-                </select>
-              </label>
               <BaseButton v-if="choices.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
                 {{ item.watched ? t('catalog.markUnwatched') : t('catalog.markWatched') }}
               </BaseButton>
@@ -355,20 +373,29 @@ async function onMatched(merged: boolean) {
               </template>
             </div>
 
-            <dl v-if="version" class="mt-6 grid max-w-3xl gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-              <template v-if="choices.length === 1 && version.label">
-                <dt class="text-slate-500">{{ t('catalog.version') }}</dt>
-                <dd class="text-slate-300">{{ [version.label, formatBytes(version.size, locale)].join(' · ') }}</dd>
-              </template>
-              <dt class="text-slate-500">{{ t('catalog.audio') }}</dt>
-              <dd class="text-slate-300">{{ version.audio.map(trackLabel).join(', ') || t('catalog.none') }}</dd>
-              <dt class="text-slate-500">{{ t('catalog.subtitles') }}</dt>
-              <dd class="text-slate-300">
-                {{
-                  version.subtitles
-                    .map((s) => trackLabel(s) + (s.forced ? ` (${t('catalog.forced')})` : ''))
-                    .join(', ') || t('catalog.none')
-                }}
+            <!-- One row per choice: a selector when there are several options, plain text otherwise. -->
+            <dl v-if="version" class="mt-6 grid max-w-3xl gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr] sm:items-center">
+              <dt id="item-version" class="text-slate-500">{{ t('catalog.version') }}</dt>
+              <dd class="min-w-0 text-slate-300">
+                <select v-if="choices.length > 1" v-model="versionId" aria-labelledby="item-version" :class="selectClass">
+                  <option v-for="c in choices" :key="c.version.id" :value="c.version.id">{{ versionLabel(c) }}</option>
+                </select>
+                <template v-else-if="selected">{{ versionLabel(selected) }}</template>
+              </dd>
+              <dt id="item-audio" class="text-slate-500">{{ t('catalog.audio') }}</dt>
+              <dd class="min-w-0 text-slate-300">
+                <select v-if="version.audio.length > 1" v-model="audioIndex" aria-labelledby="item-audio" :class="selectClass">
+                  <option v-for="a in version.audio" :key="a.index" :value="a.index">{{ trackLabel(a) }}</option>
+                </select>
+                <template v-else>{{ version.audio[0] ? trackLabel(version.audio[0]) : t('catalog.none') }}</template>
+              </dd>
+              <dt id="item-subtitles" class="text-slate-500">{{ t('catalog.subtitles') }}</dt>
+              <dd class="min-w-0 text-slate-300">
+                <select v-if="version.subtitles.length" v-model="subtitleIndex" aria-labelledby="item-subtitles" :class="selectClass">
+                  <option :value="null">{{ t('catalog.none') }}</option>
+                  <option v-for="s in version.subtitles" :key="s.index" :value="s.index">{{ subtitleLabel(s) }}</option>
+                </select>
+                <template v-else>{{ t('catalog.none') }}</template>
               </dd>
               <template v-if="version.error">
                 <dt class="text-amber-400">{{ t('catalog.unreadable') }}</dt>
