@@ -14,7 +14,7 @@ function onChange(event: Event) {
     <select
       :value="modelValue ?? ''"
       :aria-label="label"
-      class="min-w-0 cursor-pointer appearance-none rounded-lg bg-transparent text-3xl font-bold tracking-tight text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
+      class="min-w-0 rounded-lg [--select-caret-inset:0.25rem] [--select-caret-size:0.6em] bg-transparent text-3xl font-bold tracking-tight text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40"
       @change="onChange"
     >
       <option v-if="allLabel !== undefined" value="" class="bg-surface-800">{{ allLabel }}</option>

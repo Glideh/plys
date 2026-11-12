@@ -61,6 +61,26 @@
   }
 }
 
+/*
+ * Single-line selects draw the same chevron as the custom pickers (lucide ChevronDown, 1rem, slate-200, 0.75rem inset).
+ * Unlayered on purpose: it must win over the px-* utilities so the text never runs under the caret.
+ * A select can resize its caret through --select-caret-size / --select-caret-inset.
+ */
+select:not([multiple], [size]) {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e2e8f0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--select-caret-inset, 0.75rem) center;
+  background-size: var(--select-caret-size, 1rem);
+  padding-right: calc(var(--select-caret-inset, 0.75rem) + var(--select-caret-size, 1rem) + 0.5rem);
+  cursor: pointer;
+}
+
+select:not([multiple], [size]):disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 video::cue {
   background: rgb(0 0 0 / 0.7);
   color: #fff;
