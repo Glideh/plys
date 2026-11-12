@@ -40,6 +40,8 @@ object Plys {
     val Subtle = Color(0xFF8C97A8)
     val Error = Color(0xFFFFB4AB)
     val Warning = Color(0xFFFCD34D)
+    /** Filled watchlist heart, readable on both the dark and the focused (light) button. */
+    val Favorite = Color(0xFFF43F5E)
 
     /** Subtle outline of resting cards and fields, like the web's `ring-white/5`. */
     val Hairline = Color.White.copy(alpha = 0.06f)

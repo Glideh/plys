@@ -17,6 +17,8 @@ import fr.plys.tv.data.CatalogKind
 import fr.plys.tv.data.CatalogCount
 import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.HomeResponse
+import fr.plys.tv.data.WatchlistItem
+import fr.plys.tv.data.WatchlistResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
 import fr.plys.tv.data.TitleCopy
@@ -40,6 +42,7 @@ sealed interface Screen {
     data object Login : Screen
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
+    data class Watchlist(val data: WatchlistResponse) : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
     // copies are the items every server holds for a playable title, the shown one included: their versions are
@@ -226,6 +229,10 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         savedState["catalogQuery"] = Json.encodeToString(query)
     }
 
+    fun openWatchlist() = perform { navigate(Screen.Watchlist(api.watchlist())) }
+
+    fun openWatchlistItem(item: WatchlistItem) = openItem(item.source.itemId.ifBlank { item.id }, item.source)
+
     fun logout() = perform {
         countsJob?.cancel()
         clearSearch()
@@ -337,6 +344,13 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         mutableState.value = mutableState.value.copy(screen = refreshed(screen))
     }
 
+    fun toggleWatchlist() = perform {
+        val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
+        val listed = !screen.item.inWatchlist
+        api.setWatchlisted(screen.item.id, listed, screen.source)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(item = screen.item.copy(inWatchlist = listed)))
+    }
+
     fun play(item: ItemDetail, restart: Boolean = false) = perform {
         val target = item.playTarget
         val screen = mutableState.value.screen as? Screen.Detail
@@ -377,6 +391,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 Screen.Login -> screen
                 is Screen.Home -> { loadHome(); mutableState.value.screen }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
+                is Screen.Watchlist -> Screen.Watchlist(api.watchlist())
                 is Screen.Catalog -> screen
                 is Screen.Detail -> refreshed(screen)
             }

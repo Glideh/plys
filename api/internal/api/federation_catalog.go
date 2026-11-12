@@ -221,6 +221,9 @@ func (s *Server) getPeerCatalog(ctx context.Context, target, token string, out a
 		return fmt.Errorf("%w: %v", errPeerUnreachable, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("%w: %w", errPeerUnreachable, errPeerNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %d", errPeerUnreachable, resp.StatusCode)
 	}

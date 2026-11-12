@@ -115,6 +115,10 @@
     <string name="error_server">Erro do servidor (HTTP %1$d).</string>
     <string name="error_playback">Falha na reprodução (%1$s). Verifique a conexão e tente novamente.</string>
     <string name="mark_watched">Marcar como assistido</string>
+    <string name="watchlist">Minha lista</string>
+    <string name="add_to_watchlist">Adicionar à minha lista</string>
+    <string name="remove_from_watchlist">Remover da minha lista</string>
+    <string name="watchlist_empty">Sua lista está vazia. Adicione filmes e séries a partir da página deles.</string>
     <string name="mark_unwatched">Marcar como não assistido</string>
     <string name="ends_at">Termina às %1$s</string>
     <string name="directors_title">Direção de</string>

@@ -2,8 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { Heart } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
+import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
@@ -212,6 +214,24 @@ async function toggleWatched(id: string, watched: boolean) {
   }
 }
 
+const togglingWatchlist = ref(false)
+const watchlistLabel = computed(() => t(item.value?.inWatchlist ? 'catalog.removeFromWatchlist' : 'catalog.addToWatchlist'))
+
+/** Adds or removes the title on the server it is read from, without reloading the page. */
+async function toggleWatchlist() {
+  const it = item.value
+  if (!it) return
+  togglingWatchlist.value = true
+  try {
+    await watchlistApi.set(server, it.id, !it.inWatchlist)
+    it.inWatchlist = !it.inWatchlist
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    togglingWatchlist.value = false
+  }
+}
+
 /** Share of an episode already watched, for the bar on its thumbnail. */
 function childProgress(c: ChildItem): number | null {
   return c.positionSeconds && c.runtimeMinutes ? c.positionSeconds / (c.runtimeMinutes * 60) : null
@@ -298,6 +318,18 @@ async function onMatched(merged: boolean) {
               </label>
               <BaseButton v-if="choices.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
                 {{ item.watched ? t('catalog.markUnwatched') : t('catalog.markWatched') }}
+              </BaseButton>
+              <BaseButton
+                v-if="item.ancestors.length === 0"
+                class="!px-2.5"
+                :class="item.inWatchlist ? '!text-rose-400 hover:!text-rose-300' : ''"
+                :loading="togglingWatchlist"
+                :aria-pressed="item.inWatchlist"
+                :aria-label="watchlistLabel"
+                :title="watchlistLabel"
+                @click="toggleWatchlist"
+              >
+                <Heart v-if="!togglingWatchlist" class="size-5" :fill="item.inWatchlist ? 'currentColor' : 'none'" aria-hidden="true" />
               </BaseButton>
               <template v-if="auth.isAdmin && !server && hasOwnMetadata">
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>

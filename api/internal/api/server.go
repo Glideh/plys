@@ -91,6 +91,7 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/federation/catalog/kinds/{kind}/items", s.peerKindItems)
 		r.Get("/federation/catalog/kinds/{kind}/filters", s.peerCatalogFilterOptions)
 		r.Get("/federation/catalog/titles/{kind}/{tmdbId}", s.peerTitleIDs)
+		r.Get("/federation/watchlist", s.peerWatchlist)
 		r.Group(func(r chi.Router) {
 			r.Use(s.peerCORS)
 			r.Get("/stream/{sid}/subtitles/{track}", s.streamSubtitle)
@@ -101,6 +102,7 @@ func (s *Server) Routes() http.Handler {
 			r.Options("/items/{id}", noContent)
 			r.Options("/items/{id}/progress", noContent)
 			r.Options("/items/{id}/watched", noContent)
+			r.Options("/items/{id}/watchlist", noContent)
 			r.Options("/playback/sessions", noContent)
 			r.Options("/playback/sessions/{id}", noContent)
 			r.Group(func(r chi.Router) {
@@ -109,6 +111,8 @@ func (s *Server) Routes() http.Handler {
 				r.Put("/items/{id}/progress", s.putProgress)
 				r.Post("/items/{id}/watched", s.setWatched(true))
 				r.Delete("/items/{id}/watched", s.setWatched(false))
+				r.Post("/items/{id}/watchlist", s.setWatchlisted(true))
+				r.Delete("/items/{id}/watchlist", s.setWatchlisted(false))
 				r.Post("/playback/sessions", s.startPlayback)
 				r.Delete("/playback/sessions/{id}", s.stopPlayback)
 			})
@@ -131,6 +135,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/me/continue-watching", s.continueWatching)
 			r.Get("/me/next-up", s.nextUp)
 			r.Get("/me/home", s.home)
+			r.Get("/me/watchlist", s.watchlist)
 
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireAdmin)

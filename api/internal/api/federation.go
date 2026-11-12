@@ -32,7 +32,9 @@ const (
 
 var (
 	errPeerUnreachable = errors.New("peer unreachable")
-	errPeerRejected    = errors.New("peer rejected the pairing")
+	// errPeerNotFound reports a 404 from a peer, such as an endpoint its version does not have yet.
+	errPeerNotFound = errors.New("peer answered not found")
+	errPeerRejected = errors.New("peer rejected the pairing")
 	// errPeerNotPaired means the peer refused this server's signature, usually because
 	// pairing is mutual and the peer's administrator has not added this server yet.
 	errPeerNotPaired = errors.New("peer does not recognize this server")

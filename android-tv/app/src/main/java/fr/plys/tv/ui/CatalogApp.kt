@@ -21,10 +21,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Pause
@@ -77,6 +79,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
     }
     val section = when (val screen = state.screen) {
         is Screen.Home -> Section.HOME
+        is Screen.Watchlist -> Section.WATCHLIST
         is Screen.Catalog -> sectionOf(screen.query.kind)
         else -> Section.NONE
     }
@@ -103,11 +106,12 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                         }
                     }
                 }
+                is Screen.Watchlist -> key("watchlist") { WatchlistScreen(screen, model) }
                 is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
                 is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
             }
         }
-        SideRail(section, Modifier.align(Alignment.CenterStart), home = model::home, openKind = model::openKind, signOut = model::logout)
+        SideRail(section, Modifier.align(Alignment.CenterStart), home = model::home, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
         if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
     }
 }
@@ -219,11 +223,17 @@ fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, p
         R.string.restart -> Icons.Outlined.Replay
         R.string.mark_watched -> Icons.Outlined.Done
         R.string.mark_unwatched -> Icons.Outlined.RemoveDone
+        // The heart is outlined while the title is not in the watchlist, filled once it is.
+        R.string.add_to_watchlist -> Icons.Outlined.FavoriteBorder
+        R.string.remove_from_watchlist -> Icons.Filled.Favorite
         R.string.next_episode, R.string.play_next_now -> Icons.Outlined.SkipNext
         else -> null
     }
     Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary) {
-        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = LocalContentColor.current); Spacer(Modifier.width(8.dp)) }
+        if (icon != null) {
+            val tint = if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint); Spacer(Modifier.width(8.dp))
+        }
         Text(stringResource(label))
     }
 }
