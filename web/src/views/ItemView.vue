@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Heart, Info } from '@lucide/vue'
+import { Heart, Info, RotateCcw } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
@@ -296,13 +296,30 @@ async function onMatched(merged: boolean) {
             <p v-if="item.overview" class="mt-3 max-w-3xl leading-relaxed text-slate-300">{{ item.overview }}</p>
 
             <div class="mt-6 flex flex-wrap items-center gap-3">
-              <BaseButton v-if="choices.length" variant="primary" class="px-6 py-2.5 text-base" @click="play()">
-                ▶ {{ primaryLabel }}
-              </BaseButton>
+              <!-- When resuming, the restart choice is attached to the play button so both clearly open the player. -->
+              <div v-if="choices.length" class="inline-flex">
+                <BaseButton
+                  variant="primary"
+                  class="px-6 py-2.5 text-base"
+                  :class="selected?.positionSeconds ? '!rounded-r-none' : ''"
+                  @click="play()"
+                >
+                  ▶ {{ primaryLabel }}
+                </BaseButton>
+                <BaseButton
+                  v-if="selected?.positionSeconds"
+                  variant="primary"
+                  class="!rounded-l-none border-l border-surface-950/25 !px-3"
+                  :aria-label="t('catalog.fromStart')"
+                  :title="t('catalog.fromStart')"
+                  @click="play(true)"
+                >
+                  <RotateCcw class="size-5" aria-hidden="true" />
+                </BaseButton>
+              </div>
               <BaseButton v-else-if="item.playTarget" variant="primary" class="px-6 py-2.5 text-base" @click="playTarget">
                 ▶ {{ primaryLabel }}
               </BaseButton>
-              <BaseButton v-if="selected?.positionSeconds" @click="play(true)">{{ t('catalog.fromStart') }}</BaseButton>
               <label v-if="choices.length > 1" class="flex items-center gap-2 text-sm text-slate-400">
                 {{ t('catalog.version') }}
                 <select
