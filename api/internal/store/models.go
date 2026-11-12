@@ -10,6 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
+type ExternalSubtitle struct {
+	ID              uuid.UUID
+	FileID          uuid.UUID
+	Provider        string
+	ProviderFileID  string
+	Language        string
+	ReleaseName     string
+	HearingImpaired bool
+	Vtt             string
+	CreatedBy       *uuid.UUID
+	CreatedAt       time.Time
+}
+
 type Item struct {
 	ID                uuid.UUID
 	LibraryID         uuid.UUID

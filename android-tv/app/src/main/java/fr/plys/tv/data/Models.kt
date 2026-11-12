@@ -1,5 +1,7 @@
 package fr.plys.tv.data
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 
@@ -137,7 +139,26 @@ data class Version(
     val resolution: String = "", val hdr: Boolean = false, val videoCodec: String = "",
     /** File size in bytes. */
     val size: Long = 0,
+    /** Subtitles downloaded online for this file; absent from older servers. */
+    val externalSubtitles: List<ExternalSubtitle> = emptyList(),
 )
+
+/** A subtitle downloaded from OpenSubtitles; the language is an OpenSubtitles code ("fr", "pt-BR"). */
+@Serializable
+data class ExternalSubtitle(val id: String, val language: String, val release: String = "", val hearingImpaired: Boolean = false)
+
+/** A subtitle found online; hashMatch means it was made for this exact file. */
+@Serializable
+data class SubtitleResult(
+    val fileId: Int, val language: String, val release: String = "", val downloadCount: Int = 0,
+    val hearingImpaired: Boolean = false, val machineTranslated: Boolean = false, val hashMatch: Boolean = false,
+)
+
+@Serializable
+data class SubtitleSearchResponse(val results: List<SubtitleResult> = emptyList())
+
+@Serializable
+data class SubtitleDownloadRequest(val versionId: String, val fileId: Int, val language: String, val release: String, val hearingImpaired: Boolean)
 
 /** The item a server holds for a title, with the server it is read from (null for the signed-in server). */
 data class TitleCopy(val source: ServerRef?, val item: ItemDetail)
@@ -154,14 +175,19 @@ data class MediaTrack(
 @Serializable
 data class CastMember(val name: String, val character: String = "", val photoUrl: String? = null)
 
-data class PlaybackSelection(val versionId: String? = null, val audioIndex: Int? = null, val subtitleIndex: Int? = null) {
+/** subtitleIndex picks a track of the file, externalSubtitleId a downloaded subtitle; at most one is set. */
+data class PlaybackSelection(
+    val versionId: String? = null, val audioIndex: Int? = null, val subtitleIndex: Int? = null, val externalSubtitleId: String? = null,
+) {
     fun version(item: ItemDetail): Version? = item.versions.firstOrNull { it.id == versionId && it.error == null } ?: item.playableVersion
 
     fun normalized(item: ItemDetail): PlaybackSelection {
         val selected = version(item) ?: return PlaybackSelection()
         val audio = selected.audio.firstOrNull { it.index == audioIndex }
             ?: selected.audio.firstOrNull { it.default } ?: selected.audio.firstOrNull()
-        return PlaybackSelection(selected.id, audio?.index, subtitleIndex?.takeIf { index -> selected.subtitles.any { it.index == index } })
+        val subtitle = subtitleIndex?.takeIf { index -> selected.subtitles.any { it.index == index } }
+        val external = externalSubtitleId?.takeIf { id -> subtitle == null && selected.externalSubtitles.any { it.id == id } }
+        return PlaybackSelection(selected.id, audio?.index, subtitle, external)
     }
 
     fun forNext(previous: ItemDetail, next: ItemDetail): PlaybackSelection {
@@ -169,9 +195,12 @@ data class PlaybackSelection(val versionId: String? = null, val audioIndex: Int?
         val selected = next.playableVersion ?: return PlaybackSelection()
         val audioLanguage = current?.audio?.firstOrNull { it.index == audioIndex }?.language?.takeIf { it.isNotBlank() }
         val subtitleLanguage = current?.subtitles?.firstOrNull { it.index == subtitleIndex }?.language?.takeIf { it.isNotBlank() }
+        val externalLanguage = current?.externalSubtitles?.firstOrNull { it.id == externalSubtitleId }?.language
         return PlaybackSelection(selected.id,
             selected.audio.firstOrNull { audioLanguage != null && it.language == audioLanguage }?.index,
             selected.subtitles.firstOrNull { subtitleLanguage != null && it.language == subtitleLanguage }?.index,
+            // A subtitle downloaded for the previous episode keeps its language when the next one has one too.
+            selected.externalSubtitles.firstOrNull { externalLanguage != null && it.language == externalLanguage }?.id,
         ).normalized(next)
     }
 }
@@ -231,6 +260,8 @@ data class ItemDetail(
     val ancestors: List<Ancestor> = emptyList(),
     /** Set on top-level titles the user added to their watchlist; absent from servers older than the watchlist. */
     val inWatchlist: Boolean = false,
+    /** Subtitles can be searched online for the versions of this item. */
+    val subtitleSearch: Boolean = false,
 ) {
     /** Movies, series and videos can be watchlisted; seasons, episodes and parts cannot. */
     val canWatchlist: Boolean get() = ancestors.isEmpty() && kind in setOf("movie", "series", "video")
@@ -248,7 +279,12 @@ data class ClientCaps(
 )
 
 @Serializable
-data class PlaybackRequest(val versionId: String, val start: Double, val caps: ClientCaps, val audioIndex: Int? = null, val subtitleIndex: Int? = null)
+@OptIn(ExperimentalSerializationApi::class)
+data class PlaybackRequest(
+    val versionId: String, val start: Double, val caps: ClientCaps, val audioIndex: Int? = null, val subtitleIndex: Int? = null,
+    // Left out when unset: servers older than online subtitles refuse unknown fields.
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val externalSubtitleId: String? = null,
+)
 
 @Serializable
 data class PlaybackSession(

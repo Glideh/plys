@@ -67,6 +67,15 @@ export interface Track {
   imageBased?: boolean
 }
 
+export interface ExternalSubtitle {
+  id: string
+  /** OpenSubtitles code: ISO 639-1 (`fr`), or with a region (`pt-BR`). */
+  language: string
+  release: string
+  hearingImpaired: boolean
+  source: 'opensubtitles'
+}
+
 export interface Version {
   id: string
   label: string
@@ -78,6 +87,8 @@ export interface Version {
   durationSeconds: number | null
   audio: Track[]
   subtitles: Track[]
+  /** Subtitles downloaded online for this file, shared by every user. */
+  externalSubtitles: ExternalSubtitle[]
   error?: string
   /** Location of the file on the server, only sent to admins. */
   path?: string
@@ -132,6 +143,8 @@ export interface ItemDetail {
   thumbUrl: string | null
   tmdbId: number | null
   matchStatus: MatchStatus
+  /** Subtitles can be searched online for the versions of this item. */
+  subtitleSearch: boolean
   seasonNumber?: number
   episodeNumber?: number
   episodeNumberEnd?: number

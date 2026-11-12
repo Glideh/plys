@@ -147,6 +147,8 @@ class PlysApiTest {
         assertTrue(body.contains("\"versionId\":\"version\""))
         assertTrue(body.contains("\"start\":120.0"))
         assertTrue(body.contains("\"maxHeight\":1080"))
+        // Older servers refuse unknown fields: the external subtitle is only sent when chosen.
+        assertFalse(body.contains("externalSubtitleId"))
         assertTrue(api.mediaUrl(playback.playlistUrl).endsWith("/api/v1/stream/session/index.m3u8"))
         assertEquals(Failure.RESPONSE, assertThrows(ClientException::class.java) {
             api.mediaUrl("https://other.example/stream")
@@ -361,6 +363,42 @@ class PlysApiTest {
         val next = item.copy(id = "next", versions = listOf(Version("next-version", "1080p", audio = listOf(MediaTrack(12, "en", default = true), MediaTrack(14, "fr")), subtitles = listOf(MediaTrack(17, "fr")))))
         assertEquals(PlaybackSelection("next-version", 14, 17), french.forNext(item, next))
         assertNull(french.copy(subtitleIndex = null).forNext(item, next).subtitleIndex)
+    }
+
+    @Test fun `downloaded subtitles are kept across versions and episodes by language`() {
+        val item = ItemDetail("film", "movie", "Film", versions = listOf(
+            Version("first", "1080p", subtitles = listOf(MediaTrack(9, "fre")), externalSubtitles = listOf(ExternalSubtitle("ext-fr", "fr"))),
+            Version("second", "720p"),
+        ), children = emptyList())
+        val external = PlaybackSelection("first", null, null, "ext-fr").normalized(item)
+        assertEquals("ext-fr", external.externalSubtitleId)
+        assertNull(PlaybackSelection("first", null, 9, "ext-fr").normalized(item).externalSubtitleId)
+        assertNull(PlaybackSelection("second", null, null, "ext-fr").normalized(item).externalSubtitleId)
+        val next = item.copy(id = "next", versions = listOf(Version("next-version", "1080p", externalSubtitles = listOf(ExternalSubtitle("ext-en", "en"), ExternalSubtitle("ext-fr-2", "fr")))))
+        assertEquals("ext-fr-2", external.forNext(item, next).externalSubtitleId)
+    }
+
+    @Test fun `online subtitle search and download use API contracts`() = runBlocking {
+        login()
+        json("""{"results":[{"fileId":42,"language":"fr","release":"Film.2020.1080p","downloadCount":3,"hashMatch":true,"trusted":false}]}""")
+        val results = api.searchSubtitles("item", "version", "pt-BR")
+        assertEquals(42, results.single().fileId)
+        assertTrue(results.single().hashMatch)
+        assertEquals("/api/v1/items/item/subtitles/search?versionId=version&language=pt-BR", server.takeRequest().path)
+        json("""{"id":"sub","language":"fr","release":"Film.2020.1080p","hearingImpaired":false,"source":"opensubtitles"}""", 201)
+        assertEquals("sub", api.downloadSubtitle("item", "version", results.single()).id)
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals(42, body["fileId"]!!.jsonPrimitive.int)
+        assertEquals("version", body["versionId"]!!.jsonPrimitive.content)
+        json("""{"error":{"code":"subtitles_quota","message":"quota"}}""", 429)
+        assertEquals(Failure.SUBTITLES_QUOTA, assertThrows(ClientException::class.java) { runBlocking { api.downloadSubtitle("item", "version", results.single()) } }.failure)
+        json("""{"error":{"code":"subtitles_not_configured","message":"off"}}""", 409)
+        assertEquals(Failure.SUBTITLES_ONLINE, assertThrows(ClientException::class.java) { runBlocking { api.searchSubtitles("item", "version", "fr") } }.failure)
+        json("""{"id":"session","playlistUrl":"/api/v1/stream/session/index.m3u8","start":0,"duration":120,"subtitleUrl":"/api/v1/stream/session/subtitles/external.vtt"}""", 201)
+        api.start("version", 0.0, ClientCaps(listOf("h264"), listOf("aac")), externalSubtitleId = "sub")
+        server.takeRequest(); server.takeRequest()
+        val start = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals("sub", start["externalSubtitleId"]!!.jsonPrimitive.content)
     }
 
     @Test fun `playback sends the selected version audio and subtitle indices`() = runBlocking {

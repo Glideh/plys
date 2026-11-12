@@ -6,6 +6,7 @@ Plys is a self-hosted media library for personal video collections.
 - **Metadata** from TMDB: posters, synopses, cast.
 - **Advanced filters** for refining search results.
 - **Web playback**, with audio and subtitle selection.
+- **Online subtitles** searched and downloaded from OpenSubtitles in the web and Android TV players.
 - **Transcoding** using the CPU or GPU if present.
 - **User management** with administrator account creation.
 - **Server federation** for sharing libraries.

@@ -2,10 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { type ItemDetail, type Track } from '@/api/catalog'
+import { type ExternalSubtitle, type ItemDetail, type Track } from '@/api/catalog'
 import { serverApi, serverFromQuery, serverQuery } from '@/api/federation'
 import { playbackTransport } from '@/api/playback'
+import { subtitlesApi } from '@/api/subtitles'
 import BaseButton from '@/components/BaseButton.vue'
+import SubtitleSearchDialog from '@/components/SubtitleSearchDialog.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { usePlayback } from '@/composables/usePlayback'
 import { useAuthStore } from '@/stores/auth'
@@ -76,7 +78,8 @@ const player = usePlayback(videoEl, {
   onEnded: finish,
   transport: playbackTransport(server),
 })
-const { session, status, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, subtitleLoad } = player
+const { session, status, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, externalSubtitleId, subtitleLoad } =
+  player
 
 const total = computed(() => session.value?.duration || version.value?.durationSeconds || 0)
 
@@ -200,7 +203,8 @@ function toggleFullscreen() {
 // --- keyboard -------------------------------------------------------------------------------------
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.ctrlKey || e.metaKey || e.altKey) return
+  // The search dialog handles its own keys, Escape included.
+  if (e.ctrlKey || e.metaKey || e.altKey || subtitleSearchOpen.value) return
   const onButton = (e.target as HTMLElement | null)?.tagName === 'BUTTON'
   wake()
   switch (e.key) {
@@ -277,6 +281,44 @@ const subtitleNote = computed(() => {
   if (subtitleLoad.value === 'failed') return t('player.subtitlesFailed')
   return ''
 })
+
+// --- online subtitles ----------------------------------------------------------------------------
+
+const subtitleSearchOpen = ref(false)
+const externalSubtitles = computed(() => version.value?.externalSubtitles ?? [])
+const hasSubtitleMenu = computed(() => !!version.value && (version.value.subtitles.length > 0 || externalSubtitles.value.length > 0 || !!item.value?.subtitleSearch))
+// Deleting a shared subtitle is reserved to the admins of the server holding the file.
+const canDeleteSubtitles = computed(() => auth.user?.role === 'admin' && !auth.user.remote && !server?.baseUrl)
+
+function externalLabel(sub: ExternalSubtitle): string {
+  return [languageName(sub.language, locale.value) ?? sub.language, sub.hearingImpaired ? t('subtitleSearch.hearingImpairedShort') : null, sub.release]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function openSubtitleSearch() {
+  menu.value = null
+  subtitleSearchOpen.value = true
+}
+
+function onSubtitleDownloaded(sub: ExternalSubtitle) {
+  const v = version.value
+  // A peer running an older version sends no externalSubtitles.
+  if (v && !v.externalSubtitles?.some((s) => s.id === sub.id)) v.externalSubtitles = [...(v.externalSubtitles ?? []), sub]
+  player.setExternalSubtitle(sub.id)
+}
+
+async function deleteExternal(sub: ExternalSubtitle) {
+  const v = version.value
+  if (!v) return
+  try {
+    await subtitlesApi.remove(props.id, v.id, sub.id)
+  } catch {
+    return
+  }
+  v.externalSubtitles = v.externalSubtitles.filter((s) => s.id !== sub.id)
+  if (externalSubtitleId.value === sub.id) player.setSubtitle(null)
+}
 
 const failure = computed(() => (loadError.value || (status.value === 'error' ? errorMessage(player.error.value) : '')))
 
@@ -420,19 +462,48 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
             </ul>
           </div>
 
-          <div v-if="version && version.subtitles.length" class="relative">
+          <div v-if="hasSubtitleMenu" class="relative">
             <button type="button" class="rounded-full px-3 py-2 text-sm hover:bg-white/15" :aria-expanded="menu === 'subtitles'" @click="toggleMenu('subtitles')">
               {{ t('player.subtitles') }}
             </button>
             <ul v-if="menu === 'subtitles'" class="absolute right-0 bottom-full mb-2 max-h-80 w-72 overflow-y-auto rounded-xl bg-surface-900/95 p-1 shadow-2xl ring-1 ring-white/10 backdrop-blur" role="menu">
               <li role="none">
-                <button type="button" role="menuitemradio" :aria-checked="subtitleIndex === null" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10" @click="pick('subtitles', null)">
-                  <span class="w-4 text-accent-400">{{ subtitleIndex === null ? '✓' : '' }}</span>{{ t('player.subtitlesOff') }}
+                <button type="button" role="menuitemradio" :aria-checked="subtitleIndex === null && externalSubtitleId === null" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10" @click="pick('subtitles', null)">
+                  <span class="w-4 text-accent-400">{{ subtitleIndex === null && externalSubtitleId === null ? '✓' : '' }}</span>{{ t('player.subtitlesOff') }}
                 </button>
               </li>
-              <li v-for="s in version.subtitles" :key="s.index" role="none">
+              <li v-for="s in version?.subtitles ?? []" :key="s.index" role="none">
                 <button type="button" role="menuitemradio" :aria-checked="s.index === subtitleIndex" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10" @click="pick('subtitles', s.index)">
                   <span class="w-4 text-accent-400">{{ s.index === subtitleIndex ? '✓' : '' }}</span>{{ trackLabel(s) }}
+                </button>
+              </li>
+              <li v-for="s in externalSubtitles" :key="s.id" role="none" class="flex items-center">
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  :aria-checked="s.id === externalSubtitleId"
+                  :title="s.release"
+                  class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10"
+                  @click="menu = null; player.setExternalSubtitle(s.id)"
+                >
+                  <span class="w-4 shrink-0 text-accent-400">{{ s.id === externalSubtitleId ? '✓' : '' }}</span>
+                  <span class="truncate">{{ externalLabel(s) }}</span>
+                </button>
+                <button
+                  v-if="canDeleteSubtitles"
+                  type="button"
+                  class="grid size-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-red-500/15 hover:text-red-300"
+                  :aria-label="t('subtitleSearch.delete')"
+                  :title="t('subtitleSearch.delete')"
+                  @click="deleteExternal(s)"
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="size-4" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
+                </button>
+              </li>
+              <li v-if="item?.subtitleSearch" role="none" class="mt-1 border-t border-white/10 pt-1">
+                <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-accent-300 hover:bg-white/10" @click="openSubtitleSearch">
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="size-4" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.45 4.39l3.08 3.08a.75.75 0 1 1-1.06 1.06l-3.08-3.08A7 7 0 0 1 2 9Z" clip-rule="evenodd" /></svg>
+                  {{ t('subtitleSearch.open') }}
                 </button>
               </li>
             </ul>
@@ -447,6 +518,15 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
         </div>
       </footer>
     </div>
+
+    <SubtitleSearchDialog
+      v-if="subtitleSearchOpen && version"
+      v-model:open="subtitleSearchOpen"
+      :server="server"
+      :item-id="props.id"
+      :version-id="version.id"
+      @downloaded="onSubtitleDownloaded"
+    />
   </div>
 </template>
 

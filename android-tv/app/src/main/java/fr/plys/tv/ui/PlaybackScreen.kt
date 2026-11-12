@@ -104,6 +104,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     }
     DisposableEffect(model) { onDispose { model.dispose() } }
     val state by model.state.collectAsStateWithLifecycle()
+    val subtitleSearch by model.subtitleSearch.collectAsStateWithLifecycle()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(model, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -139,9 +140,9 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     var seekPresses by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
-    val visible = showControls || menu.isNotEmpty() || state.paused || state.loading || state.error != null || state.ended
-    LaunchedEffect(interaction, state.paused, state.loading, state.error, state.ended, menu) {
-        if (!state.paused && !state.loading && state.error == null && !state.ended && menu.isEmpty()) {
+    val visible = showControls || menu.isNotEmpty() || subtitleSearch != null || state.paused || state.loading || state.error != null || state.ended
+    LaunchedEffect(interaction, state.paused, state.loading, state.error, state.ended, menu, subtitleSearch != null) {
+        if (!state.paused && !state.loading && state.error == null && !state.ended && menu.isEmpty() && subtitleSearch == null) {
             delay(5000)
             showControls = false
         }
@@ -263,7 +264,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 IconAction(Icons.Outlined.Replay30, R.string.rewind) { model.seek(-30.0) }
                 IconAction(Icons.Outlined.Forward30, R.string.forward, enabled = !state.ended) { model.seek(30.0) }
                 if (version != null && version.audio.size > 1) IconAction(Icons.Outlined.Audiotrack, R.string.audio) { menu = "audio" }
-                if (version != null && version.subtitles.isNotEmpty()) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
+                if (version != null && (version.subtitles.isNotEmpty() || version.externalSubtitles.isNotEmpty() || state.item.subtitleSearch)) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
                 if (state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }
                 if (state.loading) CircularProgressIndicator(Modifier.size(28.dp), color = Plys.Accent400, strokeWidth = 3.dp)
             }
@@ -277,12 +278,24 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             }
         }
         "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
-            item { Choice(stringResource(R.string.no_subtitles), state.selection.subtitleIndex == null) { model.select(state.selection.copy(subtitleIndex = null)); menu = "" } }
+            val off = state.selection.subtitleIndex == null && state.selection.externalSubtitleId == null
+            item { Choice(stringResource(R.string.no_subtitles), off) { model.select(state.selection.copy(subtitleIndex = null, externalSubtitleId = null)); menu = "" } }
             items(version.subtitles, key = { it.index }) { track ->
-                Choice(track.trackLabel(), track.index == state.selection.subtitleIndex) { model.select(state.selection.copy(subtitleIndex = track.index)); menu = "" }
+                Choice(track.trackLabel(), track.index == state.selection.subtitleIndex) {
+                    model.select(state.selection.copy(subtitleIndex = track.index, externalSubtitleId = null)); menu = ""
+                }
+            }
+            items(version.externalSubtitles, key = { it.id }) { subtitle ->
+                Choice(subtitle.label(), subtitle.id == state.selection.externalSubtitleId) {
+                    model.select(state.selection.copy(subtitleIndex = null, externalSubtitleId = subtitle.id)); menu = ""
+                }
+            }
+            if (state.item.subtitleSearch) item {
+                Choice(stringResource(R.string.subtitles_search), false) { menu = ""; model.searchSubtitles(defaultSubtitleLanguage()) }
             }
         }
     }
+    subtitleSearch?.let { SubtitleSearchDialog(it, model) }
 }
 
 /** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */

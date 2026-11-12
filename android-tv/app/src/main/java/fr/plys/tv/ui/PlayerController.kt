@@ -14,6 +14,8 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import fr.plys.tv.R
 import fr.plys.tv.data.ClientException
+import fr.plys.tv.data.ExternalSubtitle
+import fr.plys.tv.data.SubtitleResult
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlaybackSession
 import fr.plys.tv.data.PlysApi
@@ -42,6 +44,15 @@ data class PlayerState(
     val selection: PlaybackSelection = PlaybackSelection(),
 )
 
+/** The online subtitle search shown over the player; downloading holds the file being fetched. */
+data class SubtitleSearchState(
+    val language: String,
+    val loading: Boolean = true,
+    val results: List<SubtitleResult> = emptyList(),
+    val error: String? = null,
+    val downloading: Int? = null,
+)
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlayerController(
     private val application: Application,
@@ -61,6 +72,9 @@ class PlayerController(
         item, initialPosition, selection.version(item)?.durationSeconds ?: 0.0, selection = selection,
     ))
     val state = mutableState.asStateFlow()
+    private val mutableSubtitleSearch = MutableStateFlow<SubtitleSearchState?>(null)
+    val subtitleSearch = mutableSubtitleSearch.asStateFlow()
+    private var searchJob: kotlinx.coroutines.Job? = null
     private var session: PlaybackSession? = null
     private val operations = Mutex()
     private var foreground = false
@@ -178,6 +192,53 @@ class PlayerController(
 
     fun retry() = open(mutableState.value.position)
 
+    /** Opens the search, or searches again in another language. */
+    fun searchSubtitles(language: String) {
+        val item = mutableState.value.item
+        val version = selection.version(item) ?: return
+        mutableSubtitleSearch.value = SubtitleSearchState(language)
+        searchJob?.cancel()
+        searchJob = scope.launch {
+            mutableSubtitleSearch.value = try {
+                SubtitleSearchState(language, loading = false, results = api.searchSubtitles(item.id, version.id, language, source))
+            } catch (error: ClientException) {
+                SubtitleSearchState(language, loading = false, error = application.errorMessage(error))
+            }
+        }
+    }
+
+    fun closeSubtitleSearch() {
+        searchJob?.cancel()
+        mutableSubtitleSearch.value = null
+    }
+
+    /** Downloads a found subtitle and shows it at once. */
+    fun downloadSubtitle(result: SubtitleResult) {
+        val search = mutableSubtitleSearch.value ?: return
+        if (search.downloading != null) return
+        val item = mutableState.value.item
+        val version = selection.version(item) ?: return
+        mutableSubtitleSearch.value = search.copy(downloading = result.fileId, error = null)
+        searchJob = scope.launch {
+            try {
+                val subtitle = api.downloadSubtitle(item.id, version.id, result, source)
+                addExternalSubtitle(version.id, subtitle)
+                mutableSubtitleSearch.value = null
+                select(selection.copy(subtitleIndex = null, externalSubtitleId = subtitle.id))
+            } catch (error: ClientException) {
+                mutableSubtitleSearch.value = mutableSubtitleSearch.value?.copy(downloading = null, error = application.errorMessage(error))
+            }
+        }
+    }
+
+    private fun addExternalSubtitle(versionId: String, subtitle: ExternalSubtitle) {
+        val current = mutableState.value
+        val versions = current.item.versions.map { v ->
+            if (v.id != versionId || v.externalSubtitles.any { it.id == subtitle.id }) v else v.copy(externalSubtitles = v.externalSubtitles + subtitle)
+        }
+        mutableState.value = current.copy(item = current.item.copy(versions = versions))
+    }
+
     fun next() {
         if (mutableState.value.loading || closing || disposing) return
         val next = mutableState.value.item.next ?: return
@@ -238,7 +299,7 @@ class PlayerController(
         mutableState.value = mutableState.value.copy(selection = selection)
         val version = selection.version(mutableState.value.item)
             ?: throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
-        val opened = api.start(version.id, position, deviceCaps(application), source, selection.audioIndex, selection.subtitleIndex)
+        val opened = api.start(version.id, position, deviceCaps(application), source, selection.audioIndex, selection.subtitleIndex, selection.externalSubtitleId)
         player.clearMediaItems()
         session = opened
         ready = false
@@ -254,9 +315,10 @@ class PlayerController(
             .setMimeType(MimeTypes.APPLICATION_M3U8)
         if (opened.subtitleUrl != null && !opened.burnedSubtitle) {
             val url = api.readySubtitleUrl(opened.subtitleUrl, source)
-            val track = version.subtitles.firstOrNull { it.index == selection.subtitleIndex }
+            val language = version.subtitles.firstOrNull { it.index == selection.subtitleIndex }?.language
+                ?: version.externalSubtitles.firstOrNull { it.id == selection.externalSubtitleId }?.language
             item.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(url))
-                .setMimeType(MimeTypes.TEXT_VTT).setLanguage(track?.language?.takeIf { it.isNotBlank() })
+                .setMimeType(MimeTypes.TEXT_VTT).setLanguage(language?.takeIf { it.isNotBlank() })
                 .setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
         }
         if (!foreground || closing || disposing) { stopSession(); return }

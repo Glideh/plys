@@ -11,7 +11,7 @@ export type SubtitleLoad = 'idle' | 'loading' | 'ready' | 'failed'
 interface Options {
   versionId: () => string
   /** Selection used for the first session. */
-  initial?: { start?: number; audioIndex?: number | null; subtitleIndex?: number | null }
+  initial?: { start?: number; audioIndex?: number | null; subtitleIndex?: number | null; externalSubtitleId?: string | null }
   onEnded?: () => void
   transport?: PlaybackTransport
 }
@@ -36,6 +36,8 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   const muted = ref(false)
   const audioIndex = ref<number | null>(options.initial?.audioIndex ?? null)
   const subtitleIndex = ref<number | null>(options.initial?.subtitleIndex ?? null)
+  // A downloaded subtitle; exclusive with subtitleIndex.
+  const externalSubtitleId = ref<string | null>(options.initial?.externalSubtitleId ?? null)
   const subtitleLoad = ref<SubtitleLoad>('idle')
 
   let hls: Hls | null = null
@@ -209,6 +211,8 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
         versionId: options.versionId(),
         audioIndex: audioIndex.value,
         subtitleIndex: subtitleIndex.value,
+        // Only sent when set: servers older than online subtitles refuse unknown fields.
+        ...(externalSubtitleId.value ? { externalSubtitleId: externalSubtitleId.value } : {}),
         start: startAt,
         caps: detectCaps(),
       })
@@ -262,14 +266,26 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
 
   /** null turns subtitles off. Image subtitles are burned into the picture, so they need a new stream. */
   function setSubtitle(index: number | null) {
-    if (index === subtitleIndex.value) return
+    selectSubtitle(index, null)
+  }
+
+  /** Shows a subtitle downloaded online. */
+  function setExternalSubtitle(id: string) {
+    selectSubtitle(null, id)
+  }
+
+  function selectSubtitle(index: number | null, external: string | null) {
+    if (index === subtitleIndex.value && external === externalSubtitleId.value) return
     const s = session.value
     subtitleIndex.value = index
-    if (index === null && s && !s.burnedSubtitle) {
+    externalSubtitleId.value = external
+    if (index === null && external === null && s && !s.burnedSubtitle) {
       if (track) track.mode = 'disabled'
       return
     }
-    if (index !== null && s && index === s.subtitleIndex && !s.burnedSubtitle && track) {
+    // The session already serves this track: showing it again needs no new stream.
+    const served = index !== null ? index === s?.subtitleIndex : external === s?.externalSubtitleId
+    if (s && served && !s.burnedSubtitle && track) {
       track.mode = 'showing'
       return
     }
@@ -376,7 +392,8 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   onBeforeUnmount(destroy)
 
   return {
-    session, status, error, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, subtitleLoad,
-    duration, init, seek, skip, retry, togglePlay, setAudio, setSubtitle, setVolume, toggleMute,
+    session, status, error, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, externalSubtitleId,
+    subtitleLoad, duration, init, seek, skip, retry, togglePlay, setAudio, setSubtitle, setExternalSubtitle, setVolume,
+    toggleMute,
   }
 }

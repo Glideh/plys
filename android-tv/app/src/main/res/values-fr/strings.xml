@@ -138,4 +138,19 @@
     <string name="up_next">Épisode suivant</string>
     <string name="up_next_in">Démarre dans %1$d s</string>
     <string name="play_next_now">Lire maintenant</string>
+    <string name="error_subtitles_quota">La limite quotidienne de téléchargements OpenSubtitles est atteinte. Réessayez plus tard.</string>
+    <string name="error_subtitles_online">Les sous-titres en ligne sont indisponibles sur ce serveur pour le moment.</string>
+    <string name="subtitles_search">Rechercher en ligne…</string>
+    <string name="subtitles_search_title">Rechercher des sous-titres</string>
+    <string name="subtitles_search_empty">Aucun sous-titre trouvé dans cette langue.</string>
+    <string name="subtitles_language">Langue des sous-titres</string>
+    <string name="subtitles_language_value">Langue : %1$s</string>
+    <string name="subtitles_hash_match">Fait pour ce fichier</string>
+    <string name="subtitles_hearing_impaired_short">SME</string>
+    <string name="subtitles_machine_translated">Traduction automatique</string>
+    <string name="subtitles_downloading">Téléchargement…</string>
+    <plurals name="subtitles_downloads">
+        <item quantity="one">%d téléchargement</item>
+        <item quantity="other">%d téléchargements</item>
+    </plurals>
 </resources>

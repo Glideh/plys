@@ -138,4 +138,19 @@
     <string name="up_next">Próximo episódio</string>
     <string name="up_next_in">Começa em %1$d s</string>
     <string name="play_next_now">Reproduzir agora</string>
+    <string name="error_subtitles_quota">O limite diário de downloads do OpenSubtitles foi atingido. Tente novamente mais tarde.</string>
+    <string name="error_subtitles_online">As legendas online estão indisponíveis neste servidor no momento.</string>
+    <string name="subtitles_search">Buscar online…</string>
+    <string name="subtitles_search_title">Buscar legendas</string>
+    <string name="subtitles_search_empty">Nenhuma legenda encontrada neste idioma.</string>
+    <string name="subtitles_language">Idioma da legenda</string>
+    <string name="subtitles_language_value">Idioma: %1$s</string>
+    <string name="subtitles_hash_match">Feita para este arquivo</string>
+    <string name="subtitles_hearing_impaired_short">SDH</string>
+    <string name="subtitles_machine_translated">Tradução automática</string>
+    <string name="subtitles_downloading">Baixando…</string>
+    <plurals name="subtitles_downloads">
+        <item quantity="one">%d download</item>
+        <item quantity="other">%d downloads</item>
+    </plurals>
 </resources>

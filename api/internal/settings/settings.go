@@ -24,6 +24,7 @@ const (
 	keyServerIdentity   = "server_identity"
 	keyServerName       = "server_name"
 	keyServerPublicURL  = "server_public_url"
+	keyOpenSubtitles    = "opensubtitles"
 
 	DefaultLanguage = "fr-FR"
 
@@ -103,6 +104,42 @@ func (s *Store) SetServerPublicURL(ctx context.Context, raw string) error {
 		return s.q.DeleteSetting(ctx, keyServerPublicURL)
 	}
 	return s.setString(ctx, keyServerPublicURL, raw)
+}
+
+// OpenSubtitles holds the opensubtitles.com account used to search and download subtitles. The login is
+// optional: it raises the daily download quota of the API key.
+type OpenSubtitles struct {
+	APIKey   string `json:"apiKey"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
+// OpenSubtitles returns an empty configuration until the admin sets an API key.
+func (s *Store) OpenSubtitles(ctx context.Context) (OpenSubtitles, error) {
+	var v OpenSubtitles
+	raw, err := s.q.GetSetting(ctx, keyOpenSubtitles)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, nil
+	}
+	if err != nil {
+		return v, err
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return v, fmt.Errorf("decode setting %s: %w", keyOpenSubtitles, err)
+	}
+	return v, nil
+}
+
+// SetOpenSubtitles removes the configuration when the API key is empty.
+func (s *Store) SetOpenSubtitles(ctx context.Context, v OpenSubtitles) error {
+	if v.APIKey == "" {
+		return s.q.DeleteSetting(ctx, keyOpenSubtitles)
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return s.q.UpsertSetting(ctx, store.UpsertSettingParams{Key: keyOpenSubtitles, Value: raw})
 }
 
 func (s *Store) getString(ctx context.Context, key, fallback string) (string, error) {

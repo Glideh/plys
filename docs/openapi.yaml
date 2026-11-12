@@ -844,6 +844,9 @@ paths:
               properties:
                 tmdbApiKey: { type: string, description: TMDB v3 key or v4 read token; empty string removes it. Checked against TMDB before saving. }
                 metadataLanguage: { type: string, pattern: "^[a-z]{2}-[A-Z]{2}$", example: fr-FR }
+                openSubtitlesApiKey: { type: string, description: "opensubtitles.com API key, write-only; empty string removes the whole OpenSubtitles configuration. Checked against OpenSubtitles before saving." }
+                openSubtitlesUsername: { type: string, description: "Optional opensubtitles.com account raising the daily download quota; empty string removes the login" }
+                openSubtitlesPassword: { type: string, description: "Password of that account, write-only; required with a new username" }
       responses:
         "200":
           description: Updated settings
@@ -851,12 +854,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Settings" }
         "400":
-          description: "`validation` or `invalid_tmdb_key`"
+          description: "`validation`, `invalid_tmdb_key` or `invalid_opensubtitles_credentials`"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: TMDB unreachable while checking the key (`tmdb_unreachable`)
+          description: TMDB or OpenSubtitles unreachable while checking the key (`tmdb_unreachable`, `subtitles_unreachable`)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -952,6 +955,10 @@ paths:
                 versionId: { type: string, format: uuid, description: "Id of a version returned by `getItem`" }
                 audioIndex: { type: [integer, "null"], description: Stream index; the default track when omitted }
                 subtitleIndex: { type: [integer, "null"], description: Stream index; none when omitted }
+                externalSubtitleId:
+                  type: [string, "null"]
+                  format: uuid
+                  description: "A downloaded subtitle of this version (`Version.externalSubtitles`), served at `subtitleUrl`; exclusive with `subtitleIndex`. Omit it when unset: servers older than this field refuse unknown fields."
                 start: { type: number, minimum: 0, default: 0, description: Seconds from the start of the file }
                 caps: { $ref: "#/components/schemas/ClientCaps" }
       responses:
@@ -1014,7 +1021,7 @@ paths:
       security: []
       parameters:
         - { name: sid, in: path, required: true, schema: { type: string } }
-        - { name: track, in: path, required: true, schema: { type: string, example: "3.vtt" }, description: Stream index followed by `.vtt` }
+        - { name: track, in: path, required: true, schema: { type: string, example: "3.vtt" }, description: "Stream index followed by `.vtt`, or `external.vtt` for the downloaded subtitle of the session (always complete)" }
       responses:
         "200":
           description: WebVTT
@@ -1023,6 +1030,108 @@ paths:
           content:
             text/vtt: {}
         "202": { description: Extraction in progress }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /items/{id}/subtitles/search:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: searchSubtitles
+      summary: Search subtitles for a version on OpenSubtitles
+      description: |
+        Available to local and federated users who can play the item, when `ItemDetail.subtitleSearch` is true.
+        Movies are looked up by TMDB id, episodes by the series TMDB id with season and episode numbers, other videos
+        by title; the hash of the file is always sent, and results made for this exact file (`hashMatch`) come first,
+        then the most downloaded. Subtitles split over several files are left out.
+      parameters:
+        - { name: versionId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: language, in: query, required: true, schema: { type: string, pattern: "^[a-z]{2}(-[A-Za-z]{2})?$", example: pt-BR }, description: "OpenSubtitles language code: ISO 639-1, or with a region (pt-BR, pt-PT, zh-CN, zh-TW)" }
+      responses:
+        "200":
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results: { type: array, items: { $ref: "#/components/schemas/SubtitleResult" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Online search not configured (`subtitles_not_configured`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: "OpenSubtitles unreachable (`subtitles_unreachable`) or rejecting the server credentials (`subtitles_unauthorized`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /items/{id}/subtitles:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: downloadSubtitle
+      summary: Download a search result and keep it for the version
+      description: |
+        The subtitle is converted to WebVTT, stored in the database and listed in `Version.externalSubtitles` for
+        every user who can play the version. Downloading a file already stored returns it without using the
+        OpenSubtitles quota.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId, fileId, language]
+              properties:
+                versionId: { type: string, format: uuid }
+                fileId: { type: integer, minimum: 1, description: "`SubtitleResult.fileId`" }
+                language: { type: string, example: fr }
+                release: { type: string, maxLength: 255 }
+                hearingImpaired: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Already downloaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalSubtitle" }
+        "201":
+          description: Downloaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExternalSubtitle" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Online search not configured (`subtitles_not_configured`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Daily OpenSubtitles download quota reached (`subtitles_quota`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: "`subtitles_unreachable`, `subtitles_unauthorized`, or a file that is not a readable subtitle (`subtitles_invalid`)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /items/{id}/subtitles/{subtitleId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: subtitleId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: deleteSubtitle
+      summary: Delete a downloaded subtitle (admin)
+      parameters:
+        - { name: versionId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
 
   /admin/system/transcoding:
@@ -1208,7 +1317,8 @@ components:
         accel: { type: string, enum: [qsv, vaapi, none] }
         audioIndex: { type: [integer, "null"] }
         subtitleIndex: { type: [integer, "null"] }
-        subtitleUrl: { type: [string, "null"], description: WebVTT of the selected text subtitle track }
+        externalSubtitleId: { type: [string, "null"], format: uuid }
+        subtitleUrl: { type: [string, "null"], description: WebVTT of the selected text subtitle track or downloaded subtitle }
         burnedSubtitle: { type: boolean }
     Role:
       type: string
@@ -1285,9 +1395,32 @@ components:
         default: { type: boolean }
         forced: { type: boolean }
         imageBased: { type: boolean, description: Bitmap subtitles that must be burned in }
+    ExternalSubtitle:
+      type: object
+      required: [id, language, release, hearingImpaired, source]
+      properties:
+        id: { type: string, format: uuid }
+        language: { type: string, example: pt-BR, description: OpenSubtitles language code }
+        release: { type: string, example: Blade.Runner.1982.1080p.BluRay }
+        hearingImpaired: { type: boolean }
+        source: { type: string, enum: [opensubtitles] }
+    SubtitleResult:
+      type: object
+      required: [fileId, language, release, downloadCount, hearingImpaired, machineTranslated, trusted, hashMatch]
+      properties:
+        fileId: { type: integer }
+        language: { type: string }
+        release: { type: string }
+        downloadCount: { type: integer }
+        hearingImpaired: { type: boolean }
+        machineTranslated: { type: boolean, description: AI or machine translation }
+        trusted: { type: boolean, description: Uploaded by a trusted OpenSubtitles member }
+        hashMatch: { type: boolean, description: Made for this exact file (same OpenSubtitles hash) }
+        fps: { type: number }
+        uploader: { type: string }
     Version:
       type: object
-      required: [id, label, hdr, edition, size, durationSeconds, audio, subtitles]
+      required: [id, label, hdr, edition, size, durationSeconds, audio, subtitles, externalSubtitles]
       properties:
         id: { type: string, format: uuid }
         label: { type: string, example: "2160p · HDR · HEVC · Extended" }
@@ -1299,6 +1432,7 @@ components:
         durationSeconds: { type: [number, "null"] }
         audio: { type: array, items: { $ref: "#/components/schemas/Track" } }
         subtitles: { type: array, items: { $ref: "#/components/schemas/Track" } }
+        externalSubtitles: { type: array, items: { $ref: "#/components/schemas/ExternalSubtitle" }, description: Subtitles downloaded online for this file }
         error: { type: string, description: Analysis error; the version may not play }
         path:
           type: string
@@ -1365,6 +1499,7 @@ components:
         watched: { type: boolean, description: "The item, or everything under a series or season, is watched by the caller" }
         positionSeconds: { type: number, description: "Resume point of a playable item, 0 when none (under 30 s or watched)" }
         inWatchlist: { type: boolean, description: "A top-level title (movie, series, video) the caller added to their watchlist on this server" }
+        subtitleSearch: { type: boolean, description: "Subtitles can be searched online (`searchSubtitles`) for the versions of this item" }
         folder:
           type: string
           description: Deepest folder on the server (inside its media mount) holding every file of the item and of the items below it (seasons, episodes, parts). Only sent to local admins, never to regular users nor to federated peers; omitted when the item has no file.
@@ -1471,6 +1606,8 @@ components:
       properties:
         tmdbConfigured: { type: boolean }
         metadataLanguage: { type: string, example: fr-FR }
+        openSubtitlesConfigured: { type: boolean, description: An OpenSubtitles API key is set; the key itself is never returned }
+        openSubtitlesUsername: { type: string, description: OpenSubtitles login, empty when downloads are anonymous }
     LibraryKind:
       type: string
       enum: [movies, series, other]

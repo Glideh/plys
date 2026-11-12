@@ -16,6 +16,7 @@ import (
 	"toto/api/internal/database"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
+	"toto/api/internal/opensubtitles"
 	"toto/api/internal/playback"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
@@ -87,6 +88,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	osubs := opensubtitles.New("", "Plys v"+api.Version, func(ctx context.Context) (opensubtitles.Credentials, error) {
+		v, err := st.OpenSubtitles(ctx)
+		return opensubtitles.Credentials{APIKey: v.APIKey, Username: v.Username, Password: v.Password}, err
+	})
 
 	handler := api.New(api.Deps{
 		Pool:                   pool,
@@ -100,6 +105,7 @@ func run() error {
 		Identity:               identity,
 		Playback:               player,
 		Subtitles:              subtitles,
+		OpenSubtitles:          osubs,
 		FederationRequireHTTPS: cfg.FederationRequireHTTPS,
 		TrustedProxies:         cfg.TrustedProxies,
 	}).Routes()

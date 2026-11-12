@@ -26,7 +26,10 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
+enum class Failure {
+    URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, SUBTITLES_QUOTA,
+    SUBTITLES_ONLINE, STORAGE, RESPONSE, SERVER,
+}
 
 class ClientException(val failure: Failure, val status: Int = 0, cause: Throwable? = null) :
     Exception(failure.name, cause)
@@ -182,8 +185,38 @@ class PlysApi(
 
     suspend fun item(id: String, source: ServerRef? = null): ItemDetail = locked { decode(sourceRequest(source, "items/$id")) }
 
-    suspend fun start(versionId: String, position: Double, caps: ClientCaps, source: ServerRef? = null, audioIndex: Int? = null, subtitleIndex: Int? = null): PlaybackSession = locked {
-        decode(sourceRequest(source, "playback/sessions", "POST", json.encodeToString(PlaybackRequest(versionId, position, caps, audioIndex, subtitleIndex))))
+    suspend fun start(
+        versionId: String, position: Double, caps: ClientCaps, source: ServerRef? = null, audioIndex: Int? = null,
+        subtitleIndex: Int? = null, externalSubtitleId: String? = null,
+    ): PlaybackSession = locked {
+        decode(sourceRequest(source, "playback/sessions", "POST",
+            json.encodeToString(PlaybackRequest(versionId, position, caps, audioIndex, subtitleIndex, externalSubtitleId))))
+    }
+
+    /** Searches OpenSubtitles through the server holding the file. */
+    suspend fun searchSubtitles(itemId: String, versionId: String, language: String, source: ServerRef? = null): List<SubtitleResult> = locked {
+        onlineSubtitles {
+            decode<SubtitleSearchResponse>(sourceRequest(source, "items/$itemId/subtitles/search?versionId=$versionId&language=$language")).results
+        }
+    }
+
+    /** Stores a found subtitle on the server; it is then listed in the version's externalSubtitles. */
+    suspend fun downloadSubtitle(itemId: String, versionId: String, result: SubtitleResult, source: ServerRef? = null): ExternalSubtitle = locked {
+        onlineSubtitles {
+            decode(sourceRequest(source, "items/$itemId/subtitles", "POST", json.encodeToString(
+                SubtitleDownloadRequest(versionId, result.fileId, result.language, result.release, result.hearingImpaired))))
+        }
+    }
+
+    // The server answers 429 once the OpenSubtitles quota is used up, 409 or 502 when the service is not usable.
+    private inline fun <T> onlineSubtitles(action: () -> T): T = try {
+        action()
+    } catch (error: ClientException) {
+        throw when (error.status) {
+            429 -> ClientException(Failure.SUBTITLES_QUOTA, error.status, error)
+            409, 502 -> ClientException(Failure.SUBTITLES_ONLINE, error.status, error)
+            else -> error
+        }
     }
 
     suspend fun stop(id: String, source: ServerRef? = null) = locked {

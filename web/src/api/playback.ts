@@ -20,6 +20,7 @@ export interface PlaybackSession {
   accel: string
   audioIndex: number | null
   subtitleIndex: number | null
+  externalSubtitleId: string | null
   subtitleUrl: string | null
   burnedSubtitle: boolean
 }
@@ -28,6 +29,8 @@ export interface StartPlaybackBody {
   versionId: string
   audioIndex?: number | null
   subtitleIndex?: number | null
+  /** A downloaded subtitle, instead of a track of the file. */
+  externalSubtitleId?: string | null
   start: number
   caps: ClientCaps
 }

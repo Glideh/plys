@@ -25,11 +25,13 @@ import (
 const subtitleWait = 25 * time.Second
 
 type startPlaybackRequest struct {
-	VersionID     uuid.UUID           `json:"versionId"`
-	AudioIndex    *int                `json:"audioIndex"`
-	SubtitleIndex *int                `json:"subtitleIndex"`
-	Start         float64             `json:"start"`
-	Caps          playback.ClientCaps `json:"caps"`
+	VersionID     uuid.UUID `json:"versionId"`
+	AudioIndex    *int      `json:"audioIndex"`
+	SubtitleIndex *int      `json:"subtitleIndex"`
+	// ExternalSubtitleID picks a downloaded subtitle instead of a track of the file.
+	ExternalSubtitleID *uuid.UUID          `json:"externalSubtitleId"`
+	Start              float64             `json:"start"`
+	Caps               playback.ClientCaps `json:"caps"`
 }
 
 type playbackSessionDTO struct {
@@ -42,6 +44,8 @@ type playbackSessionDTO struct {
 	Accel         string  `json:"accel"`
 	AudioIndex    *int    `json:"audioIndex"`
 	SubtitleIndex *int    `json:"subtitleIndex"`
+	// ExternalSubtitleID is the downloaded subtitle served at SubtitleURL.
+	ExternalSubtitleID *uuid.UUID `json:"externalSubtitleId"`
 	// Set for text subtitles, served as WebVTT aligned on Start; image subtitles are burned into the video.
 	SubtitleURL *string `json:"subtitleUrl"`
 	Burned      bool    `json:"burnedSubtitle"`
@@ -100,6 +104,21 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var textSub *int
+	if req.SubtitleIndex != nil && req.ExternalSubtitleID != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "subtitleIndex and externalSubtitleId are exclusive")
+		return
+	}
+	if req.ExternalSubtitleID != nil {
+		sub, err := s.q.GetExternalSubtitle(ctx, *req.ExternalSubtitleID)
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && sub.FileID != f.ID) {
+			httpx.Error(w, http.StatusBadRequest, "validation", "externalSubtitleId is not a subtitle of this version")
+			return
+		}
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+	}
 	if req.SubtitleIndex != nil {
 		idx := slices.IndexFunc(streams, func(st scanner.Stream) bool { return st.Type == "subtitle" && st.Index == *req.SubtitleIndex })
 		if idx < 0 {
@@ -118,9 +137,13 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p, _ := auth.PrincipalFrom(ctx)
-	sess, err := s.Playback.Start(ctx, playback.StartRequest{
+	start := playback.StartRequest{
 		UserID: p.UserID, FileID: f.ID, Source: src, Size: f.Size, TextSubtitles: textSubs, Caps: req.Caps, Start: req.Start,
-	})
+	}
+	if req.ExternalSubtitleID != nil {
+		start.ExternalSubtitle = *req.ExternalSubtitleID
+	}
+	sess, err := s.Playback.Start(ctx, start)
 	if errors.Is(err, playback.ErrBusy) {
 		httpx.Error(w, http.StatusServiceUnavailable, "transcoder_busy", "too many videos are being transcoded, try again later")
 		return
@@ -142,6 +165,11 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 		u := "/api/v1/stream/" + sess.ID + "/subtitles/" + strconv.Itoa(*textSub) + ".vtt"
 		dto.SubtitleURL = &u
 		s.Subtitles.Prepare(f.ID, f.Size, f.Path, *textSub)
+	}
+	if req.ExternalSubtitleID != nil {
+		u := "/api/v1/stream/" + sess.ID + "/subtitles/" + externalSubtitleTrack
+		dto.SubtitleURL = &u
+		dto.ExternalSubtitleID = req.ExternalSubtitleID
 	}
 	httpx.JSON(w, http.StatusCreated, dto)
 }
@@ -227,6 +255,10 @@ func (s *Server) streamSubtitle(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "playback session not found")
 		return
 	}
+	if chi.URLParam(r, "track") == externalSubtitleTrack {
+		s.streamExternalSubtitle(w, r, sess)
+		return
+	}
 	index, err := strconv.Atoi(strings.TrimSuffix(chi.URLParam(r, "track"), ".vtt"))
 	if err != nil || !slices.Contains(sess.TextSubtitles, index) {
 		httpx.Error(w, http.StatusNotFound, "not_found", "subtitle track not found")
@@ -268,6 +300,29 @@ func (s *Server) streamSubtitle(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	w.Header().Set("X-Subtitles-Complete", "true")
 	_ = playback.ShiftVTT(f, w, sess.Start)
+}
+
+// externalSubtitleTrack names the downloaded subtitle of a session among its subtitle files.
+const externalSubtitleTrack = "external.vtt"
+
+func (s *Server) streamExternalSubtitle(w http.ResponseWriter, r *http.Request, sess *playback.Session) {
+	if sess.ExternalSubtitle == uuid.Nil {
+		httpx.Error(w, http.StatusNotFound, "not_found", "subtitle track not found")
+		return
+	}
+	vtt, err := s.q.GetExternalSubtitleVTT(r.Context(), sess.ExternalSubtitle)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "subtitle track not found")
+		return
+	}
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Subtitles-Complete", "true")
+	_ = playback.ShiftVTT(strings.NewReader(vtt), w, sess.Start)
 }
 
 func (s *Server) transcodingInfo(w http.ResponseWriter, _ *http.Request) {

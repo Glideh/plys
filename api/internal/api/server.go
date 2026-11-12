@@ -14,6 +14,7 @@ import (
 	"toto/api/internal/httpx"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
+	"toto/api/internal/opensubtitles"
 	"toto/api/internal/playback"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
@@ -32,6 +33,8 @@ type Deps struct {
 	Identity     settings.Identity
 	Playback     *playback.Manager
 	Subtitles    *playback.Subtitles
+	// OpenSubtitles searches subtitles online; nil disables the search.
+	OpenSubtitles *opensubtitles.Client
 	// FederationRequireHTTPS refuses peers served over plain HTTP.
 	FederationRequireHTTPS bool
 	// HTTPClient reaches peers; nil uses a default client with a timeout.
@@ -103,6 +106,8 @@ func (s *Server) Routes() http.Handler {
 			r.Options("/items/{id}/progress", noContent)
 			r.Options("/items/{id}/watched", noContent)
 			r.Options("/items/{id}/watchlist", noContent)
+			r.Options("/items/{id}/subtitles", noContent)
+			r.Options("/items/{id}/subtitles/search", noContent)
 			r.Options("/playback/sessions", noContent)
 			r.Options("/playback/sessions/{id}", noContent)
 			r.Group(func(r chi.Router) {
@@ -113,6 +118,8 @@ func (s *Server) Routes() http.Handler {
 				r.Delete("/items/{id}/watched", s.setWatched(false))
 				r.Post("/items/{id}/watchlist", s.setWatchlisted(true))
 				r.Delete("/items/{id}/watchlist", s.setWatchlisted(false))
+				r.Get("/items/{id}/subtitles/search", s.searchSubtitles)
+				r.Post("/items/{id}/subtitles", s.downloadSubtitle)
 				r.Post("/playback/sessions", s.startPlayback)
 				r.Delete("/playback/sessions/{id}", s.stopPlayback)
 			})
@@ -164,6 +171,7 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/items/{id}/match/search", s.searchMatch)
 				r.Post("/items/{id}/match", s.setMatch)
 				r.Post("/items/{id}/refresh", s.refreshItem)
+				r.Delete("/items/{id}/subtitles/{subtitleId}", s.deleteSubtitle)
 			})
 		})
 	})

@@ -11,6 +11,9 @@ const errorMessage = useErrorMessage()
 
 const current = ref<ServerSettings | null>(null)
 const newKey = ref('')
+const osKey = ref('')
+const osUsername = ref('')
+const osPassword = ref('')
 const nameDraft = ref('')
 const urlDraft = ref('')
 const saving = ref(false)
@@ -24,6 +27,9 @@ async function save(body: Parameters<typeof settingsApi.update>[0]) {
   try {
     current.value = await settingsApi.update(body)
     newKey.value = ''
+    osKey.value = ''
+    osPassword.value = ''
+    osUsername.value = current.value.openSubtitlesUsername
     nameDraft.value = current.value.serverName
     urlDraft.value = current.value.publicUrl
     notice.value = t('settings.saved')
@@ -34,11 +40,20 @@ async function save(body: Parameters<typeof settingsApi.update>[0]) {
   }
 }
 
+/** Fields left empty keep their stored value, except the username, which clears the login. */
+function saveOpenSubtitles() {
+  const body: Parameters<typeof settingsApi.update>[0] = { openSubtitlesUsername: osUsername.value.trim() }
+  if (osKey.value.trim()) body.openSubtitlesApiKey = osKey.value.trim()
+  if (osPassword.value) body.openSubtitlesPassword = osPassword.value
+  void save(body)
+}
+
 onMounted(async () => {
   try {
     current.value = await settingsApi.get()
     nameDraft.value = current.value.serverName
     urlDraft.value = current.value.publicUrl
+    osUsername.value = current.value.openSubtitlesUsername
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -148,6 +163,77 @@ onMounted(async () => {
         </select>
         <p class="mt-1.5 text-xs text-slate-500">{{ t('settings.languageHelp') }}</p>
       </div>
+
+      <form class="space-y-3 border-t border-white/5 pt-6" @submit.prevent="saveOpenSubtitles">
+        <div>
+          <h2 class="text-lg font-semibold">{{ t('settings.subtitles') }}</h2>
+          <p class="mt-1 text-sm leading-relaxed text-slate-400">{{ t('settings.subtitlesHelp') }}</p>
+          <a
+            href="https://www.opensubtitles.com/consumers"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-2 inline-block text-sm font-medium text-accent-400 hover:text-accent-300"
+          >
+            {{ t('settings.getOpenSubtitlesKey') }} ↗
+          </a>
+        </div>
+        <p class="flex items-center gap-2 text-sm">
+          <span :class="current.openSubtitlesConfigured ? 'bg-emerald-400' : 'bg-amber-400'" class="size-2 rounded-full" aria-hidden="true" />
+          <span :class="current.openSubtitlesConfigured ? 'text-emerald-300' : 'text-amber-300'">
+            {{ current.openSubtitlesConfigured ? t('settings.keyConfigured') : t('settings.keyMissing') }}
+          </span>
+        </p>
+        <div>
+          <label for="opensubtitles-key" class="block text-sm font-medium text-slate-300">{{ t('settings.openSubtitlesKey') }}</label>
+          <input
+            id="opensubtitles-key"
+            v-model="osKey"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            :placeholder="t('settings.keyPlaceholder')"
+            class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 font-mono text-sm text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+          />
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label for="opensubtitles-username" class="block text-sm font-medium text-slate-300">{{ t('common.username') }}</label>
+            <input
+              id="opensubtitles-username"
+              v-model="osUsername"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 text-sm text-slate-100 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label for="opensubtitles-password" class="block text-sm font-medium text-slate-300">{{ t('common.password') }}</label>
+            <input
+              id="opensubtitles-password"
+              v-model="osPassword"
+              type="password"
+              autocomplete="new-password"
+              :placeholder="current.openSubtitlesUsername ? t('settings.passwordUnchanged') : ''"
+              class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+            />
+          </div>
+        </div>
+        <p class="text-xs text-slate-500">{{ t('settings.openSubtitlesLoginHelp') }}</p>
+        <div class="flex flex-wrap gap-2">
+          <BaseButton type="submit" variant="primary" :loading="saving" :disabled="!current.openSubtitlesConfigured && !osKey.trim()">
+            {{ t('common.save') }}
+          </BaseButton>
+          <BaseButton
+            v-if="current.openSubtitlesConfigured"
+            class="hover:!bg-red-500/15 hover:!text-red-300"
+            :disabled="saving"
+            @click="save({ openSubtitlesApiKey: '' })"
+          >
+            {{ t('settings.removeKey') }}
+          </BaseButton>
+        </div>
+      </form>
 
       <p class="border-t border-white/5 pt-4 text-xs text-slate-500">{{ t('settings.attribution') }}</p>
     </div>

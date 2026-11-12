@@ -16,6 +16,7 @@ import (
 
 	"toto/api/internal/httpx"
 	"toto/api/internal/metadata"
+	"toto/api/internal/opensubtitles"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
 )
@@ -51,6 +52,9 @@ type settingsDTO struct {
 	MetadataLanguage string `json:"metadataLanguage"`
 	ServerName       string `json:"serverName"`
 	PublicURL        string `json:"publicUrl"`
+	// The OpenSubtitles API key and password are write-only, like the TMDB key.
+	OpenSubtitlesConfigured bool   `json:"openSubtitlesConfigured"`
+	OpenSubtitlesUsername   string `json:"openSubtitlesUsername"`
 }
 
 func (s *Server) currentSettings(r *http.Request) (settingsDTO, error) {
@@ -68,7 +72,14 @@ func (s *Server) currentSettings(r *http.Request) (settingsDTO, error) {
 		return settingsDTO{}, err
 	}
 	publicURL, err := s.Settings.ServerPublicURL(ctx)
-	return settingsDTO{TMDBConfigured: key != "", MetadataLanguage: lang, ServerName: name, PublicURL: publicURL}, err
+	if err != nil {
+		return settingsDTO{}, err
+	}
+	osub, err := s.Settings.OpenSubtitles(ctx)
+	return settingsDTO{
+		TMDBConfigured: key != "", MetadataLanguage: lang, ServerName: name, PublicURL: publicURL,
+		OpenSubtitlesConfigured: osub.APIKey != "", OpenSubtitlesUsername: osub.Username,
+	}, err
 }
 
 // The TMDB key is write-only: it is never sent back to clients.
@@ -86,6 +97,10 @@ type updateSettingsRequest struct {
 	MetadataLanguage *string `json:"metadataLanguage"`
 	ServerName       *string `json:"serverName"`
 	PublicURL        *string `json:"publicUrl"`
+	// An empty key removes the OpenSubtitles configuration; an empty username removes the login.
+	OpenSubtitlesAPIKey   *string `json:"openSubtitlesApiKey"`
+	OpenSubtitlesUsername *string `json:"openSubtitlesUsername"`
+	OpenSubtitlesPassword *string `json:"openSubtitlesPassword"`
 }
 
 func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +144,11 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.OpenSubtitlesAPIKey != nil || req.OpenSubtitlesUsername != nil || req.OpenSubtitlesPassword != nil {
+		if !s.updateOpenSubtitles(w, r, req) {
+			return
+		}
+	}
 	if req.MetadataLanguage != nil {
 		if err := s.Settings.SetMetadataLanguage(ctx, *req.MetadataLanguage); err != nil {
 			httpx.InternalError(w, r, err)
@@ -151,6 +171,51 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		s.Scanner.EnqueueAll(ctx)
 	}
 	s.getSettings(w, r)
+}
+
+// updateOpenSubtitles merges the fields sent with the stored ones, and checks them with OpenSubtitles before saving.
+func (s *Server) updateOpenSubtitles(w http.ResponseWriter, r *http.Request, req updateSettingsRequest) bool {
+	ctx := r.Context()
+	cur, err := s.Settings.OpenSubtitles(ctx)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return false
+	}
+	if req.OpenSubtitlesAPIKey != nil {
+		cur.APIKey = strings.TrimSpace(*req.OpenSubtitlesAPIKey)
+	}
+	if req.OpenSubtitlesUsername != nil {
+		cur.Username = strings.TrimSpace(*req.OpenSubtitlesUsername)
+	}
+	if req.OpenSubtitlesPassword != nil {
+		cur.Password = *req.OpenSubtitlesPassword
+	}
+	if cur.Username == "" {
+		cur.Password = ""
+	}
+	if cur.APIKey == "" {
+		cur = settings.OpenSubtitles{}
+	}
+	if cur.Username != "" && cur.Password == "" {
+		httpx.Error(w, http.StatusBadRequest, "validation", "openSubtitlesPassword is required with a username")
+		return false
+	}
+	if cur.APIKey != "" && s.OpenSubtitles != nil {
+		err := s.OpenSubtitles.Validate(ctx, opensubtitles.Credentials{APIKey: cur.APIKey, Username: cur.Username, Password: cur.Password})
+		if errors.Is(err, opensubtitles.ErrUnauthorized) {
+			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_credentials", "OpenSubtitles rejected this API key or login")
+			return false
+		}
+		if err != nil {
+			httpx.Error(w, http.StatusBadGateway, "subtitles_unreachable", "OpenSubtitles could not be reached to check the credentials")
+			return false
+		}
+	}
+	if err := s.Settings.SetOpenSubtitles(ctx, cur); err != nil {
+		httpx.InternalError(w, r, err)
+		return false
+	}
+	return true
 }
 
 type matchCandidateDTO struct {

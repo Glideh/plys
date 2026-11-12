@@ -257,6 +257,8 @@ type versionDTO struct {
 	DurationSeconds *float64   `json:"durationSeconds"`
 	Audio           []trackDTO `json:"audio"`
 	Subtitles       []trackDTO `json:"subtitles"`
+	// ExternalSubtitles were downloaded online for this file.
+	ExternalSubtitles []externalSubtitleDTO `json:"externalSubtitles"`
 	// Set when the file could not be analysed; such a version may not play.
 	Error *string `json:"error,omitempty"`
 	// Path is the file location on the server, only sent to local admins.
@@ -333,6 +335,8 @@ type itemDetailDTO struct {
 	InWatchlist bool `json:"inWatchlist"`
 	// Sources lists the servers holding this title; set on top-level items for local users only.
 	Sources []cardSourceDTO `json:"sources"`
+	// SubtitleSearch tells whether subtitles can be searched online for the versions of this item.
+	SubtitleSearch bool `json:"subtitleSearch"`
 	// Folder is the deepest directory holding every file of the item and its children, only sent to local admins.
 	Folder string `json:"folder,omitempty"`
 }
@@ -388,6 +392,10 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dto.Children, err = s.children(r, it.ID); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	if dto.SubtitleSearch, err = s.subtitleSearchAvailable(ctx); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
@@ -460,6 +468,14 @@ func (s *Server) versions(r *http.Request, id uuid.UUID) ([]versionDTO, error) {
 		return nil, err
 	}
 	showPath := canSeePaths(r)
+	ids := make([]uuid.UUID, len(rows))
+	for i, f := range rows {
+		ids[i] = f.ID
+	}
+	subs, err := s.q.ListExternalSubtitles(r.Context(), ids)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]versionDTO, 0, len(rows))
 	for _, f := range rows {
 		var streams []scanner.Stream
@@ -467,6 +483,11 @@ func (s *Server) versions(r *http.Request, id uuid.UUID) ([]versionDTO, error) {
 			return nil, fmt.Errorf("decode streams of file %s: %w", f.ID, err)
 		}
 		v := describeVersion(f, streams)
+		for _, sub := range subs {
+			if sub.FileID == f.ID {
+				v.ExternalSubtitles = append(v.ExternalSubtitles, externalSubtitle(sub.ID, sub.Provider, sub.Language, sub.ReleaseName, sub.HearingImpaired))
+			}
+		}
 		if showPath {
 			v.Path = f.Path
 		}
@@ -499,7 +520,7 @@ func commonFolder(paths []string) string {
 func describeVersion(f store.ListItemFilesRow, streams []scanner.Stream) versionDTO {
 	v := versionDTO{
 		ID: f.ID, Edition: f.Edition, Size: f.Size, DurationSeconds: f.DurationSeconds,
-		Audio: []trackDTO{}, Subtitles: []trackDTO{}, Error: f.ProbeError,
+		Audio: []trackDTO{}, Subtitles: []trackDTO{}, ExternalSubtitles: []externalSubtitleDTO{}, Error: f.ProbeError,
 	}
 	for _, st := range streams {
 		t := trackDTO{Index: st.Index, Language: st.Language, Codec: st.Codec, Title: st.Title, Channels: st.Channels,

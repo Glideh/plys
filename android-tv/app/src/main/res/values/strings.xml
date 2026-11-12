@@ -138,4 +138,19 @@
     <string name="up_next">Next episode</string>
     <string name="up_next_in">Starts in %1$d s</string>
     <string name="play_next_now">Play now</string>
+    <string name="error_subtitles_quota">The daily OpenSubtitles download limit is reached. Try again later.</string>
+    <string name="error_subtitles_online">Online subtitles are unavailable on this server right now.</string>
+    <string name="subtitles_search">Search online…</string>
+    <string name="subtitles_search_title">Search subtitles</string>
+    <string name="subtitles_search_empty">No subtitles found in this language.</string>
+    <string name="subtitles_language">Subtitle language</string>
+    <string name="subtitles_language_value">Language: %1$s</string>
+    <string name="subtitles_hash_match">Made for this file</string>
+    <string name="subtitles_hearing_impaired_short">HI</string>
+    <string name="subtitles_machine_translated">Machine translated</string>
+    <string name="subtitles_downloading">Downloading…</string>
+    <plurals name="subtitles_downloads">
+        <item quantity="one">%d download</item>
+        <item quantity="other">%d downloads</item>
+    </plurals>
 </resources>

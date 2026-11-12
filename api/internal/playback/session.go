@@ -53,7 +53,9 @@ type Session struct {
 	TextSubtitles []int
 	// LiveSubtitleIndex is the text track written alongside the segments, -1 when none.
 	LiveSubtitleIndex int
-	dir               string
+	// ExternalSubtitle is the downloaded subtitle served with the stream, uuid.Nil when none.
+	ExternalSubtitle uuid.UUID
+	dir              string
 
 	cmd    *exec.Cmd
 	done   chan struct{}
@@ -97,8 +99,10 @@ type StartRequest struct {
 	Source        Source
 	Size          int64
 	TextSubtitles []int
-	Caps          ClientCaps
-	Start         float64
+	// ExternalSubtitle is a downloaded subtitle track to serve, uuid.Nil when none.
+	ExternalSubtitle uuid.UUID
+	Caps             ClientCaps
+	Start            float64
 }
 
 func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error) {
@@ -106,6 +110,7 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 	sess := &Session{
 		UserID: req.UserID, FileID: req.FileID, Plan: plan, done: make(chan struct{}), stderr: &tailBuffer{max: 4096},
 		SourcePath: req.Source.Path, SourceSize: req.Size, TextSubtitles: req.TextSubtitles, LiveSubtitleIndex: -1,
+		ExternalSubtitle: req.ExternalSubtitle,
 	}
 	if req.Source.TextSubtitle != nil {
 		sess.LiveSubtitleIndex = req.Source.TextSubtitle.Index
