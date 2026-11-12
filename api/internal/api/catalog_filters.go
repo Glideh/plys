@@ -22,21 +22,30 @@ import (
 )
 
 type catalogFilters struct {
-	Genres        []int32  `json:"genres,omitempty"`
-	ExcludeGenres []int32  `json:"excludeGenres,omitempty"`
-	GenreMode     string   `json:"genreMode,omitempty"`
-	Actors        []int32  `json:"actors,omitempty"`
-	Creators      []int32  `json:"creators,omitempty"`
-	Keywords      []int32  `json:"keywords,omitempty"`
-	Languages     []string `json:"languages,omitempty"`
-	Countries     []string `json:"countries,omitempty"`
-	YearMin       *int     `json:"yearMin,omitempty"`
-	YearMax       *int     `json:"yearMax,omitempty"`
-	RatingMin     *float64 `json:"ratingMin,omitempty"`
-	VotesMin      *int     `json:"votesMin,omitempty"`
-	RuntimeMin    *int     `json:"runtimeMin,omitempty"`
-	RuntimeMax    *int     `json:"runtimeMax,omitempty"`
+	Genres        []int32 `json:"genres,omitempty"`
+	ExcludeGenres []int32 `json:"excludeGenres,omitempty"`
+	// LegacyGenreMode is accepted and dropped: web fronts and peers up to 0.3, or links they shared, may still send it.
+	LegacyGenreMode json.RawMessage `json:"genreMode,omitempty"`
+	Actors          []int32         `json:"actors,omitempty"`
+	Creators        []int32         `json:"creators,omitempty"`
+	Keywords        []int32         `json:"keywords,omitempty"`
+	Languages       []string        `json:"languages,omitempty"`
+	Countries       []string        `json:"countries,omitempty"`
+	YearMin         *int            `json:"yearMin,omitempty"`
+	YearMax         *int            `json:"yearMax,omitempty"`
+	RatingMin       *float64        `json:"ratingMin,omitempty"`
+	VotesMin        *int            `json:"votesMin,omitempty"`
+	RuntimeMin      *int            `json:"runtimeMin,omitempty"`
+	RuntimeMax      *int            `json:"runtimeMax,omitempty"`
+	Resolution      string          `json:"resolution,omitempty"`
+	Audio           string          `json:"audio,omitempty"`
 }
+
+// Values of the technical filters, as computed by media_resolution and media_audio_formats (migration 00017).
+var (
+	filterResolutions  = []string{"2160p", "1080p", "720p", "SD"}
+	filterAudioFormats = []string{"atmos", "truehd", "eac3", "ac3", "dtsHdMa", "dts", "flac", "pcm", "aac", "opus", "mp3"}
+)
 
 type catalogOptionsResponse struct {
 	Options            map[string][]metadata.FilterOption `json:"options"`
@@ -56,15 +65,15 @@ func (s *Server) peerCatalogFilterOptions(w http.ResponseWriter, r *http.Request
 func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, federated bool) {
 	kind := chi.URLParam(r, "kind")
 	category, query := r.URL.Query().Get("category"), strings.TrimSpace(r.URL.Query().Get("query"))
-	locale := r.URL.Query().Get("locale")
-	if locale == "" {
-		locale = "fr"
+	locale, localeOK := "fr", true
+	if raw := r.URL.Query().Get("locale"); raw != "" {
+		locale, localeOK = canonicalLocale(raw)
 	}
 	selected := []string{}
 	if raw := r.URL.Query().Get("selected"); raw != "" {
 		selected = strings.Split(raw, ",")
 	}
-	if !slices.Contains([]string{"movies", "series"}, kind) || category != "" && !slices.Contains(filterCategories, category) || len(query) > 200 || len(selected) > 20 || len(r.URL.Query().Get("selected")) > 500 || !slices.Contains([]string{"fr", "en"}, locale) {
+	if !slices.Contains([]string{"movies", "series"}, kind) || category != "" && !slices.Contains(filterCategories, category) || len(query) > 200 || len(selected) > 20 || len(r.URL.Query().Get("selected")) > 500 || !localeOK {
 		httpx.Error(w, http.StatusBadRequest, "validation", "invalid filter suggestions parameters")
 		return
 	}
@@ -118,7 +127,7 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 				label = display.Regions(language.Make(locale)).Name(region)
 			}
 		}
-		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(strings.ToLower(label), strings.ToLower(query)) && !slices.Contains(selected, row.ID) {
+		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(foldSearch(label), foldSearch(query)) && !slices.Contains(selected, row.ID) {
 			continue
 		}
 		response.Options[row.Category] = append(response.Options[row.Category], metadata.FilterOption{ID: row.ID, Label: label})
@@ -172,11 +181,22 @@ func (s *Server) peerFilterOptions(ctx context.Context, peer store.Peer, userID 
 	if err != nil {
 		return catalogOptionsResponse{}, err
 	}
-	target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
-	var response catalogOptionsResponse
-	err = s.getPeerCatalog(ctx, target, token, &response)
+	fetch := func(locale string) (catalogOptionsResponse, error) {
+		target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
+		var response catalogOptionsResponse
+		err := s.getPeerCatalog(ctx, target, token, &response)
+		return response, err
+	}
+	response, err := fetch(locale)
+	if err != nil && !slices.Contains(legacyFilterLocales, locale) {
+		// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
+		return fetch("en")
+	}
 	return response, err
 }
+
+// legacyFilterLocales are the filter locales every compatible peer accepts.
+var legacyFilterLocales = []string{"fr", "en"}
 
 func parseCatalogFilters(raw string) (json.RawMessage, error) {
 	if raw == "" {
@@ -194,8 +214,12 @@ func parseCatalogFilters(raw string) (json.RawMessage, error) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, fmt.Errorf("filters must contain one object")
 	}
-	if filters.GenreMode != "" && filters.GenreMode != "any" && filters.GenreMode != "all" {
-		return nil, fmt.Errorf("genreMode must be any or all")
+	filters.LegacyGenreMode = nil
+	if filters.Resolution != "" && !slices.Contains(filterResolutions, filters.Resolution) {
+		return nil, fmt.Errorf("resolution must be one of %s", strings.Join(filterResolutions, ", "))
+	}
+	if filters.Audio != "" && !slices.Contains(filterAudioFormats, filters.Audio) {
+		return nil, fmt.Errorf("audio must be one of %s", strings.Join(filterAudioFormats, ", "))
 	}
 	for _, ids := range [][]int32{filters.Genres, filters.ExcludeGenres, filters.Actors, filters.Creators, filters.Keywords} {
 		if len(ids) > 20 {

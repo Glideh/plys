@@ -1,6 +1,6 @@
 import { api } from './client'
 
-export const metadataLanguages = ['fr-FR', 'en-US', 'de-DE', 'es-ES', 'it-IT'] as const
+export const metadataLanguages = ['fr-FR', 'en-US', 'de-DE', 'es-ES', 'it-IT', 'pt-BR'] as const
 
 export const metadataLanguageNames: Record<string, string> = {
   'fr-FR': 'Français',
@@ -8,6 +8,7 @@ export const metadataLanguageNames: Record<string, string> = {
   'de-DE': 'Deutsch',
   'es-ES': 'Español',
   'it-IT': 'Italiano',
+  'pt-BR': 'Português (Brasil)',
 }
 
 export interface ServerSettings {

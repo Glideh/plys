@@ -63,7 +63,7 @@ async function add() {
   try {
     const peer = await peersApi.add(addCode.value.trim())
     addCode.value = ''
-    notice.value = t('servers.added', { name: peer.name })
+    notice.value = t(peer.pairingPending ? 'servers.addedPending' : 'servers.added', { name: peer.name })
     await load()
   } catch (err) {
     addError.value = errorMessage(err)

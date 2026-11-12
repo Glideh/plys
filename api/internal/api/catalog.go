@@ -258,6 +258,8 @@ type versionDTO struct {
 	Subtitles       []trackDTO `json:"subtitles"`
 	// Set when the file could not be analysed; such a version may not play.
 	Error *string `json:"error,omitempty"`
+	// Path is the file location on the server, only sent to local admins.
+	Path string `json:"path,omitempty"`
 }
 
 type childDTO struct {
@@ -446,13 +448,20 @@ func (s *Server) versions(r *http.Request, id uuid.UUID) ([]versionDTO, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Paths reveal the server's directory layout: peers and regular users never see them.
+	p, _ := auth.PrincipalFrom(r.Context())
+	showPath := p.Role == auth.RoleAdmin && !isFederatedRequest(r.Context())
 	out := make([]versionDTO, 0, len(rows))
 	for _, f := range rows {
 		var streams []scanner.Stream
 		if err := json.Unmarshal(f.Streams, &streams); err != nil {
 			return nil, fmt.Errorf("decode streams of file %s: %w", f.ID, err)
 		}
-		out = append(out, describeVersion(f, streams))
+		v := describeVersion(f, streams)
+		if showPath {
+			v.Path = f.Path
+		}
+		out = append(out, v)
 	}
 	return out, nil
 }

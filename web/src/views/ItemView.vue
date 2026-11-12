@@ -97,6 +97,13 @@ onMounted(load)
 
 const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
 const version = computed(() => selected.value?.version ?? null)
+/** Splits the file path of the selected version, set for admins only, into folder and file name. */
+const file = computed(() => {
+  const path = version.value?.path
+  if (!path) return null
+  const cut = path.lastIndexOf('/')
+  return { folder: path.slice(0, cut) || '/', name: path.slice(cut + 1) }
+})
 const multiServer = computed(() => new Set(choices.value.map((c) => c.server.serverId)).size > 1)
 const hasOwnMetadata = computed(() => ['movie', 'series', 'video'].includes(item.value?.kind ?? ''))
 const backdrop = computed(() => item.value?.backdropUrl ?? (item.value?.kind === 'episode' ? item.value.thumbUrl : null))
@@ -348,6 +355,12 @@ async function onMatched(merged: boolean) {
               <template v-if="version.error">
                 <dt class="text-amber-400">{{ t('catalog.unreadable') }}</dt>
                 <dd class="truncate font-mono text-xs text-amber-300/80" :title="version.error">{{ version.error }}</dd>
+              </template>
+              <template v-if="file">
+                <dt class="text-slate-500">{{ t('catalog.fileName') }}</dt>
+                <dd class="select-all break-all font-mono text-xs leading-5 text-slate-300">{{ file.name }}</dd>
+                <dt class="text-slate-500">{{ t('catalog.folder') }}</dt>
+                <dd class="select-all break-all font-mono text-xs leading-5 text-slate-400">{{ file.folder }}</dd>
               </template>
             </dl>
           </div>

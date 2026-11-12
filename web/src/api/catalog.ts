@@ -39,6 +39,23 @@ export interface ItemPage {
   unavailableServers?: number
 }
 
+/** Searches shorter than this, once trimmed, are rejected by the API. */
+export const MIN_SEARCH_LENGTH = 3
+
+export interface SearchGroup {
+  kind: LibraryKind
+  /** The best matches of the kind, at most the requested limit. */
+  items: ItemCard[]
+  /** Every matching title of the kind. */
+  total: number
+}
+
+export interface SearchResult {
+  /** Only the kinds with matches, in the order movies, series, other. */
+  groups: SearchGroup[]
+  unavailableServers: number
+}
+
 export interface Track {
   index: number
   language?: string
@@ -62,6 +79,8 @@ export interface Version {
   audio: Track[]
   subtitles: Track[]
   error?: string
+  /** Location of the file on the server, only sent to admins. */
+  path?: string
 }
 
 export interface ChildItem {
@@ -163,6 +182,11 @@ export const catalogApi = {
     const qs = new URLSearchParams()
     for (const [key, value] of Object.entries({ ...params, filters: params.filters && serializeFilters(params.filters) })) if (value !== undefined && value !== '') qs.set(key, String(value))
     return api<ItemPage>(`/kinds/${kind}/items?${qs}`)
+  },
+  search: (query: string, limit?: number) => {
+    const qs = new URLSearchParams({ query })
+    if (limit) qs.set('limit', String(limit))
+    return api<SearchResult>(`/search?${qs}`)
   },
   get: (id: string) => api<ItemDetail>(`/items/${id}`),
   filterOptions: (kind: LibraryKind, library?: string, category?: FilterCategory, query = '', selected: string[] = [], locale = 'fr') => {

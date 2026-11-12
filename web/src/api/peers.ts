@@ -14,7 +14,8 @@ export interface Peer {
 export const peersApi = {
   pairingCode: () => api<{ code: string }>('/admin/federation/pairing-code'),
   list: () => api<Peer[]>('/admin/federation/peers'),
-  add: (code: string) => api<Peer>('/admin/federation/peers', { method: 'POST', body: { code } }),
+  /** `pairingPending` is true while the other server has not paired this one back. */
+  add: (code: string) => api<Peer & { pairingPending: boolean }>('/admin/federation/peers', { method: 'POST', body: { code } }),
   update: (id: string, url: string) =>
     api<Peer>(`/admin/federation/peers/${id}`, { method: 'PATCH', body: { url } }),
   sync: (id: string) => api<{ users: number }>(`/admin/federation/peers/${id}/sync`, { method: 'POST' }),

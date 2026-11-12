@@ -32,6 +32,8 @@ services:
       # How many videos may be converted at the same time.
       MAX_TRANSCODES: ${MAX_TRANSCODES:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Proxies allowed to set X-Forwarded-For (CIDRs, comma-separated); empty means the compose network.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
     volumes:
       # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
       - /video/path:/media:ro

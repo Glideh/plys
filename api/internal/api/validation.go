@@ -3,7 +3,6 @@ package api
 import (
 	"errors"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,8 +15,9 @@ import (
 )
 
 var (
-	usernamePattern  = regexp.MustCompile(`^[A-Za-z0-9._-]{3,32}$`)
-	supportedLocales = []string{"fr", "en"}
+	usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{3,32}$`)
+	// supportedLocales lists the interface languages; the first one is the default.
+	supportedLocales = []string{"fr", "en", "pt-BR"}
 )
 
 const (
@@ -61,16 +61,29 @@ func validatePassword(s string) error {
 	return nil
 }
 
+var errUnsupportedLocale = errors.New("locale must be one of: " + strings.Join(supportedLocales, ", "))
+
+// canonicalLocale matches a locale case-insensitively and returns its canonical spelling (pt-br becomes pt-BR).
+func canonicalLocale(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	for _, locale := range supportedLocales {
+		if strings.EqualFold(locale, s) {
+			return locale, true
+		}
+	}
+	return "", false
+}
+
 // normalizeLocale returns the default locale for an empty value.
 func normalizeLocale(s string) (string, error) {
-	s = strings.ToLower(strings.TrimSpace(s))
-	if s == "" {
+	if strings.TrimSpace(s) == "" {
 		return supportedLocales[0], nil
 	}
-	if !slices.Contains(supportedLocales, s) {
-		return "", errors.New("locale must be one of: fr, en")
+	locale, ok := canonicalLocale(s)
+	if !ok {
+		return "", errUnsupportedLocale
 	}
-	return s, nil
+	return locale, nil
 }
 
 func validateRole(s string) error {

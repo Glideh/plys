@@ -31,6 +31,18 @@ data class ItemCard(
 @Serializable
 data class ItemPage(val items: List<ItemCard>, val total: Int, val offset: Int, val limit: Int, val unavailableServers: Int = 0)
 
+/** The best matches of one library kind; total counts every matching title. */
+@Serializable
+data class SearchGroup(val kind: String, val items: List<ItemCard> = emptyList(), val total: Int = 0) {
+    val catalogKind: CatalogKind? get() = CatalogKind.entries.firstOrNull { it.value == kind }
+}
+
+@Serializable
+data class SearchResult(val groups: List<SearchGroup> = emptyList(), val unavailableServers: Int = 0)
+
+/** Searches shorter than this, once trimmed, are rejected by the API. */
+const val MIN_SEARCH_LENGTH = 3
+
 data class CatalogCount(val total: Int, val partial: Boolean = false)
 
 @Serializable
@@ -72,23 +84,31 @@ data class HomeResponse(
 @Serializable
 data class CatalogFilters(
     val genres: List<Int> = emptyList(), val excludeGenres: List<Int> = emptyList(),
-    val genreMode: String = "any", val actors: List<Int> = emptyList(),
+    val actors: List<Int> = emptyList(),
     val creators: List<Int> = emptyList(), val keywords: List<Int> = emptyList(),
     val languages: List<String> = emptyList(), val countries: List<String> = emptyList(),
     val yearMin: Int? = null, val yearMax: Int? = null,
     val ratingMin: Double? = null, val votesMin: Int? = null,
     val runtimeMin: Int? = null, val runtimeMax: Int? = null,
+    val resolution: String? = null, val audio: String? = null,
 ) {
     val count: Int get() = listOf(genres, excludeGenres, actors, creators, keywords, languages, countries).count { it.isNotEmpty() } +
-        listOf(yearMin, yearMax, ratingMin, votesMin, runtimeMin, runtimeMax).count { it != null }
-    val valid: Boolean get() = genreMode in listOf("any", "all") && genres.none { it in excludeGenres } &&
+        listOf(yearMin, yearMax, ratingMin, votesMin, runtimeMin, runtimeMax, resolution, audio).count { it != null }
+    val valid: Boolean get() = genres.none { it in excludeGenres } &&
         listOf(genres, excludeGenres, actors, creators, keywords).all { it.size <= 20 && it.all { id -> id > 0 } } &&
         listOf(languages, countries).all { it.size <= 20 && it.all { code -> code.matches(Regex("[a-zA-Z]{2}")) } } &&
         listOfNotNull(yearMin, yearMax).all { it in 1800..9999 } &&
         (yearMin == null || yearMax == null || yearMin <= yearMax) &&
         (runtimeMin == null || runtimeMax == null || runtimeMin <= runtimeMax) &&
         listOfNotNull(runtimeMin, runtimeMax).all { it in 0..10000 } &&
-        (ratingMin == null || ratingMin.isFinite() && ratingMin in 0.0..10.0) && (votesMin == null || votesMin >= 0)
+        (ratingMin == null || ratingMin.isFinite() && ratingMin in 0.0..10.0) && (votesMin == null || votesMin >= 0) &&
+        (resolution == null || resolution in RESOLUTIONS) && (audio == null || audio in AUDIO_FORMATS)
+
+    companion object {
+        /** Values accepted by the API for the technical filters (see CatalogFilters in docs/openapi.yaml). */
+        val RESOLUTIONS = listOf("2160p", "1080p", "720p", "SD")
+        val AUDIO_FORMATS = listOf("atmos", "truehd", "eac3", "ac3", "dtsHdMa", "dts", "flac", "pcm", "aac", "opus", "mp3")
+    }
 }
 
 @Serializable
@@ -115,7 +135,15 @@ data class Version(
     val id: String, val label: String, val durationSeconds: Double? = null, val error: String? = null,
     val audio: List<MediaTrack> = emptyList(), val subtitles: List<MediaTrack> = emptyList(),
     val resolution: String = "", val hdr: Boolean = false, val videoCodec: String = "",
+    /** File size in bytes. */
+    val size: Long = 0,
 )
+
+/** The item a server holds for a title, with the server it is read from (null for the signed-in server). */
+data class TitleCopy(val source: ServerRef?, val item: ItemDetail)
+
+/** A version of a title the user can pick, with the copy holding it. */
+data class VersionChoice(val copy: TitleCopy, val version: Version)
 
 @Serializable
 data class MediaTrack(

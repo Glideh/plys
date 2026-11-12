@@ -1,5 +1,6 @@
 package fr.plys.tv.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +46,8 @@ import fr.plys.tv.data.HomeItem
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.Library
+import fr.plys.tv.data.MIN_SEARCH_LENGTH
+import fr.plys.tv.data.SearchGroup
 
 // Focused tiles grow and draw a border and a shadow: rows keep this room around them so nothing is clipped,
 // and every element of the screen starts at the same horizontal gutter.
@@ -65,25 +74,41 @@ private fun recentLabel(kind: CatalogKind): Int = when (kind) {
 
 /**
  * Full-width rows stacked vertically, the TV convention: up and down change row, left and right browse it.
- * What the viewer was watching comes first, then the libraries and what was added lately, so the home stays
- * useful even before anything has been watched.
+ * The search field comes first; from [MIN_SEARCH_LENGTH] characters one row per kind of matches replaces the
+ * other rows. Otherwise what the viewer was watching comes first, then the libraries and what was added lately,
+ * so the home stays useful even before anything has been watched.
  */
 @Composable
 fun HomeScreen(
     data: HomeResponse, model: CatalogViewModel, libraries: List<Library>, catalogCounts: Map<CatalogKind, CatalogCount>,
-    recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
+    recent: Map<CatalogKind, List<ItemCard>> = emptyMap(), search: SearchState = SearchState(),
 ) {
+    // Once the viewer has typed, rows that come and go with the results must not take the focus from the field.
+    var typed by remember { mutableStateOf(false) }
+    BackHandler(search.query.isNotEmpty()) { model.clearSearch() }
     val firstRail = data.continueWatching.ifEmpty { data.nextUp }
     LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)) {
+        item("search") {
+            Column(Modifier.padding(horizontal = FocusGutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                SearchField(search.query, { typed = true; model.search(it) }, stringResource(R.string.search_everything),
+                    Modifier.fillMaxWidth(0.6f), height = 48.dp)
+                if (search.term.isNotEmpty() && !search.active) Text(stringResource(R.string.search_hint, MIN_SEARCH_LENGTH),
+                    style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
+            }
+        }
+        if (search.active) {
+            searchResults(search, model, requestInitial = !typed)
+            return@LazyColumn
+        }
         if (data.unavailableServers > 0) item("partial") {
             Text(stringResource(R.string.partial_results, data.unavailableServers), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = FocusGutter))
         }
         if (data.continueWatching.isNotEmpty()) item("continue") {
-            HomeRail(R.string.continue_watching, data.continueWatching, model, requestInitial = true)
+            HomeRail(R.string.continue_watching, data.continueWatching, model, requestInitial = !typed)
         }
         if (data.nextUp.isNotEmpty()) item("next") {
-            HomeRail(R.string.next_up, data.nextUp, model, requestInitial = data.continueWatching.isEmpty())
+            HomeRail(R.string.next_up, data.nextUp, model, requestInitial = !typed && data.continueWatching.isEmpty())
         }
         item("libraries") {
             Column {
@@ -91,7 +116,7 @@ fun HomeScreen(
                 Row(Modifier.padding(horizontal = FocusGutter, vertical = FocusGutter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     CatalogKind.entries.forEach { kind ->
                         KindTile(kind, catalogCounts[kind], libraries.count { it.kind == kind.value },
-                            Modifier.focusInitially(firstRail.isEmpty() && kind == CatalogKind.MOVIES)) { model.openKind(kind) }
+                            Modifier.focusInitially(!typed && firstRail.isEmpty() && kind == CatalogKind.MOVIES)) { model.openKind(kind) }
                     }
                 }
             }
@@ -112,9 +137,54 @@ fun HomeScreen(
     }
 }
 
+/** One row per kind with matches; the first match takes the focus when coming back from a result. */
+private fun androidx.compose.foundation.lazy.LazyListScope.searchResults(search: SearchState, model: CatalogViewModel, requestInitial: Boolean) {
+    val result = search.result
+    val groups = result?.groups.orEmpty()
+    val unavailable = result?.unavailableServers ?: 0
+    if (unavailable > 0) item("search-partial") {
+        Text(stringResource(R.string.partial_results, unavailable), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = FocusGutter))
+    }
+    search.error?.let { error -> item("search-error") {
+        ErrorBanner(LocalContext.current.errorMessage(error), { model.search(search.query, force = true) }, Modifier.padding(horizontal = FocusGutter))
+    } }
+    if (search.loading && groups.isEmpty()) item("search-loading") {
+        Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(32.dp), color = Plys.Accent400, strokeWidth = 3.dp)
+        }
+    }
+    if (result != null && groups.isEmpty() && !search.loading && search.error == null) item("search-empty") {
+        EmptyState(stringResource(R.string.no_results), Modifier.padding(horizontal = FocusGutter))
+    }
+    groups.forEach { group ->
+        item("search-${group.kind}") { SearchRow(group, model, requestInitial && group == groups.first()) }
+    }
+}
+
 @Composable
-fun RailTitle(title: Int, modifier: Modifier = Modifier) {
-    Text(stringResource(title), style = MaterialTheme.typography.titleLarge, color = Plys.TextStrong,
+private fun SearchRow(group: SearchGroup, model: CatalogViewModel, requestInitial: Boolean) {
+    val kind = group.catalogKind ?: return
+    Column {
+        RailTitle("${stringResource(kindLabel(kind))} · ${pluralStringResource(R.plurals.title_count, group.total, group.total)}")
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding, verticalAlignment = Alignment.CenterVertically) {
+            items(group.items, key = { it.id }) { card ->
+                MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp)
+                    .focusInitially(requestInitial && card == group.items.first())) { model.openCard(card) }
+            }
+            if (group.total > group.items.size) item("all") {
+                PlysButton(onClick = { model.openSearchKind(kind) }) { Text(stringResource(R.string.see_all)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun RailTitle(title: Int, modifier: Modifier = Modifier) = RailTitle(stringResource(title), modifier)
+
+@Composable
+fun RailTitle(title: String, modifier: Modifier = Modifier) {
+    Text(title, style = MaterialTheme.typography.titleLarge, color = Plys.TextStrong,
         modifier = modifier.padding(horizontal = FocusGutter).padding(top = 8.dp))
 }
 

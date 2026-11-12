@@ -101,6 +101,7 @@ func run() error {
 		Playback:               player,
 		Subtitles:              subtitles,
 		FederationRequireHTTPS: cfg.FederationRequireHTTPS,
+		TrustedProxies:         cfg.TrustedProxies,
 	}).Routes()
 
 	srv := &http.Server{
@@ -115,7 +116,7 @@ func run() error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("listening", "addr", cfg.HTTPAddr)
+	slog.Info("listening", "addr", cfg.HTTPAddr, "trusted_proxies", cfg.TrustedProxies)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

@@ -21,8 +21,13 @@ import fr.plys.tv.data.WatchlistItem
 import fr.plys.tv.data.WatchlistResponse
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.ServerRef
+import fr.plys.tv.data.TitleCopy
+import fr.plys.tv.data.VersionChoice
+import fr.plys.tv.data.MIN_SEARCH_LENGTH
+import fr.plys.tv.data.SearchResult
 import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,12 +45,38 @@ sealed interface Screen {
     data class Watchlist(val data: WatchlistResponse) : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
+    // copies are the items every server holds for a playable title, the shown one included: their versions are
+    // offered together, and picking one held by another server shows that server's copy.
     data class Detail(
         val item: ItemDetail, val source: ServerRef? = null, val sources: List<ServerRef> = emptyList(),
         val selection: PlaybackSelection = PlaybackSelection(), val target: ItemDetail? = null,
+        val copies: List<TitleCopy> = emptyList(),
     ) : Screen {
         val playable: ItemDetail get() = target ?: item
+
+        /** Versions of the playable item across every server holding it, the shown copy's always up to date. */
+        val versionChoices: List<VersionChoice> get() {
+            val shown = TitleCopy(source, playable)
+            val all = if (target != null || copies.isEmpty()) listOf(shown) else copies.map { if (isShown(it)) shown else it }
+            return all.flatMap { copy -> copy.item.versions.map { VersionChoice(copy, it) } }
+        }
+
+        /** Series and seasons have no version to merge: they switch server as a whole. */
+        val serverChoices: List<ServerRef> get() = if (item.children.isNotEmpty() && sources.size > 1) sources else emptyList()
+
+        fun isShown(copy: TitleCopy): Boolean = copy.source?.serverId == source?.serverId && copy.item.id == item.id
     }
+}
+
+/** The global search of the home screen; [result] keeps the previous matches while a new search runs. */
+data class SearchState(
+    val query: String = "",
+    val result: SearchResult? = null,
+    val loading: Boolean = false,
+    val error: ClientException? = null,
+) {
+    val term: String get() = query.trim()
+    val active: Boolean get() = term.codePointCount(0, term.length) >= MIN_SEARCH_LENGTH
 }
 
 data class CatalogState(
@@ -61,9 +92,11 @@ data class CatalogState(
     val catalogCounts: Map<CatalogKind, CatalogCount> = emptyMap(),
     /** Latest additions of each kind, shown on the home screen. */
     val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
+    val search: SearchState = SearchState(),
 )
 
 private const val RECENT_ITEMS = 20
+private const val SEARCH_DEBOUNCE_MS = 350L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
@@ -74,6 +107,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private var retryAction: suspend () -> Unit = { restore() }
     private var activeJob: Job? = null
     private var countsJob: Job? = null
+    private var searchJob: Job? = null
     private var generation = 0
     private data class PageRequest(val query: CatalogQuery, val seed: ItemPage, val revision: Int)
     private val pageRequest = MutableStateFlow<PageRequest?>(null)
@@ -106,6 +140,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
         countsJob?.cancel()
+        clearSearch()
         mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         clearCatalogState()
         api.login(server, username, password)
@@ -143,10 +178,51 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         }
     }
 
-    fun home() = perform { clearCatalogState(); history.clear(); loadHome() }
+    fun home() = perform { clearCatalogState(); clearSearch(); history.clear(); loadHome() }
 
-    fun openKind(kind: CatalogKind) = perform {
-        val query = CatalogQuery(kind)
+    /**
+     * Searches every kind while the viewer types, once the query is long enough; only the last query is answered.
+     * [force] runs it again even when the query did not change, to retry after an error.
+     */
+    fun search(query: String, force: Boolean = false) {
+        val current = mutableState.value.search
+        val next = current.copy(query = query)
+        if (!next.active) {
+            searchJob?.cancel()
+            mutableState.value = mutableState.value.copy(search = SearchState(query))
+            return
+        }
+        if (!force && next.term == current.term && (current.loading || current.result != null)) {
+            mutableState.value = mutableState.value.copy(search = next)
+            return
+        }
+        searchJob?.cancel()
+        mutableState.value = mutableState.value.copy(search = next.copy(loading = true, error = null))
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            try {
+                val result = api.search(next.term)
+                mutableState.value = mutableState.value.copy(search = mutableState.value.search.copy(result = result, loading = false))
+            } catch (error: ClientException) {
+                if (!api.signedIn) {
+                    history.clear()
+                    mutableState.value = mutableState.value.copy(screen = Screen.Login, error = error, search = SearchState())
+                } else {
+                    mutableState.value = mutableState.value.copy(search = mutableState.value.search.copy(error = error, loading = false))
+                }
+            }
+        }
+    }
+
+    fun clearSearch() = search("")
+
+    fun openKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind))
+
+    /** The full listing of one kind for the current search, from the home screen. */
+    fun openSearchKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind, query = mutableState.value.search.term))
+
+    private fun openCatalog(query: CatalogQuery) = perform {
+        val kind = query.kind
         val page = api.catalog(query)
         navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), page, query))
         preparePaging(query, page)
@@ -159,6 +235,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun logout() = perform {
         countsJob?.cancel()
+        clearSearch()
         mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
         api.logout()
         clearCatalogState()
@@ -198,13 +275,43 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun openItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
         val item = api.item(id, source)
-        navigate(Screen.Detail(item, source, sources, target = playTarget(item, source)))
+        val copies = copies(item, source, sources)
+        // A copy that cannot play is not shown first when another server's can.
+        val shown = copies.takeIf { item.playableVersion == null }?.firstOrNull { it.item.playableVersion != null } ?: TitleCopy(source, item)
+        navigate(Screen.Detail(shown.item, shown.source, sources, target = playTarget(shown.item, shown.source), copies = copies))
     }
 
+    /** The items each server holds for a playable title, the given one first; servers that fail to answer are left out. */
+    private suspend fun copies(item: ItemDetail, source: ServerRef?, sources: List<ServerRef>): List<TitleCopy> {
+        if (item.children.isNotEmpty() || sources.size < 2) return emptyList()
+        val others = sources
+            .filterNot { it.serverId == source?.serverId && (it.itemId.isBlank() || it.itemId == item.id) }
+            .filter { it.itemId.isNotBlank() }
+            .distinctBy { it.serverId to it.itemId }
+            .mapNotNull { other ->
+                try { TitleCopy(other, api.item(other.itemId, other)) } catch (_: ClientException) { null }
+            }
+        return if (others.isEmpty()) emptyList() else listOf(TitleCopy(source, item)) + others
+    }
+
+    /** Shows a series or season as another server holds it. */
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
         val item = api.item(source.itemId, source)
         mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = PlaybackSelection(), target = playTarget(item, source)))
+    }
+
+    /** Picks a version; one held by another server shows that server's copy, with its own progress and watched state. */
+    fun selectVersion(choice: VersionChoice) {
+        val screen = mutableState.value.screen as? Screen.Detail ?: return
+        val copy = choice.copy
+        val next = if (screen.target != null || screen.isShown(copy)) screen
+            else screen.copy(
+                item = copy.item, source = copy.source,
+                // Keeps what was loaded for the copy left, so coming back to it shows its latest state.
+                copies = screen.copies.map { if (screen.isShown(it)) TitleCopy(screen.source, screen.item) else it },
+            )
+        mutableState.value = mutableState.value.copy(screen = next.copy(selection = PlaybackSelection(choice.version.id).normalized(next.playable)))
     }
 
     /** The episode a series or season would play; null for playable items or when it cannot be loaded. */

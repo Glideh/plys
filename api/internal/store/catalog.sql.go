@@ -109,7 +109,7 @@ WITH libs AS (
   CROSS JOIN LATERAL jsonb_each(i.filter_labels) AS facet
   CROSS JOIN LATERAL jsonb_array_elements(facet.value) AS entry
   WHERE ($5::text = '' OR facet.key = $5)
-    AND ($6::text = '' OR facet.key IN ('languages', 'countries') OR entry->>'label' ILIKE $6 OR entry->>'id' = ANY($7::text[]))
+    AND ($6::text = '' OR facet.key IN ('languages', 'countries') OR search_fold(entry->>'label') ILIKE search_fold($6) OR entry->>'id' = ANY($7::text[]))
 ), options AS (
   SELECT DISTINCT ON (category, id) category, id, label FROM entries ORDER BY category, id, label
 ), ranked AS (
@@ -247,7 +247,7 @@ func (q *Queries) ListChildItems(ctx context.Context, arg ListChildItemsParams) 
 }
 
 const listItemFiles = `-- name: ListItemFiles :many
-SELECT id, item_id, size, duration_seconds, container, streams, edition, probe_error
+SELECT id, item_id, path, size, duration_seconds, container, streams, edition, probe_error
 FROM media_files
 WHERE item_id = ANY($1::uuid[]) AND missing_since IS NULL
 ORDER BY size DESC
@@ -256,6 +256,7 @@ ORDER BY size DESC
 type ListItemFilesRow struct {
 	ID              uuid.UUID
 	ItemID          *uuid.UUID
+	Path            string
 	Size            int64
 	DurationSeconds *float64
 	Container       *string
@@ -264,7 +265,7 @@ type ListItemFilesRow struct {
 	ProbeError      *string
 }
 
-// Paths stay server-side: clients only see technical details.
+// The path is only exposed to local admins (see versions in internal/api/catalog.go).
 func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]ListItemFilesRow, error) {
 	rows, err := q.db.Query(ctx, listItemFiles, itemIds)
 	if err != nil {
@@ -277,6 +278,7 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 		if err := rows.Scan(
 			&i.ID,
 			&i.ItemID,
+			&i.Path,
 			&i.Size,
 			&i.DurationSeconds,
 			&i.Container,
@@ -309,6 +311,8 @@ visible AS (
     JOIN libs ON libs.id = x.library_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL
+      AND (($3::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = $3::jsonb->>'resolution')
+      AND (($3::jsonb->>'audio') IS NULL OR ($3::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 unwatched AS (
     SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
@@ -331,17 +335,14 @@ JOIN libs ON libs.id = i.library_id
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.parent_id IS NULL
-  AND ($2::text = '' OR i.title ILIKE $2 OR i.original_title ILIKE $2)
+  AND ($2::text = '' OR search_fold(i.title) ILIKE search_fold($2) OR search_fold(i.original_title) ILIKE search_fold($2))
   AND (($3::jsonb->>'yearMin') IS NULL OR i.year >= ($3::jsonb->>'yearMin')::integer)
   AND (($3::jsonb->>'yearMax') IS NULL OR i.year <= ($3::jsonb->>'yearMax')::integer)
   AND (($3::jsonb->>'ratingMin') IS NULL OR i.rating >= ($3::jsonb->>'ratingMin')::real)
   AND (($3::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($3::jsonb->>'votesMin')::integer)
   AND (($3::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($3::jsonb->>'runtimeMin')::integer))
   AND (($3::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($3::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length($3::jsonb->'genres'), 0) = 0 OR
-       CASE WHEN $3::jsonb->>'genreMode' = 'all'
-       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres'))
-       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres')) END)
+  AND (coalesce(jsonb_array_length($3::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'genres')))
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length($3::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'actors')))
   AND (coalesce(jsonb_array_length($3::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($3::jsonb->'creators')))
@@ -465,6 +466,8 @@ WITH visible AS (
     JOIN items x ON x.id = f.item_id
     LEFT JOIN items p ON p.id = x.parent_id
     WHERE f.missing_since IS NULL AND x.library_id = $2
+      AND (($4::jsonb->>'resolution') IS NULL OR media_resolution(f.streams) = $4::jsonb->>'resolution')
+      AND (($4::jsonb->>'audio') IS NULL OR ($4::jsonb->>'audio') = ANY(media_audio_formats(f.streams)))
 ),
 unwatched AS (
     SELECT sn.parent_id AS series_id, count(DISTINCT x.id)::int AS n
@@ -484,17 +487,14 @@ FROM items i
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
 WHERE i.library_id = $2 AND i.parent_id IS NULL
-  AND ($3::text = '' OR i.title ILIKE $3 OR i.original_title ILIKE $3)
+  AND ($3::text = '' OR search_fold(i.title) ILIKE search_fold($3) OR search_fold(i.original_title) ILIKE search_fold($3))
   AND (($4::jsonb->>'yearMin') IS NULL OR i.year >= ($4::jsonb->>'yearMin')::integer)
   AND (($4::jsonb->>'yearMax') IS NULL OR i.year <= ($4::jsonb->>'yearMax')::integer)
   AND (($4::jsonb->>'ratingMin') IS NULL OR i.rating >= ($4::jsonb->>'ratingMin')::real)
   AND (($4::jsonb->>'votesMin') IS NULL OR i.vote_count >= ($4::jsonb->>'votesMin')::integer)
   AND (($4::jsonb->>'runtimeMin') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes >= ($4::jsonb->>'runtimeMin')::integer))
   AND (($4::jsonb->>'runtimeMax') IS NULL OR (i.kind = 'movie' AND i.runtime_minutes <= ($4::jsonb->>'runtimeMax')::integer))
-  AND (coalesce(jsonb_array_length($4::jsonb->'genres'), 0) = 0 OR
-       CASE WHEN $4::jsonb->>'genreMode' = 'all'
-       THEN i.genre_ids @> ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres'))
-       ELSE i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres')) END)
+  AND (coalesce(jsonb_array_length($4::jsonb->'genres'), 0) = 0 OR i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'genres')))
   AND NOT (i.genre_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'excludeGenres')))
   AND (coalesce(jsonb_array_length($4::jsonb->'actors'), 0) = 0 OR i.actor_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'actors')))
   AND (coalesce(jsonb_array_length($4::jsonb->'creators'), 0) = 0 OR i.creator_ids && ARRAY(SELECT value::integer FROM jsonb_array_elements_text($4::jsonb->'creators')))
@@ -537,6 +537,7 @@ type ListLibraryItemsRow struct {
 
 // Top-level entries of a library; entries whose files are all missing are hidden.
 // Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
+// Technical filters (resolution, audio) narrow the files: an entry matches when one of its files does.
 // Episodes still to watch per series, for the badge of the grid.
 func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsParams) ([]ListLibraryItemsRow, error) {
 	rows, err := q.db.Query(ctx, listLibraryItems,

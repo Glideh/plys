@@ -35,6 +35,9 @@ var (
 	// errPeerNotFound reports a 404 from a peer, such as an endpoint its version does not have yet.
 	errPeerNotFound = errors.New("peer answered not found")
 	errPeerRejected = errors.New("peer rejected the pairing")
+	// errPeerNotPaired means the peer refused this server's signature, usually because
+	// pairing is mutual and the peer's administrator has not added this server yet.
+	errPeerNotPaired = errors.New("peer does not recognize this server")
 )
 
 // pairingCode is exchanged between admins out of band and contains only public information.
@@ -152,10 +155,19 @@ func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ = s.checkPeerVersion(ctx, p)
+	out := addedPeerDTO{peerDTO: peerToDTO(p)}
 	if _, err := s.syncPeerUsers(ctx, p); err != nil {
 		logPeerSyncFailure(ctx, p, err)
+		out.PairingPending = errors.Is(err, errPeerNotPaired)
 	}
-	httpx.JSON(w, http.StatusCreated, peerToDTO(p))
+	httpx.JSON(w, http.StatusCreated, out)
+}
+
+// addedPeerDTO tells the admin when the peer has not paired this server back yet:
+// pairing is mutual, so nothing is shared until both sides have added each other.
+type addedPeerDTO struct {
+	peerDTO
+	PairingPending bool `json:"pairingPending"`
 }
 
 // verifyPeer checks that the URL answers with the key from the pairing code, then that it can sign a fresh nonce with it.
@@ -212,6 +224,9 @@ func (s *Server) fetchPeerJSON(ctx context.Context, method, target string, body 
 		return fmt.Errorf("%w: %v", errPeerUnreachable, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("%w: %w", errPeerUnreachable, errPeerNotPaired)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("%w: status %d", errPeerUnreachable, resp.StatusCode)
 	}

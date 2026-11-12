@@ -19,6 +19,10 @@
     </plurals>
     <string name="catalog_count">Titles: %1$d</string>
     <string name="search">Search</string>
+    <string name="search_everything">Search movies, TV shows and videos</string>
+    <string name="search_hint">Type at least %1$d characters to search.</string>
+    <string name="no_results">No results.</string>
+    <string name="see_all">See all</string>
     <string name="sort">Sort</string>
     <string name="sort_title">Title</string>
     <string name="sort_year">Year</string>
@@ -46,8 +50,22 @@
     <string name="filter_votes">Minimum vote count</string>
     <string name="filter_runtime_min">Minimum runtime (minutes)</string>
     <string name="filter_runtime_max">Maximum runtime (minutes)</string>
-    <string name="genres_all">Included genres: all</string>
-    <string name="genres_any">Included genres: at least one</string>
+    <string name="filter_resolution">Resolution</string>
+    <string name="filter_audio">Sound</string>
+    <string name="filter_group_year">Release year</string>
+    <string name="filter_group_rating">TMDB rating</string>
+    <string name="filter_group_runtime">Runtime (minutes)</string>
+    <string name="filter_from">From</string>
+    <string name="filter_to">To</string>
+    <string name="filter_min_rating">Minimum rating (0–10)</string>
+    <string name="filter_min_votes">Minimum votes</string>
+    <string name="filter_minimum">Minimum</string>
+    <string name="filter_maximum">Maximum</string>
+    <string name="resolution_2160p">4K (2160p)</string>
+    <string name="resolution_1080p">Full HD (1080p)</string>
+    <string name="resolution_720p">HD (720p)</string>
+    <string name="audio_dts_all">DTS (all)</string>
+    <string name="audio_pcm">PCM (uncompressed)</string>
     <string name="invalid_filters">Check the numeric bounds and genre selections.</string>
     <string name="home">Home</string>
     <string name="movies">Movies</string>
@@ -90,6 +108,7 @@
     <string name="error_setup">Initialize the server using the web client before signing in on your TV.</string>
     <string name="error_url">Enter the HTTP or HTTPS server root address, without credentials, query or fragment.</string>
     <string name="error_busy">The transcoder is busy. Please try again later.</string>
+    <string name="error_rate_limited">Too many attempts. Wait a moment and try again.</string>
     <string name="error_not_found">This content or playback session is no longer available.</string>
     <string name="error_storage">Cannot read or save the secure session on this device.</string>
     <string name="error_response">Unexpected server response.</string>
@@ -114,7 +133,7 @@
     <string name="seasons">Seasons</string>
     <string name="episodes">Episodes</string>
     <string name="parts">Parts</string>
-    <string name="available_on">Also on</string>
+    <string name="server_name">Server</string>
     <string name="up_next">Next episode</string>
     <string name="up_next_in">Starts in %1$d s</string>
     <string name="play_next_now">Play now</string>

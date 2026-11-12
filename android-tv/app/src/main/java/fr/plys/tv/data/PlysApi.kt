@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
+enum class Failure { URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, STORAGE, RESPONSE, SERVER }
 
 class ClientException(val failure: Failure, val status: Int = 0, cause: Throwable? = null) :
     Exception(failure.name, cause)
@@ -147,10 +147,21 @@ class PlysApi(
         query.libraryId?.let { params.addQueryParameter("library", it) }
         if (query.filters.count > 0) params.addQueryParameter("filters", Json.encodeToString(query.filters))
         val page = decode<ItemPage>(request("kinds/${query.kind.value}/items?${params.build().encodedQuery}"))
-        page.copy(items = page.items.map { card -> card.copy(sources = card.sources.map { source ->
-            if (source.serverId == localServerId) source.copy(serverUrl = null) else source
-        }) })
+        page.copy(items = page.items.map(::withLocalSources))
     }
+
+    /** Titles of every kind, on this server and its peers, whose title contains [query]; at most [limit] per kind. */
+    suspend fun search(query: String, limit: Int = 20): SearchResult = locked {
+        if (localServerId == null) localServerId = decode<ServerInfo>(request("server", authenticated = false)).id
+        val params = checkNotNull(base).newBuilder().addQueryParameter("query", query.trim()).addQueryParameter("limit", limit.toString())
+        val result = decode<SearchResult>(request("search?${params.build().encodedQuery}"))
+        result.copy(groups = result.groups.filter { it.catalogKind != null }.map { group -> group.copy(items = group.items.map(::withLocalSources)) })
+    }
+
+    // The local server is reached through the address the user signed in with, not its advertised public one.
+    private fun withLocalSources(card: ItemCard) = card.copy(sources = card.sources.map { source ->
+        if (source.serverId == localServerId) source.copy(serverUrl = null) else source
+    })
 
     suspend fun filterOptions(kind: CatalogKind, category: String, query: String, library: String?, selected: List<String>, locale: String): FilterOptions = locked {
         val params = checkNotNull(base).newBuilder().addQueryParameter("category", category)
@@ -303,6 +314,7 @@ class PlysApi(
             val failure = when (status) {
                 401 -> if (authenticated) Failure.SESSION else Failure.CREDENTIALS
                 404 -> Failure.NOT_FOUND
+                429 -> Failure.RATE_LIMITED
                 503 -> Failure.BUSY
                 else -> Failure.SERVER
             }

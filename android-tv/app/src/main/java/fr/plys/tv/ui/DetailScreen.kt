@@ -105,18 +105,10 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                                 if (item.canWatchlist) Action(if (item.inWatchlist) R.string.remove_from_watchlist else R.string.add_to_watchlist) { model.toggleWatchlist() }
                                 item.next?.let { next -> Action(R.string.next_episode) { model.openItem(next.id, source) } }
                             }
-                            if (screen.sources.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(stringResource(R.string.available_on), style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
-                                screen.sources.forEach { available ->
-                                    Button(onClick = { model.selectSource(available) }, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-                                        Text((if (available.serverId == source?.serverId) "✓ " else "") + available.serverName, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
                         }
                     }
                 }
-                item("tracks") { Box(Modifier.padding(start = 172.dp + 32.dp).then(showTop)) { PlaybackSelectionControls(playable, screen.selection, model::selectPlayback) } }
+                item("tracks") { Box(Modifier.padding(start = 172.dp + 32.dp).then(showTop)) { PlaybackSelectionControls(screen, model) } }
                 if (item.children.isNotEmpty()) item("children") {
                     ChildrenRow(item, model, source, focusFirst = !canPlay)
                 }

@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import fr.plys.tv.ui.PlysButton as Button
@@ -64,7 +65,38 @@ import fr.plys.tv.data.PlysApi
 import kotlinx.coroutines.delay
 
 private val categories = listOf("genres", "excludeGenres", "actors", "creators", "keywords", "languages", "countries")
-private val numbers = listOf("yearMin", "yearMax", "ratingMin", "votesMin", "runtimeMin", "runtimeMax")
+private val choices = listOf("resolution", "audio")
+
+/** Related bounds, shown side by side under one heading: title, then the label of each bound. */
+private data class NumberGroup(val title: Int, val fields: List<Pair<String, Int>>)
+private val numberGroups = listOf(
+    NumberGroup(R.string.filter_group_year, listOf("yearMin" to R.string.filter_from, "yearMax" to R.string.filter_to)),
+    NumberGroup(R.string.filter_group_rating, listOf("ratingMin" to R.string.filter_min_rating, "votesMin" to R.string.filter_min_votes)),
+    NumberGroup(R.string.filter_group_runtime, listOf("runtimeMin" to R.string.filter_minimum, "runtimeMax" to R.string.filter_maximum)),
+)
+
+fun choiceValue(filters: CatalogFilters, key: String): String? = if (key == "resolution") filters.resolution else filters.audio
+
+fun withChoice(filters: CatalogFilters, key: String, value: String?): CatalogFilters =
+    if (key == "resolution") filters.copy(resolution = value) else filters.copy(audio = value)
+
+@Composable
+private fun choiceLabel(key: String, value: String): String = if (key == "resolution") when (value) {
+    "2160p" -> stringResource(R.string.resolution_2160p)
+    "1080p" -> stringResource(R.string.resolution_1080p)
+    "720p" -> stringResource(R.string.resolution_720p)
+    else -> value
+} else when (value) {
+    "atmos" -> "Dolby Atmos"
+    "truehd" -> "Dolby TrueHD"
+    "eac3" -> "Dolby Digital Plus"
+    "ac3" -> "Dolby Digital"
+    "dtsHdMa" -> "DTS-HD Master Audio"
+    "dts" -> stringResource(R.string.audio_dts_all)
+    "pcm" -> stringResource(R.string.audio_pcm)
+    "opus" -> "Opus"
+    else -> value.uppercase()
+}
 
 fun filterSelection(filters: CatalogFilters, key: String): List<String> = when (key) {
     "genres" -> filters.genres.map(Int::toString)
@@ -78,7 +110,7 @@ fun filterSelection(filters: CatalogFilters, key: String): List<String> = when (
 }
 
 fun withFilterSelection(filters: CatalogFilters, key: String, values: List<String>): CatalogFilters = when (key) {
-    "genres" -> filters.copy(genres = values.take(1).mapNotNull(String::toIntOrNull), genreMode = "any")
+    "genres" -> filters.copy(genres = values.take(1).mapNotNull(String::toIntOrNull))
     "excludeGenres" -> filters.copy(excludeGenres = values.take(1).mapNotNull(String::toIntOrNull))
     "actors" -> filters.copy(actors = values.take(1).mapNotNull(String::toIntOrNull))
     "creators" -> filters.copy(creators = values.take(1).mapNotNull(String::toIntOrNull))
@@ -102,16 +134,41 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
     "ratingMin" -> R.string.filter_rating
     "votesMin" -> R.string.filter_votes
     "runtimeMin" -> R.string.filter_runtime_min
+    "resolution" -> R.string.filter_resolution
+    "audio" -> R.string.filter_audio
     else -> R.string.filter_runtime_max
 })
+
+/** A one-line text field in the colours of the web inputs; Done hides the on-screen keyboard. */
+@Composable
+fun SearchField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, height: Dp = 40.dp) {
+    var focused by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    BasicTextField(value, onValueChange,
+        modifier = modifier.height(height)
+            .background(if (focused) Plys.Surface700 else Plys.Surface800, Plys.Small)
+            .border(if (focused) 2.dp else 1.dp, if (focused) Plys.Accent400 else Plys.Hairline, Plys.Small)
+            .onFocusChanged { focused = it.isFocused }
+            .padding(horizontal = 12.dp).semantics { contentDescription = label },
+        singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+        decorationBox = { input ->
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(Modifier.weight(1f)) {
+                    if (value.isEmpty()) Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    input()
+                }
+            }
+        },
+    )
+}
 
 @Composable
 fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
     var search by remember(screen.query.kind, screen.query.libraryId) { mutableStateOf(screen.query.query) }
     var dialog by remember { mutableStateOf("") }
-    var searchFocused by remember { mutableStateOf(false) }
-    val searchLabel = stringResource(R.string.search)
-    val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(search) {
         if (search != screen.query.query) {
             delay(350)
@@ -119,25 +176,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         }
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        BasicTextField(search, { search = it },
-            modifier = Modifier.weight(1f).height(40.dp)
-                .background(if (searchFocused) Plys.Surface700 else Plys.Surface800, Plys.Small)
-                .border(if (searchFocused) 2.dp else 1.dp, if (searchFocused) Plys.Accent400 else Plys.Hairline, Plys.Small)
-                .onFocusChanged { searchFocused = it.isFocused }
-                .padding(horizontal = 12.dp).semantics { contentDescription = searchLabel },
-            singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
-            decorationBox = { input ->
-                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Box(Modifier.weight(1f)) {
-                        if (search.isEmpty()) Text(searchLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        input()
-                    }
-                }
-            },
-        )
+        SearchField(search, { search = it }, stringResource(R.string.search), Modifier.weight(1f))
         if (libraries.count { it.kind == screen.query.kind.value } > 1) ToolbarButton(Icons.Outlined.VideoLibrary,
             libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries)) { dialog = "library" }
         ToolbarButton(Icons.AutoMirrored.Outlined.Sort, "${stringResource(R.string.sort)} : ${stringResource(sortLabel(screen.query.sort))}") { dialog = "sort" }
@@ -148,11 +187,17 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         val filters = screen.query.filters
         val selected = categories.flatMap { key -> filterSelection(filters, key).map { key to it } }
         val bounds = numericFilterValues(filters).filterValues { it.isNotBlank() }
+        val technical = choices.mapNotNull { key -> choiceValue(filters, key)?.let { key to it } }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
             items(selected, key = { "${it.first}:${it.second}" }) { (key, value) ->
                 val label = "${filterLabel(key, screen.query.kind)}: ${model.api.filterOptionLabel(if (key == "excludeGenres") "genres" else key, value)}"
                 Button(onClick = { model.changeQuery(screen.query.copy(filters = withFilterSelection(filters, key, filterSelection(filters, key) - value), offset = 0)) }) {
                     Text(stringResource(R.string.remove_filter, label))
+                }
+            }
+            items(technical, key = { it.first }) { (key, value) ->
+                Button(onClick = { model.changeQuery(screen.query.copy(filters = withChoice(filters, key, null), offset = 0)) }) {
+                    Text(stringResource(R.string.remove_filter, "${filterLabel(key, screen.query.kind)}: ${choiceLabel(key, value)}"))
                 }
             }
             items(bounds.toList(), key = { it.first }) { (key, value) ->
@@ -217,6 +262,7 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     var draft by remember { mutableStateOf(categories.fold(query.filters) { filters, key -> withFilterSelection(filters, key, filterSelection(filters, key)) }) }
     var numeric by remember { mutableStateOf(numericFilterValues(query.filters)) }
     var picker by remember { mutableStateOf<String?>(null) }
+    var choosing by remember { mutableStateOf<String?>(null) }
     var editingNumber by remember { mutableStateOf<String?>(null) }
     var invalid by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = dismiss) {
@@ -231,9 +277,23 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                             Text("${filterLabel(category, query.kind)} : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     }
-                    items(numbers.filter { query.kind == CatalogKind.MOVIES || !it.startsWith("runtime") }) { key ->
-                        Button(onClick = { editingNumber = key }, modifier = Modifier.fillMaxWidth()) {
-                            Text("${filterLabel(key, query.kind)} : ${numeric[key]?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_filter)}")
+                    items(choices) { key ->
+                        Button(onClick = { choosing = key }, modifier = Modifier.fillMaxWidth()) {
+                            val value = choiceValue(draft, key)?.let { choiceLabel(key, it) } ?: stringResource(R.string.no_filter)
+                            Text("${filterLabel(key, query.kind)} : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    items(numberGroups.filter { query.kind == CatalogKind.MOVIES || it.title != R.string.filter_group_runtime }) { group ->
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(stringResource(group.title), style = MaterialTheme.typography.titleSmall, color = Plys.TextStrong)
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                group.fields.forEach { (key, label) ->
+                                    Button(onClick = { editingNumber = key }, modifier = Modifier.weight(1f)) {
+                                        Text("${stringResource(label)} : ${numeric[key]?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_filter)}",
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -250,6 +310,14 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                         if (valuesValid && result.valid) apply(result) else invalid = true
                     }
                 }
+            }
+        }
+    }
+    choosing?.let { key ->
+        ChoiceDialog(filterLabel(key, query.kind), { choosing = null }) {
+            item { Choice(stringResource(R.string.no_filter), choiceValue(draft, key) == null) { draft = withChoice(draft, key, null); choosing = null } }
+            items(if (key == "resolution") CatalogFilters.RESOLUTIONS else CatalogFilters.AUDIO_FORMATS) { value ->
+                Choice(choiceLabel(key, value), choiceValue(draft, key) == value) { draft = withChoice(draft, key, value); choosing = null }
             }
         }
     }
@@ -310,13 +378,19 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val locale = if (LocalConfiguration.current.locales[0].language == "fr") "fr" else "en"
+    val locale = filterLocale(LocalConfiguration.current.locales[0].language)
     val excluded = when (category) { "genres" -> filterSelection(draft, "excludeGenres"); "excludeGenres" -> filterSelection(draft, "genres"); else -> emptyList() }
     LaunchedEffect(search, locale) {
         delay(300)
         loading = true
         error = ""
-        try { options = api.filterOptions(query.kind, if (category == "excludeGenres") "genres" else category, search, query.libraryId, selected, locale).options[if (category == "excludeGenres") "genres" else category].orEmpty() }
+        val apiCategory = if (category == "excludeGenres") "genres" else category
+        try {
+            val page = try { api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, locale) }
+            // Servers released before pt-BR support reject that locale: fall back to English names.
+            catch (failure: ClientException) { if (locale == "pt-BR") api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, "en") else throw failure }
+            options = page.options[apiCategory].orEmpty()
+        }
         catch (failure: ClientException) { error = context.errorMessage(failure) }
         finally { loading = false }
     }
@@ -351,4 +425,11 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
     if (editingSearch) FilterInputDialog(stringResource(R.string.search), search, KeyboardType.Text,
         dismiss = { editingSearch = false }, apply = { search = it; editingSearch = false },
     )
+}
+
+/** Maps the device language to a filter locale the server understands. */
+internal fun filterLocale(language: String): String = when (language) {
+    "fr" -> "fr"
+    "pt" -> "pt-BR"
+    else -> "en"
 }

@@ -93,7 +93,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
             }
             when (val screen = state.screen) {
                 Screen.Login -> Unit
-                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent) }
+                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search) }
                 is Screen.Libraries -> key("libraries") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(stringResource(R.string.libraries), style = MaterialTheme.typography.headlineMedium)

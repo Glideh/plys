@@ -221,6 +221,10 @@ func (s *Server) syncPeer(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict, "peer_incompatible", "the peer must use the same major server version")
 		return
 	}
+	if errors.Is(err, errPeerNotPaired) {
+		httpx.Error(w, http.StatusBadGateway, "peer_not_paired", "the peer does not recognize this server: pair this server on the peer too")
+		return
+	}
 	if errors.Is(err, errPeerUnreachable) || errors.Is(err, errInvalidPeerData) {
 		httpx.Error(w, http.StatusBadGateway, "peer_unreachable", "the peer did not return a valid user list")
 		return
