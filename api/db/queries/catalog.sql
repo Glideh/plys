@@ -210,6 +210,19 @@ SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library
 FROM media_files f
 WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL;
 
+-- name: ListItemTreeFilePaths :many
+-- Paths of the files held by an item and everything below it (seasons, episodes, parts).
+-- Only exposed to local admins (see itemFolder in internal/api/catalog.go).
+WITH RECURSIVE tree AS (
+    SELECT root.id FROM items root WHERE root.id = @item_id
+    UNION ALL
+    SELECT i.id FROM items i JOIN tree t ON i.parent_id = t.id
+)
+SELECT f.path
+FROM media_files f
+JOIN tree t ON t.id = f.item_id
+WHERE f.missing_since IS NULL;
+
 -- name: ListItemFiles :many
 -- The path is only exposed to local admins (see versions in internal/api/catalog.go).
 SELECT id, item_id, path, size, duration_seconds, container, streams, edition, probe_error

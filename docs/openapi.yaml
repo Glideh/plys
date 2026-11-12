@@ -1365,6 +1365,9 @@ components:
         watched: { type: boolean, description: "The item, or everything under a series or season, is watched by the caller" }
         positionSeconds: { type: number, description: "Resume point of a playable item, 0 when none (under 30 s or watched)" }
         inWatchlist: { type: boolean, description: "A top-level title (movie, series, video) the caller added to their watchlist on this server" }
+        folder:
+          type: string
+          description: Deepest folder on the server (inside its media mount) holding every file of the item and of the items below it (seasons, episodes, parts). Only sent to local admins, never to regular users nor to federated peers; omitted when the item has no file.
         playTarget:
           description: What "play" starts on a series, season or movie with parts. Null for playable items and when nothing is available.
           oneOf: [{ $ref: "#/components/schemas/PlayTarget" }, { type: "null" }]

@@ -149,6 +149,8 @@ export interface ItemDetail {
   next: PlayTarget | null
   /** Other servers holding a version of this title; only set on local top-level titles. */
   sources: CardSource[]
+  /** Deepest folder holding every file of the item and its children, only sent to admins. */
+  folder?: string
 }
 
 export interface PlayTarget {

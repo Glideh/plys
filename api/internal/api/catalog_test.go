@@ -97,19 +97,29 @@ func TestCatalogBrowsing(t *testing.T) {
 			t.Errorf("admins must see the file path, got %q", path)
 		}
 	}
+	if blade["folder"] != filepath.Join(e.root, "films") {
+		t.Errorf("admins must see the folder of the item, got %v", blade["folder"])
+	}
 	if !labels["1080p · HDR · HEVC"] || !labels["1080p · HDR · HEVC · Final Cut"] {
 		t.Errorf("unexpected version labels: %v", labels)
 	}
 
 	do(t, e.h, http.MethodPost, "/api/v1/users", admin, map[string]any{"username": "bob", "password": "password123"})
 	bob := do(t, e.h, http.MethodPost, "/api/v1/auth/login", "", map[string]any{"username": "bob", "password": "password123"}).body["accessToken"].(string)
-	for _, v := range do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Blade Runner"], bob, nil).body["versions"].([]any) {
+	bobBlade := do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Blade Runner"], bob, nil).body
+	if _, leaked := bobBlade["folder"]; leaked {
+		t.Error("folders must not be exposed to regular users")
+	}
+	for _, v := range bobBlade["versions"].([]any) {
 		if _, leaked := v.(map[string]any)["path"]; leaked {
 			t.Error("file paths must not be exposed to regular users")
 		}
 	}
 
 	war := do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Guerre et Paix"], admin, nil).body
+	if war["folder"] != filepath.Join(e.root, "films") {
+		t.Errorf("a movie split across folders must report their common folder, got %v", war["folder"])
+	}
 	if parts := war["children"].([]any); len(parts) != 2 || parts[0].(map[string]any)["partNumber"].(float64) != 1 {
 		t.Errorf("Guerre et Paix must list its 2 parts: %v", war["children"])
 	}
@@ -118,7 +128,11 @@ func TestCatalogBrowsing(t *testing.T) {
 	if show["episodeCount"].(float64) != 3 {
 		t.Errorf("series card must count episodes: %v", show)
 	}
-	seasons := do(t, e.h, http.MethodGet, "/api/v1/items/"+show["id"].(string), admin, nil).body["children"].([]any)
+	showDetail := do(t, e.h, http.MethodGet, "/api/v1/items/"+show["id"].(string), admin, nil).body
+	if showDetail["folder"] != filepath.Join(e.root, "series") {
+		t.Errorf("a series must report the folder of its episodes, got %v", showDetail["folder"])
+	}
+	seasons := showDetail["children"].([]any)
 	if len(seasons) != 2 {
 		t.Fatalf("expected 2 seasons, got %v", seasons)
 	}

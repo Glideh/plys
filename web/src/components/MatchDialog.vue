@@ -6,8 +6,10 @@ import { useErrorMessage } from '@/composables/useErrorMessage'
 import BaseButton from './BaseButton.vue'
 import BaseDialog from './BaseDialog.vue'
 import ErrorAlert from './ErrorAlert.vue'
+import ItemLocation from './ItemLocation.vue'
 
-const props = defineProps<{ itemId: string; title: string; year: number | null }>()
+// folder and paths show where the files sit, to help find what to search for.
+const props = defineProps<{ itemId: string; title: string; year: number | null; folder?: string; paths?: string[] }>()
 const emit = defineEmits<{ matched: [merged: boolean] }>()
 const open = defineModel<boolean>('open', { required: true })
 const { t } = useI18n()
@@ -59,6 +61,7 @@ watch(open, (isOpen) => {
 <template>
   <BaseDialog v-model:open="open" :title="t('catalog.fixMatch')" wide>
     <p class="mb-4 text-sm text-slate-400">{{ t('catalog.matchHelp') }}</p>
+    <ItemLocation v-if="folder || paths?.length" class="mb-4 rounded-xl border border-white/5 bg-surface-800/40 p-3" :folder="folder" :paths="paths ?? []" />
     <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="search">
       <input
         v-model="query"

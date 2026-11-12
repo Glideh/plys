@@ -2,12 +2,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { Heart } from '@lucide/vue'
+import { Heart, Info } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Version } from '@/api/catalog'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import ItemInfoDialog from '@/components/ItemInfoDialog.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
 import PosterCard from '@/components/PosterCard.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
@@ -34,6 +35,7 @@ const error = ref('')
 const choices = ref<VersionChoice[]>([])
 const versionId = ref<string>('')
 const matchOpen = ref(false)
+const infoOpen = ref(false)
 const refreshing = ref(false)
 const route = useRoute()
 // Null when this server holds the item; otherwise the paired server the page is read from.
@@ -97,13 +99,9 @@ onMounted(load)
 
 const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
 const version = computed(() => selected.value?.version ?? null)
-/** Splits the file path of the selected version, set for admins only, into folder and file name. */
-const file = computed(() => {
-  const path = version.value?.path
-  if (!path) return null
-  const cut = path.lastIndexOf('/')
-  return { folder: path.slice(0, cut) || '/', name: path.slice(cut + 1) }
-})
+/** File locations of this server's copy, only sent to admins. */
+const paths = computed(() => (server ? [] : (item.value?.versions.map((v) => v.path).filter((p): p is string => !!p) ?? [])))
+const hasLocation = computed(() => !server && (!!item.value?.folder || paths.value.length > 0))
 const multiServer = computed(() => new Set(choices.value.map((c) => c.server.serverId)).size > 1)
 const hasOwnMetadata = computed(() => ['movie', 'series', 'video'].includes(item.value?.kind ?? ''))
 const backdrop = computed(() => item.value?.backdropUrl ?? (item.value?.kind === 'episode' ? item.value.thumbUrl : null))
@@ -331,6 +329,9 @@ async function onMatched(merged: boolean) {
               >
                 <Heart v-if="!togglingWatchlist" class="size-5" :fill="item.inWatchlist ? 'currentColor' : 'none'" aria-hidden="true" />
               </BaseButton>
+              <BaseButton v-if="hasLocation" class="!px-2.5" :aria-label="t('catalog.details')" :title="t('catalog.details')" @click="infoOpen = true">
+                <Info class="size-5" aria-hidden="true" />
+              </BaseButton>
               <template v-if="auth.isAdmin && !server && hasOwnMetadata">
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>
                 <BaseButton :loading="refreshing" @click="refresh">{{ t('catalog.refresh') }}</BaseButton>
@@ -355,12 +356,6 @@ async function onMatched(merged: boolean) {
               <template v-if="version.error">
                 <dt class="text-amber-400">{{ t('catalog.unreadable') }}</dt>
                 <dd class="truncate font-mono text-xs text-amber-300/80" :title="version.error">{{ version.error }}</dd>
-              </template>
-              <template v-if="file">
-                <dt class="text-slate-500">{{ t('catalog.fileName') }}</dt>
-                <dd class="select-all break-all font-mono text-xs leading-5 text-slate-300">{{ file.name }}</dd>
-                <dt class="text-slate-500">{{ t('catalog.folder') }}</dt>
-                <dd class="select-all break-all font-mono text-xs leading-5 text-slate-400">{{ file.folder }}</dd>
               </template>
             </dl>
           </div>
@@ -435,7 +430,17 @@ async function onMatched(merged: boolean) {
         </section>
       </div>
 
-      <MatchDialog v-if="auth.isAdmin && !server" v-model:open="matchOpen" :item-id="item.id" :title="item.title" :year="item.year" @matched="onMatched" />
+      <MatchDialog
+        v-if="auth.isAdmin && !server"
+        v-model:open="matchOpen"
+        :item-id="item.id"
+        :title="item.title"
+        :year="item.year"
+        :folder="item.folder"
+        :paths="paths"
+        @matched="onMatched"
+      />
+      <ItemInfoDialog v-if="hasLocation" v-model:open="infoOpen" :folder="item.folder" :paths="paths" />
     </template>
   </main>
 </template>

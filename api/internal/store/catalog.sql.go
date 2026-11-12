@@ -296,6 +296,40 @@ func (q *Queries) ListItemFiles(ctx context.Context, itemIds []uuid.UUID) ([]Lis
 	return items, nil
 }
 
+const listItemTreeFilePaths = `-- name: ListItemTreeFilePaths :many
+WITH RECURSIVE tree AS (
+    SELECT root.id FROM items root WHERE root.id = $1
+    UNION ALL
+    SELECT i.id FROM items i JOIN tree t ON i.parent_id = t.id
+)
+SELECT f.path
+FROM media_files f
+JOIN tree t ON t.id = f.item_id
+WHERE f.missing_since IS NULL
+`
+
+// Paths of the files held by an item and everything below it (seasons, episodes, parts).
+// Only exposed to local admins (see itemFolder in internal/api/catalog.go).
+func (q *Queries) ListItemTreeFilePaths(ctx context.Context, itemID uuid.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listItemTreeFilePaths, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listKindItems = `-- name: ListKindItems :many
 WITH libs AS (
     SELECT l.id FROM libraries l

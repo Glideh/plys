@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -332,6 +333,8 @@ type itemDetailDTO struct {
 	InWatchlist bool `json:"inWatchlist"`
 	// Sources lists the servers holding this title; set on top-level items for local users only.
 	Sources []cardSourceDTO `json:"sources"`
+	// Folder is the deepest directory holding every file of the item and its children, only sent to local admins.
+	Folder string `json:"folder,omitempty"`
 }
 
 func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
@@ -387,6 +390,14 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 	if dto.Children, err = s.children(r, it.ID); err != nil {
 		httpx.InternalError(w, r, err)
 		return
+	}
+	if canSeePaths(r) {
+		paths, err := s.q.ListItemTreeFilePaths(ctx, it.ID)
+		if err != nil {
+			httpx.InternalError(w, r, err)
+			return
+		}
+		dto.Folder = commonFolder(paths)
 	}
 	if err := s.withProgress(r, it, &dto); err != nil {
 		httpx.InternalError(w, r, err)
@@ -448,9 +459,7 @@ func (s *Server) versions(r *http.Request, id uuid.UUID) ([]versionDTO, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Paths reveal the server's directory layout: peers and regular users never see them.
-	p, _ := auth.PrincipalFrom(r.Context())
-	showPath := p.Role == auth.RoleAdmin && !isFederatedRequest(r.Context())
+	showPath := canSeePaths(r)
 	out := make([]versionDTO, 0, len(rows))
 	for _, f := range rows {
 		var streams []scanner.Stream
@@ -464,6 +473,27 @@ func (s *Server) versions(r *http.Request, id uuid.UUID) ([]versionDTO, error) {
 		out = append(out, v)
 	}
 	return out, nil
+}
+
+// canSeePaths tells whether file paths may be sent: they reveal the server's directory layout,
+// so peers and regular users never see them.
+func canSeePaths(r *http.Request) bool {
+	p, _ := auth.PrincipalFrom(r.Context())
+	return p.Role == auth.RoleAdmin && !isFederatedRequest(r.Context())
+}
+
+// commonFolder returns the deepest directory holding every path, "" when there is none.
+func commonFolder(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	folder := path.Dir(paths[0])
+	for _, p := range paths[1:] {
+		for folder != "/" && folder != "." && !strings.HasPrefix(p, folder+"/") {
+			folder = path.Dir(folder)
+		}
+	}
+	return folder
 }
 
 func describeVersion(f store.ListItemFilesRow, streams []scanner.Stream) versionDTO {
