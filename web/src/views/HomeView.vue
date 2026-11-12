@@ -116,7 +116,10 @@ onMounted(async () => {
     </section>
 
     <template v-else>
-      <div v-if="!railsLoading && (continueItems.length > 0 || nextItems.length > 0)" class="grid gap-12 lg:grid-cols-2">
+      <!-- Each rail is as wide as its posters: they sit side by side while they fit, otherwise
+           the next one wraps, and a rail only scrolls once it fills the whole row. The column
+           gap covers the rails' edge-to-edge scroll bleed (-mx-4 / sm:-mx-8) on both sides. -->
+      <div v-if="!railsLoading && (continueItems.length > 0 || nextItems.length > 0)" class="flex flex-wrap gap-x-8 gap-y-12 sm:gap-x-16">
         <HomeRail v-if="continueItems.length > 0" :title="t('home.continueWatching')" :empty="t('home.emptyContinue')" :items="continueItems" :loading="false" resume />
         <HomeRail v-if="nextItems.length > 0" :title="t('home.nextUp')" :empty="t('home.emptyNextUp')" :items="nextItems" :loading="false" />
       </div>
