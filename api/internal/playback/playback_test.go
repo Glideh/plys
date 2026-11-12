@@ -336,3 +336,81 @@ func streamSpan(t *testing.T, path, stream string) float64 {
 	}
 	return last - first
 }
+
+// Players ignore fMP4 edit lists, so the gap between the start of the video and the start of the audio must be
+// carried by the timestamps themselves: otherwise the sound plays ahead of the picture.
+func TestStreamKeepsAudioVideoOffsetWithoutEditList(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "plain.mkv")
+	if output, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc=s=320x240:r=24", "-f", "lavfi", "-i", "sine=r=48000",
+		"-t", "3", "-c:v", "libx264", "-bf", "3", "-c:a", "aac", plain).CombinedOutput(); err != nil {
+		t.Fatalf("generate input: %v %s", err, output)
+	}
+	// The audio starts 300 ms after the video, as in many remuxes.
+	input := filepath.Join(dir, "delayed.mkv")
+	if output, err := exec.Command(ffmpeg, "-v", "error", "-i", plain, "-itsoffset", "0.3", "-i", plain,
+		"-map", "0:v", "-map", "1:a", "-c", "copy", input).CombinedOutput(); err != nil {
+		t.Fatalf("delay audio: %v %s", err, output)
+	}
+
+	source := probe(t, input)
+	for name, caps := range map[string]ClientCaps{
+		"transcode": {VideoCodecs: []string{"h264"}, AudioCodecs: []string{"opus"}, MaxHeight: 120},
+		"copy":      browser,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := t.TempDir()
+			if output, err := exec.Command(ffmpeg, Args(Decide(source, caps), source, 0, Encoder{Accel: AccelNone}, out)...).CombinedOutput(); err != nil {
+				t.Fatalf("stream: %v %s", err, output)
+			}
+			init, err := os.ReadFile(filepath.Join(out, "init.mp4"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(init, []byte("elst")) {
+				t.Fatal("init.mp4 has an edit list")
+			}
+			segment, err := os.ReadFile(filepath.Join(out, "seg_00000.m4s"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			flat := filepath.Join(out, "flat.mp4")
+			if err := os.WriteFile(flat, append(init, segment...), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			output, err := exec.Command("ffprobe", "-v", "error", "-ignore_editlist", "1", "-show_entries", "packet=stream_index,pts_time",
+				"-of", "csv=p=0", flat).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The first audio packet may absorb the gap in its duration: the second one shows where the audio really is.
+			var video, audio []float64
+			for _, line := range strings.Fields(string(output)) {
+				var index int
+				var pts float64
+				if _, err := fmt.Sscanf(strings.ReplaceAll(line, ",", " "), "%d %f", &index, &pts); err != nil {
+					continue
+				}
+				if index == 0 {
+					video = append(video, pts)
+				} else {
+					audio = append(audio, pts)
+				}
+			}
+			if len(video) == 0 || len(audio) < 2 {
+				t.Fatalf("packets: %s", output)
+			}
+			firstVideo := video[0]
+			for _, v := range video {
+				firstVideo = min(firstVideo, v)
+			}
+			if gap := audio[1] - firstVideo; gap < 0.25 || gap > 0.4 {
+				t.Fatalf("audio starts %.3f s after the video, want ~0.3 s", gap)
+			}
+		})
+	}
+}

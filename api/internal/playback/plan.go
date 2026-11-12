@@ -212,6 +212,11 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 		"-hls_segment_type", "fmp4",
 		"-hls_fmp4_init_filename", "init.mp4",
 		"-hls_flags", "independent_segments+temp_file",
+		// Without edit lists, each track's timestamps carry its real start. Otherwise ffmpeg rebases every
+		// track to zero and relies on the edit list to restore the gap between them (the B-frame delay of the
+		// video, plus any audio delay of the source). MSE and ExoPlayer ignore that edit list in fMP4, so the
+		// sound played ahead of the picture.
+		"-hls_segment_options", "use_editlist=0",
 		"-hls_segment_filename", filepath.Join(outDir, "seg_%05d.m4s"),
 		filepath.Join(outDir, "index.m3u8"),
 	)
