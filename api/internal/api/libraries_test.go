@@ -117,3 +117,43 @@ func TestBrowseFS(t *testing.T) {
 		}
 	}
 }
+
+func TestLibraryMetadataLanguage(t *testing.T) {
+	h, root := newTestServerWithMedia(t)
+	mkdirs(t, root, "Films", "Series")
+	admin := setupAdmin(t, h).body["accessToken"].(string)
+
+	r := do(t, h, http.MethodPost, "/api/v1/libraries", admin, map[string]any{
+		"name": "Films", "kind": "movies", "paths": []string{filepath.Join(root, "Films")},
+	})
+	if r.status != http.StatusCreated || r.body["metadataLanguage"] != nil {
+		t.Fatalf("a library follows the server language by default: %d %v", r.status, r.body)
+	}
+	id := r.body["id"].(string)
+
+	r = do(t, h, http.MethodPost, "/api/v1/libraries", admin, map[string]any{
+		"name": "Séries", "kind": "series", "paths": []string{filepath.Join(root, "Series")}, "metadataLanguage": "pt-BR",
+	})
+	if r.status != http.StatusCreated || r.body["metadataLanguage"] != "pt-BR" {
+		t.Fatalf("create with an override: %d %v", r.status, r.body)
+	}
+
+	if r = do(t, h, http.MethodPatch, "/api/v1/libraries/"+id, admin, map[string]any{"metadataLanguage": "english"}); r.status != http.StatusBadRequest {
+		t.Fatalf("invalid language: expected 400, got %d", r.status)
+	}
+	r = do(t, h, http.MethodPatch, "/api/v1/libraries/"+id, admin, map[string]any{"metadataLanguage": "en-US"})
+	if r.status != http.StatusOK || r.body["metadataLanguage"] != "en-US" {
+		t.Fatalf("set override: %d %v", r.status, r.body)
+	}
+	r = do(t, h, http.MethodPatch, "/api/v1/libraries/"+id, admin, map[string]any{"name": "Movies"})
+	if r.status != http.StatusOK || r.body["metadataLanguage"] != "en-US" {
+		t.Fatalf("an omitted language must be kept: %d %v", r.status, r.body)
+	}
+	if r = do(t, h, http.MethodGet, "/api/v1/libraries/"+id, admin, nil); r.body["metadataLanguage"] != "en-US" {
+		t.Fatalf("get: %v", r.body)
+	}
+	r = do(t, h, http.MethodPatch, "/api/v1/libraries/"+id, admin, map[string]any{"metadataLanguage": ""})
+	if r.status != http.StatusOK || r.body["metadataLanguage"] != nil {
+		t.Fatalf("an empty language removes the override: %d %v", r.status, r.body)
+	}
+}

@@ -104,12 +104,21 @@ func (s *Service) Client(ctx context.Context) (*TMDB, string, error) {
 	return s.client, lang, nil
 }
 
+// libraryLanguage returns the library's own metadata language, or the server-wide one when it has none.
+func libraryLanguage(lib store.Library, global string) string {
+	if lib.MetadataLanguage != nil && *lib.MetadataLanguage != "" {
+		return *lib.MetadataLanguage
+	}
+	return global
+}
+
 // ValidateKey checks a key against TMDB before it is saved.
 func (s *Service) ValidateKey(ctx context.Context, key string) error {
 	return NewTMDB(key, s.baseURL).Validate(ctx)
 }
 
-// RefreshLibrary fetches metadata for new items and for items whose language changed. Without an API key,
+// RefreshLibrary fetches metadata for new items and for items whose language changed (server-wide setting, or the
+// library's own override). Without an API key,
 // movies and series stay pending until one is configured; thumbnails of personal videos are still extracted.
 func (s *Service) RefreshLibrary(ctx context.Context, lib store.Library, progress func(done, total int)) error {
 	s.refreshMu.Lock()
@@ -120,6 +129,7 @@ func (s *Service) RefreshLibrary(ctx context.Context, lib store.Library, progres
 	if err != nil && !errors.Is(err, ErrNoAPIKey) {
 		return err
 	}
+	lang = libraryLanguage(lib, lang)
 	items, err := s.q.ListItemsToMatch(ctx, store.ListItemsToMatchParams{LibraryID: lib.ID, Language: lang})
 	if err != nil {
 		return err
@@ -193,6 +203,7 @@ func (s *Service) RefreshItem(ctx context.Context, itemID uuid.UUID, tmdbID *int
 	if err != nil {
 		return err
 	}
+	lang = libraryLanguage(lib, lang)
 	switch it.Kind {
 	case "movie":
 		return s.refreshMovie(ctx, client, lang, lib, it.ID, tmdbID)
@@ -202,12 +213,13 @@ func (s *Service) RefreshItem(ctx context.Context, itemID uuid.UUID, tmdbID *int
 	return fmt.Errorf("items of kind %q have no metadata of their own", it.Kind)
 }
 
-// Search lists TMDB candidates for the manual matching screen.
-func (s *Service) Search(ctx context.Context, kind, query string, year int) ([]SearchResult, error) {
+// Search lists TMDB candidates for the manual matching screen, in the language of the item's library.
+func (s *Service) Search(ctx context.Context, lib store.Library, kind, query string, year int) ([]SearchResult, error) {
 	client, lang, err := s.Client(ctx)
 	if err != nil {
 		return nil, err
 	}
+	lang = libraryLanguage(lib, lang)
 	if kind == "series" {
 		return client.SearchTV(ctx, query, year, lang)
 	}

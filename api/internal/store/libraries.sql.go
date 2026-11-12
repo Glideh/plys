@@ -35,16 +35,17 @@ func (q *Queries) ClearLibraryPaths(ctx context.Context, libraryID uuid.UUID) er
 }
 
 const createLibrary = `-- name: CreateLibrary :one
-INSERT INTO libraries (name, kind) VALUES ($1, $2) RETURNING id, name, kind, created_at, updated_at, last_scanned_at, restricted
+INSERT INTO libraries (name, kind, metadata_language) VALUES ($1, $2, $3) RETURNING id, name, kind, created_at, updated_at, last_scanned_at, restricted, metadata_language
 `
 
 type CreateLibraryParams struct {
-	Name string
-	Kind string
+	Name             string
+	Kind             string
+	MetadataLanguage *string
 }
 
 func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (Library, error) {
-	row := q.db.QueryRow(ctx, createLibrary, arg.Name, arg.Kind)
+	row := q.db.QueryRow(ctx, createLibrary, arg.Name, arg.Kind, arg.MetadataLanguage)
 	var i Library
 	err := row.Scan(
 		&i.ID,
@@ -54,6 +55,7 @@ func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (L
 		&i.UpdatedAt,
 		&i.LastScannedAt,
 		&i.Restricted,
+		&i.MetadataLanguage,
 	)
 	return i, err
 }
@@ -71,7 +73,7 @@ func (q *Queries) DeleteLibrary(ctx context.Context, id uuid.UUID) (int64, error
 }
 
 const getLibrary = `-- name: GetLibrary :one
-SELECT id, name, kind, created_at, updated_at, last_scanned_at, restricted FROM libraries WHERE id = $1
+SELECT id, name, kind, created_at, updated_at, last_scanned_at, restricted, metadata_language FROM libraries WHERE id = $1
 `
 
 func (q *Queries) GetLibrary(ctx context.Context, id uuid.UUID) (Library, error) {
@@ -85,6 +87,7 @@ func (q *Queries) GetLibrary(ctx context.Context, id uuid.UUID) (Library, error)
 		&i.UpdatedAt,
 		&i.LastScannedAt,
 		&i.Restricted,
+		&i.MetadataLanguage,
 	)
 	return i, err
 }
@@ -114,7 +117,7 @@ func (q *Queries) ListAllLibraryPaths(ctx context.Context) ([]LibraryPath, error
 }
 
 const listLibraries = `-- name: ListLibraries :many
-SELECT id, name, kind, created_at, updated_at, last_scanned_at, restricted FROM libraries ORDER BY lower(name)
+SELECT id, name, kind, created_at, updated_at, last_scanned_at, restricted, metadata_language FROM libraries ORDER BY lower(name)
 `
 
 func (q *Queries) ListLibraries(ctx context.Context) ([]Library, error) {
@@ -134,6 +137,7 @@ func (q *Queries) ListLibraries(ctx context.Context) ([]Library, error) {
 			&i.UpdatedAt,
 			&i.LastScannedAt,
 			&i.Restricted,
+			&i.MetadataLanguage,
 		); err != nil {
 			return nil, err
 		}
@@ -180,7 +184,7 @@ func (q *Queries) LockLibraries(ctx context.Context) error {
 }
 
 const renameLibrary = `-- name: RenameLibrary :one
-UPDATE libraries SET name = $2, updated_at = now() WHERE id = $1 RETURNING id, name, kind, created_at, updated_at, last_scanned_at, restricted
+UPDATE libraries SET name = $2, updated_at = now() WHERE id = $1 RETURNING id, name, kind, created_at, updated_at, last_scanned_at, restricted, metadata_language
 `
 
 type RenameLibraryParams struct {
@@ -199,6 +203,32 @@ func (q *Queries) RenameLibrary(ctx context.Context, arg RenameLibraryParams) (L
 		&i.UpdatedAt,
 		&i.LastScannedAt,
 		&i.Restricted,
+		&i.MetadataLanguage,
+	)
+	return i, err
+}
+
+const setLibraryMetadataLanguage = `-- name: SetLibraryMetadataLanguage :one
+UPDATE libraries SET metadata_language = $2, updated_at = now() WHERE id = $1 RETURNING id, name, kind, created_at, updated_at, last_scanned_at, restricted, metadata_language
+`
+
+type SetLibraryMetadataLanguageParams struct {
+	ID               uuid.UUID
+	MetadataLanguage *string
+}
+
+func (q *Queries) SetLibraryMetadataLanguage(ctx context.Context, arg SetLibraryMetadataLanguageParams) (Library, error) {
+	row := q.db.QueryRow(ctx, setLibraryMetadataLanguage, arg.ID, arg.MetadataLanguage)
+	var i Library
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Kind,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastScannedAt,
+		&i.Restricted,
+		&i.MetadataLanguage,
 	)
 	return i, err
 }

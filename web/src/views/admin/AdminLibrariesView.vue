@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { librariesApi, type Library, type ScanStatus } from '@/api/libraries'
+import { metadataLanguageNames } from '@/api/settings'
 import BaseButton from '@/components/BaseButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
@@ -138,6 +139,9 @@ onUnmounted(() => clearTimeout(pollTimer))
           </span>
         </div>
         <p v-if="lib.restricted" class="mt-2 text-xs text-slate-400">{{ t('libraries.restrictedBadge') }} · {{ lib.userIds?.length ?? 0 }}</p>
+        <p v-if="lib.metadataLanguage && lib.kind !== 'other'" class="mt-2 text-xs text-slate-400">
+          {{ t('libraries.metadataLanguage') }} · {{ metadataLanguageNames[lib.metadataLanguage] ?? lib.metadataLanguage }}
+        </p>
         <ul class="mt-4 flex-1 space-y-1">
           <li v-for="p in lib.paths" :key="p" class="truncate font-mono text-xs text-slate-400" :title="p">{{ p }}</li>
         </ul>

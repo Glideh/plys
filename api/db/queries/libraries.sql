@@ -3,10 +3,13 @@
 SELECT pg_advisory_xact_lock(7461002);
 
 -- name: CreateLibrary :one
-INSERT INTO libraries (name, kind) VALUES ($1, $2) RETURNING *;
+INSERT INTO libraries (name, kind, metadata_language) VALUES ($1, $2, $3) RETURNING *;
 
 -- name: RenameLibrary :one
 UPDATE libraries SET name = $2, updated_at = now() WHERE id = $1 RETURNING *;
+
+-- name: SetLibraryMetadataLanguage :one
+UPDATE libraries SET metadata_language = $2, updated_at = now() WHERE id = $1 RETURNING *;
 
 -- name: DeleteLibrary :execrows
 DELETE FROM libraries WHERE id = $1;

@@ -53,12 +53,12 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 		case r.URL.Path == "/search/movie":
 			respond(w, map[string]any{"results": []any{}})
 		case r.URL.Path == "/movie/348":
-			overview := ""
+			title, overview := "Alien, le huitième passager", ""
 			if lang == "en-US" {
-				overview = "In deep space, the crew of the Nostromo..."
+				title, overview = "Alien", "In deep space, the crew of the Nostromo..."
 			}
 			respond(w, map[string]any{
-				"id": 348, "title": "Alien, le huitième passager", "original_title": "Alien", "overview": overview,
+				"id": 348, "title": title, "original_title": "Alien", "overview": overview,
 				"release_date": "1979-05-25", "runtime": 117, "vote_average": 8.2, "poster_path": "/alien.jpg",
 				"vote_count": 5000, "original_language": "en", "production_countries": []map[string]any{{"iso_3166_1": "GB", "name": "United Kingdom"}},
 				"keywords": map[string]any{"keywords": []map[string]any{{"id": 123, "name": "space"}}},
@@ -248,6 +248,47 @@ func TestMoviesAreMatchedAndMerged(t *testing.T) {
 	}
 	if u := byTitle["Totally Unknown Film"]; u.Status != "unmatched" {
 		t.Errorf("unknown film must be unmatched: %+v", u)
+	}
+}
+
+func TestLibraryLanguageOverridesServerLanguage(t *testing.T) {
+	e := newEnv(t, "good-key")
+	ctx := context.Background()
+	lib := e.library(t, "movies", "Alien.1979.1080p.BluRay.mkv")
+	if m := e.items(t, lib, "movie"); len(m) != 1 || m[0].Title != "Alien, le huitième passager" {
+		t.Fatalf("without an override the server language (fr-FR) applies: %+v", m)
+	}
+
+	english := "en-US"
+	library, err := e.q.SetLibraryMetadataLanguage(ctx, store.SetLibraryMetadataLanguageParams{ID: lib, MetadataLanguage: &english})
+	if err != nil {
+		t.Fatal(err)
+	}
+	todo, err := e.q.ListItemsToMatch(ctx, store.ListItemsToMatchParams{LibraryID: lib, Language: english})
+	if err != nil || len(todo) != 1 {
+		t.Fatalf("the movie must be refreshed in the new language, got %+v (%v)", todo, err)
+	}
+	if err := e.svc.RefreshLibrary(ctx, library, func(int, int) {}); err != nil {
+		t.Fatal(err)
+	}
+	m := e.items(t, lib, "movie")
+	if len(m) != 1 || m[0].Title != "Alien" || m[0].Overview == nil || !strings.HasPrefix(*m[0].Overview, "In deep space") {
+		t.Fatalf("the library override (en-US) must win: %+v", m)
+	}
+	results, err := e.svc.Search(ctx, library, "movie", "Alien", 1979)
+	if err != nil || len(results) == 0 {
+		t.Fatalf("search with the library language: %+v (%v)", results, err)
+	}
+
+	// Removing the override goes back to the server language.
+	if library, err = e.q.SetLibraryMetadataLanguage(ctx, store.SetLibraryMetadataLanguageParams{ID: lib}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.RefreshLibrary(ctx, library, func(int, int) {}); err != nil {
+		t.Fatal(err)
+	}
+	if m := e.items(t, lib, "movie"); len(m) != 1 || m[0].Title != "Alien, le huitième passager" {
+		t.Fatalf("without the override the server language applies again: %+v", m)
 	}
 }
 

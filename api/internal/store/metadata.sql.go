@@ -328,7 +328,7 @@ func (q *Queries) ListItemsToMatch(ctx context.Context, arg ListItemsToMatchPara
 }
 
 const listLibrariesForFilterEnrichment = `-- name: ListLibrariesForFilterEnrichment :many
-SELECT l.id, l.name, l.kind, l.created_at, l.updated_at, l.last_scanned_at, l.restricted FROM libraries l WHERE EXISTS (
+SELECT l.id, l.name, l.kind, l.created_at, l.updated_at, l.last_scanned_at, l.restricted, l.metadata_language FROM libraries l WHERE EXISTS (
     SELECT 1 FROM items i WHERE i.library_id = l.id AND i.kind IN ('movie', 'series')
       AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 2
 )
@@ -351,6 +351,7 @@ func (q *Queries) ListLibrariesForFilterEnrichment(ctx context.Context) ([]Libra
 			&i.UpdatedAt,
 			&i.LastScannedAt,
 			&i.Restricted,
+			&i.MetadataLanguage,
 		); err != nil {
 			return nil, err
 		}

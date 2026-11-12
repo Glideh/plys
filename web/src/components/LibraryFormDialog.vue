@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@/api/client'
 import { libraryKinds, librariesApi, type Library, type LibraryKind } from '@/api/libraries'
+import { metadataLanguageNames, metadataLanguages, settingsApi } from '@/api/settings'
 import { usersApi } from '@/api/users'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import BaseButton from './BaseButton.vue'
@@ -23,6 +24,9 @@ const kind = ref<LibraryKind>('movies')
 const paths = ref<string[]>([])
 const restricted = ref(false)
 const userIds = ref<string[]>([])
+/** Empty: the library follows the server-wide metadata language. */
+const metadataLanguage = ref('')
+const serverLanguage = ref('')
 const users = ref<User[]>([])
 const picking = ref(false)
 const loading = ref(false)
@@ -42,10 +46,13 @@ watch(open, async (isOpen) => {
   paths.value = [...(props.library?.paths ?? [])]
   restricted.value = props.library?.restricted ?? false
   userIds.value = [...(props.library?.userIds ?? [])]
+  metadataLanguage.value = props.library?.metadataLanguage ?? ''
   picking.value = paths.value.length === 0
   error.value = ''
   try {
-    users.value = await usersApi.list()
+    const [userList, settings] = await Promise.all([usersApi.list(), settingsApi.get()])
+    users.value = userList
+    serverLanguage.value = settings.metadataLanguage
   } catch (err) {
     error.value = errorMessage(err)
   }
@@ -59,7 +66,7 @@ function addPath(path: string) {
 async function submit() {
   error.value = ''
   loading.value = true
-  const access = { restricted: restricted.value, userIds: userIds.value }
+  const access = { restricted: restricted.value, userIds: userIds.value, metadataLanguage: metadataLanguage.value }
   try {
     const saved = props.library
       ? await librariesApi.update(props.library.id, { name: name.value, paths: paths.value, ...access })
@@ -98,6 +105,24 @@ async function submit() {
         </div>
         <p v-if="library" class="mt-2 text-xs text-slate-500">{{ t('libraries.kindLocked') }}</p>
       </fieldset>
+
+      <!-- Personal videos get no TMDB metadata, so the language only matters for movies and series. -->
+      <div v-if="kind !== 'other'">
+        <label for="library-metadata-language" class="block text-sm font-medium text-slate-300">
+          {{ t('libraries.metadataLanguage') }}
+        </label>
+        <select
+          id="library-metadata-language"
+          v-model="metadataLanguage"
+          class="mt-1.5 block w-full rounded-lg border border-white/10 bg-surface-800 px-3.5 py-2.5 text-slate-100 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none sm:w-80"
+        >
+          <option value="">
+            {{ t('libraries.metadataLanguageDefault', { language: metadataLanguageNames[serverLanguage] ?? serverLanguage }) }}
+          </option>
+          <option v-for="l in metadataLanguages" :key="l" :value="l">{{ metadataLanguageNames[l] }}</option>
+        </select>
+        <p class="mt-1.5 text-xs text-slate-500">{{ t('libraries.metadataLanguageHelp') }}</p>
+      </div>
 
       <fieldset class="min-w-0">
         <legend class="mb-1.5 text-sm font-medium text-slate-300">{{ t('libraries.folders') }}</legend>

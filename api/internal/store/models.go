@@ -68,13 +68,14 @@ type Item struct {
 }
 
 type Library struct {
-	ID            uuid.UUID
-	Name          string
-	Kind          string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	LastScannedAt *time.Time
-	Restricted    bool
+	ID               uuid.UUID
+	Name             string
+	Kind             string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	LastScannedAt    *time.Time
+	Restricted       bool
+	MetadataLanguage *string
 }
 
 type LibraryAccess struct {

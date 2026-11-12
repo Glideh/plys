@@ -17,6 +17,7 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/httpx"
 	"toto/api/internal/mediafs"
+	"toto/api/internal/settings"
 	"toto/api/internal/store"
 )
 
@@ -42,15 +43,17 @@ type libraryDTO struct {
 	Paths  []string         `json:"paths,omitempty"`
 	Counts map[string]int64 `json:"counts,omitempty"`
 	// Admin only: movies, series and videos per metadata status (pending, matched, unmatched...).
-	MatchCounts   map[string]int64 `json:"matchCounts,omitempty"`
-	Restricted    bool             `json:"restricted"`
-	UserIDs       []uuid.UUID      `json:"userIds,omitempty"`
-	LastScannedAt *time.Time       `json:"lastScannedAt"`
-	CreatedAt     time.Time        `json:"createdAt"`
+	MatchCounts map[string]int64 `json:"matchCounts,omitempty"`
+	Restricted  bool             `json:"restricted"`
+	// Null when the library follows the server-wide metadata language.
+	MetadataLanguage *string     `json:"metadataLanguage"`
+	UserIDs          []uuid.UUID `json:"userIds,omitempty"`
+	LastScannedAt    *time.Time  `json:"lastScannedAt"`
+	CreatedAt        time.Time   `json:"createdAt"`
 }
 
 func toLibraryDTO(l store.Library, paths []string) libraryDTO {
-	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, Restricted: l.Restricted, LastScannedAt: l.LastScannedAt, CreatedAt: l.CreatedAt}
+	return libraryDTO{ID: l.ID, Name: l.Name, Kind: l.Kind, Paths: paths, Restricted: l.Restricted, MetadataLanguage: l.MetadataLanguage, LastScannedAt: l.LastScannedAt, CreatedAt: l.CreatedAt}
 }
 
 // libraryAccess maps each restricted library to the users allowed to see it.
@@ -183,6 +186,8 @@ type createLibraryRequest struct {
 	// Restricted defaults to true when omitted: a new library is visible to no one but admins.
 	Restricted *bool       `json:"restricted"`
 	UserIDs    []uuid.UUID `json:"userIds"`
+	// Empty or omitted: the library follows the server-wide metadata language.
+	MetadataLanguage string `json:"metadataLanguage"`
 }
 
 func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +201,8 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 		kindErr = errors.New("kind must be one of: movies, series, other")
 	}
 	paths, pathsErr := s.resolveLibraryPaths(req.Paths)
-	if err := errors.Join(nameErr, kindErr, pathsErr); err != nil {
+	language, languageErr := validateLibraryLanguage(req.MetadataLanguage)
+	if err := errors.Join(nameErr, kindErr, pathsErr, languageErr); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
 		return
 	}
@@ -210,7 +216,7 @@ func (s *Server) createLibrary(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		var err error
-		if lib, err = q.CreateLibrary(ctx, store.CreateLibraryParams{Name: name, Kind: req.Kind}); err != nil {
+		if lib, err = q.CreateLibrary(ctx, store.CreateLibraryParams{Name: name, Kind: req.Kind, MetadataLanguage: language}); err != nil {
 			return err
 		}
 		if err := addPaths(r, q, lib.ID, paths); err != nil {
@@ -237,6 +243,8 @@ type updateLibraryRequest struct {
 	Paths      *[]string    `json:"paths"`
 	Restricted *bool        `json:"restricted"`
 	UserIDs    *[]uuid.UUID `json:"userIds"`
+	// An empty string removes the override, so the library follows the server-wide metadata language again.
+	MetadataLanguage *string `json:"metadataLanguage"`
 }
 
 func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
@@ -250,6 +258,7 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 	}
 	var name string
 	var paths []string
+	var language *string
 	var errs []error
 	if req.Name != nil {
 		var err error
@@ -261,6 +270,11 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 		paths, err = s.resolveLibraryPaths(*req.Paths)
 		errs = append(errs, err)
 	}
+	if req.MetadataLanguage != nil {
+		var err error
+		language, err = validateLibraryLanguage(*req.MetadataLanguage)
+		errs = append(errs, err)
+	}
 	if err := errors.Join(errs...); err != nil {
 		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
 		return
@@ -268,6 +282,7 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	var lib store.Library
+	languageChanged := false
 	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		var err error
@@ -278,6 +293,13 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			return err
+		}
+		if req.MetadataLanguage != nil {
+			if languageChanged = !equalLanguage(lib.MetadataLanguage, language); languageChanged {
+				if lib, err = q.SetLibraryMetadataLanguage(ctx, store.SetLibraryMetadataLanguageParams{ID: id, MetadataLanguage: language}); err != nil {
+					return err
+				}
+			}
 		}
 		if req.Paths != nil {
 			if err := lockAndCheckPaths(r, q, id, paths); err != nil {
@@ -314,7 +336,8 @@ func (s *Server) updateLibrary(w http.ResponseWriter, r *http.Request) {
 	if writeLibraryMutationError(w, r, err) {
 		return
 	}
-	if req.Paths != nil {
+	// A new language re-fetches the metadata of every matched item of the library.
+	if req.Paths != nil || languageChanged {
 		s.Scanner.Enqueue(id)
 	}
 	access, err := s.libraryAccess(r)
@@ -397,6 +420,25 @@ func validateLibraryName(raw string) (string, error) {
 		return "", errors.New("name must be between 1 and 100 characters")
 	}
 	return name, nil
+}
+
+// validateLibraryLanguage returns nil for an empty value, which means "follow the server-wide language".
+func validateLibraryLanguage(raw string) (*string, error) {
+	lang := strings.TrimSpace(raw)
+	if lang == "" {
+		return nil, nil
+	}
+	if !settings.ValidLanguage(lang) {
+		return nil, errors.New("metadataLanguage must look like fr-FR")
+	}
+	return &lang, nil
+}
+
+func equalLanguage(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // resolveLibraryPaths returns real, deduplicated paths that do not overlap each other.

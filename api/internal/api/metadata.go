@@ -237,7 +237,12 @@ func (s *Server) searchMatch(w http.ResponseWriter, r *http.Request) {
 		query = it.Title
 	}
 	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
-	results, err := s.Metadata.Search(r.Context(), it.Kind, query, year)
+	lib, err := s.q.GetLibrary(r.Context(), it.LibraryID)
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	results, err := s.Metadata.Search(r.Context(), lib, it.Kind, query, year)
 	if s.writeMetadataError(w, r, err) {
 		return
 	}

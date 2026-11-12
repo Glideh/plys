@@ -327,6 +327,10 @@ paths:
                   items: { type: string }
                 restricted: { type: boolean, default: false, description: Only listed users (and admins) can see the library }
                 userIds: { type: array, items: { type: string, format: uuid } }
+                metadataLanguage:
+                  type: string
+                  pattern: "^[a-z]{2}-[A-Z]{2}$"
+                  description: TMDB language for this library (e.g. pt-BR). Omitted or empty, the library follows the server-wide metadata language.
       responses:
         "201":
           description: Created
@@ -359,7 +363,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
     patch:
       operationId: updateLibrary
-      summary: Rename a library or replace its paths (admin)
+      summary: Rename a library, replace its paths or change its access and metadata language (admin)
       description: The kind cannot be changed after creation.
       requestBody:
         required: true
@@ -379,6 +383,11 @@ paths:
                   type: array
                   description: Replaces the allowed users; kept when restricted is turned off.
                   items: { type: string, format: uuid }
+                metadataLanguage:
+                  type: string
+                  description: |
+                    TMDB language for this library (e.g. pt-BR). An empty string removes the override, so the library follows
+                    the server-wide metadata language again. A change queues a scan that re-fetches the metadata.
       responses:
         "200":
           description: Updated
@@ -1632,6 +1641,9 @@ components:
           additionalProperties: { type: integer }
         lastScannedAt: { type: [string, "null"], format: date-time }
         restricted: { type: boolean }
+        metadataLanguage:
+          type: [string, "null"]
+          description: TMDB language overriding the server-wide one for this library; null when the library follows the server setting.
         userIds:
           type: array
           description: Admin only. Users allowed when the library is restricted.
