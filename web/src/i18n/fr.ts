@@ -1,5 +1,5 @@
 export default {
-  app: { name: 'Plys', tagline: 'Votre cinémathèque personnelle' },
+  app: { name: 'Plys', tagline: 'Votre cinémathèque personnelle', serverVersion: 'Serveur {version}' },
   common: {
     username: "Nom d'utilisateur",
     password: 'Mot de passe',

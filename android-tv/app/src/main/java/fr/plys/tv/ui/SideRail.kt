@@ -64,7 +64,7 @@ fun sectionOf(kind: CatalogKind) = when (kind) {
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SideRail(
-    current: Section, modifier: Modifier = Modifier,
+    current: Section, serverVersion: String, modifier: Modifier = Modifier,
     home: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -91,6 +91,11 @@ fun SideRail(
             }
             Spacer(Modifier.weight(1f))
             RailItem(Icons.AutoMirrored.Outlined.Logout, R.string.sign_out, false, expanded, requesters.getValue(Section.NONE), signOut)
+            // The web's footer: the server version, readable once the rail unfolds.
+            if (expanded && serverVersion.isNotEmpty()) {
+                Text(stringResource(R.string.server_version, serverVersion), style = MaterialTheme.typography.labelSmall,
+                    color = Plys.Subtle, maxLines = 1, modifier = Modifier.padding(start = 14.dp))
+            }
         }
     }
 }

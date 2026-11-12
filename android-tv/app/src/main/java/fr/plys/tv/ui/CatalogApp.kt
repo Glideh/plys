@@ -111,7 +111,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                 is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
             }
         }
-        SideRail(section, Modifier.align(Alignment.CenterStart), home = model::home, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
+        SideRail(section, state.serverVersion, Modifier.align(Alignment.CenterStart), home = model::home, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
         if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
     }
 }

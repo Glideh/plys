@@ -125,7 +125,7 @@ data class FilterOption(val id: String, val label: String)
 data class FilterOptions(val options: Map<String, List<FilterOption>> = emptyMap(), val unavailableServers: Int = 0)
 
 @Serializable
-data class ServerInfo(val id: String)
+data class ServerInfo(val id: String, val version: String = "")
 
 @Serializable
 data class FederatedToken(val token: String, val expiresAt: String)

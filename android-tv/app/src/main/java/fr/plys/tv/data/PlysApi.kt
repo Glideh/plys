@@ -110,6 +110,11 @@ class PlysApi(
         localServerId = null
     }
 
+    /** Public identity of the signed-in server, shown at the bottom of the side rail. */
+    suspend fun serverInfo(): ServerInfo = locked {
+        decode<ServerInfo>(request("server", authenticated = false)).also { localServerId = it.id }
+    }
+
     suspend fun libraries(): List<Library> = locked {
         decode<LibraryList>(request("libraries")).items
     }

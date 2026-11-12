@@ -93,6 +93,8 @@ data class CatalogState(
     /** Latest additions of each kind, shown on the home screen. */
     val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
     val search: SearchState = SearchState(),
+    /** Version of the signed-in server, empty until it answered. */
+    val serverVersion: String = "",
 )
 
 private const val RECENT_ITEMS = 20
@@ -141,7 +143,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
         countsJob?.cancel()
         clearSearch()
-        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap())
+        mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap(), serverVersion = "")
         clearCatalogState()
         api.login(server, username, password)
         loadHome()
@@ -159,6 +161,17 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
             retryAction = { loadHome() }
         }
         refreshCatalogCounts()
+        refreshServerVersion()
+    }
+
+    /** Informative only: the rail simply shows nothing when the server does not answer. */
+    private fun refreshServerVersion() {
+        viewModelScope.launch {
+            try {
+                val version = api.serverInfo().version
+                mutableState.value = mutableState.value.copy(serverVersion = version)
+            } catch (_: ClientException) {}
+        }
     }
 
     /** One request per kind gives both its title count and its latest additions. */

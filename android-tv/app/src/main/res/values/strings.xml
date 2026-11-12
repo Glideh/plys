@@ -125,6 +125,7 @@
     <string name="creators_title">Created by</string>
     <string name="seek_by">%1$s s</string>
     <string name="brand">Plys</string>
+    <string name="server_version">Server %1$s</string>
     <string name="sign_in_title">Sign in to your media server</string>
     <string name="recent_movies">Recently added movies</string>
     <string name="recent_series">Recently added series</string>

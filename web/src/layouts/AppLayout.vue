@@ -3,12 +3,14 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { libraryKinds } from '@/api/libraries'
+import { serverApi } from '@/api/server'
 import { useAuthStore } from '@/stores/auth'
 
 const { t } = useI18n()
 const auth = useAuthStore()
 
 const menuOpen = ref(false)
+const serverVersion = ref('')
 const menu = ref<HTMLElement | null>(null)
 
 function closeOnOutsideClick(event: PointerEvent) {
@@ -22,6 +24,11 @@ function closeOnEscape(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', closeOnOutsideClick)
   document.addEventListener('keydown', closeOnEscape)
+  // The footer is informative only: without an answer it simply stays empty.
+  serverApi
+    .info()
+    .then((info) => (serverVersion.value = info.version))
+    .catch(() => {})
 })
 
 onUnmounted(() => {
@@ -31,7 +38,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-full">
+  <div class="flex min-h-full flex-col">
     <header class="sticky top-0 z-30 border-b border-white/5 bg-surface-950/80 backdrop-blur">
       <nav class="mx-auto flex h-16 max-w-screen-2xl items-center gap-8 px-4 sm:px-8">
         <RouterLink :to="{ name: 'home' }" class="flex items-center gap-2.5">
@@ -107,6 +114,14 @@ onUnmounted(() => {
       </nav>
     </header>
 
-    <RouterView :key="$route.path" />
+    <div class="flex-1">
+      <RouterView :key="$route.path" />
+    </div>
+
+    <footer class="border-t border-white/5">
+      <div class="mx-auto flex h-12 max-w-screen-2xl items-center justify-end px-4 text-xs text-slate-500 sm:px-8">
+        <span v-if="serverVersion">{{ t('app.serverVersion', { version: serverVersion }) }}</span>
+      </div>
+    </footer>
   </div>
 </template>
