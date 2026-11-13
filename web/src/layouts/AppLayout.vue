@@ -6,6 +6,8 @@ import { libraryKinds } from '@/api/libraries'
 import { serverApi } from '@/api/server'
 import { useAuthStore } from '@/stores/auth'
 
+const cachedViews = ['KindView', 'LibraryView']
+
 const { t } = useI18n()
 const auth = useAuthStore()
 
@@ -115,7 +117,13 @@ onUnmounted(() => {
     </header>
 
     <div class="flex-1">
-      <RouterView :key="$route.path" />
+      <!-- Catalog lists stay alive so that coming back from an item (or its seasons and episodes)
+           finds them as they were left: same loaded pages, same scroll. -->
+      <RouterView v-slot="{ Component, route: current }">
+        <KeepAlive :include="cachedViews" :max="5">
+          <component :is="Component" :key="current.path" />
+        </KeepAlive>
+      </RouterView>
     </div>
 
     <footer class="border-t border-white/5">

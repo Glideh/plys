@@ -16,8 +16,12 @@ watch(
 </script>
 
 <template>
-  <!-- Moving between videos must restart the player, which a same-route navigation would reuse. -->
+  <!-- Moving between videos must restart the player, which a same-route navigation would reuse.
+       The layout stays alive while the player is open so that its cached lists survive a playback;
+       the cache is dropped on logout so that the next user never sees the previous one's lists. -->
   <RouterView v-slot="{ Component, route: current }">
-    <component :is="Component" :key="current.name === 'watch' ? String(current.params.id) : undefined" />
+    <KeepAlive :include="auth.user ? ['AppLayout'] : []">
+      <component :is="Component" :key="current.name === 'watch' ? String(current.params.id) : undefined" />
+    </KeepAlive>
   </RouterView>
 </template>

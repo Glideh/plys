@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { libraryKinds, type LibraryKind } from '@/api/libraries'
 import { safeRedirect } from './redirect'
+import { scrollBehavior } from './scroll'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -12,6 +13,7 @@ declare module 'vue-router' {
 
 export const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior,
   routes: [
     { path: '/setup', name: 'setup', component: () => import('@/views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
