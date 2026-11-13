@@ -237,6 +237,12 @@ const LiveSubtitleFile = "subs.vtt"
 // Software tone mapping: linearize, map with Hable, convert back to BT.709.
 const cpuTonemap = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv"
 
+// cpuTonemapAt downscales to the output size before tone mapping. The tone mapping works on float RGB, so
+// running it on a 4K picture instead of 1080p costs four times as much and cannot keep up with playback.
+func cpuTonemapAt(p Plan) string {
+	return fmt.Sprintf("scale=%d:%d,%s", p.Width, p.Height, cpuTonemap)
+}
+
 // videoFilter scales, tone maps when needed and converts to 8-bit 4:2:0 on the device of the encoder.
 // hwFrames tells whether decoded frames already live on the GPU.
 func videoFilter(p Plan, v *scanner.Stream, accel Accel, hwFrames bool) string {
@@ -259,16 +265,18 @@ func videoFilter(p Plan, v *scanner.Stream, accel Accel, hwFrames bool) string {
 	case AccelVAAPI:
 		if !hwFrames {
 			if p.Tonemap {
-				chain = append(chain, cpuTonemap)
+				chain = append(chain, cpuTonemapAt(p))
 			}
 			chain = append(chain, "format=nv12", "hwupload")
 		}
 		chain = append(chain, "scale_vaapi="+size+":format=nv12")
 	default:
 		if p.Tonemap {
-			chain = append(chain, cpuTonemap)
+			chain = append(chain, cpuTonemapAt(p))
+		} else {
+			chain = append(chain, fmt.Sprintf("scale=%d:%d", p.Width, p.Height))
 		}
-		chain = append(chain, fmt.Sprintf("scale=%d:%d", p.Width, p.Height), "format=yuv420p")
+		chain = append(chain, "format=yuv420p")
 	}
 	return strings.Join(chain, ",")
 }

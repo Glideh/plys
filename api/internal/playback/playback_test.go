@@ -414,3 +414,51 @@ func TestStreamKeepsAudioVideoOffsetWithoutEditList(t *testing.T) {
 		})
 	}
 }
+
+func TestToneMappingRunsAtOutputSize(t *testing.T) {
+	hdr := &scanner.Stream{Codec: "hevc", PixFmt: "yuv420p10le", Width: 3840, Height: 2160, ColorTransfer: "smpte2084"}
+	plan := Decide(Source{Video: hdr}, browser)
+	filter := videoFilter(plan, hdr, AccelNone, false)
+	if !strings.HasPrefix(filter, "scale=1920:1080,zscale=t=linear") {
+		t.Fatalf("4K HDR must be downscaled before the float tone mapping: %s", filter)
+	}
+	if filter = videoFilter(plan, hdr, AccelVAAPI, false); !strings.HasPrefix(filter, "scale=1920:1080,zscale=t=linear") {
+		t.Fatalf("VAAPI tone maps on the CPU, after downscaling: %s", filter)
+	}
+
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	input := filepath.Join(t.TempDir(), "hdr.mkv")
+	if output, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=24", "-t", "1",
+		"-pix_fmt", "yuv420p10le", "-c:v", "libx265",
+		"-x265-params", "log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited", input).CombinedOutput(); err != nil {
+		t.Fatalf("generate HDR input: %v %s", err, output)
+	}
+	source := probe(t, input)
+	plan = Decide(source, ClientCaps{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac"}, MaxHeight: 180})
+	if !plan.Tonemap || plan.Height != 180 {
+		t.Fatalf("plan: %+v", plan)
+	}
+	out := t.TempDir()
+	if output, err := exec.Command(ffmpeg, Args(plan, source, 0, Encoder{Accel: AccelNone}, out)...).CombinedOutput(); err != nil {
+		t.Fatalf("tone map: %v %s", err, output)
+	}
+	init, err := os.ReadFile(filepath.Join(out, "init.mp4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	segment, err := os.ReadFile(filepath.Join(out, "seg_00000.m4s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := filepath.Join(out, "flat.mp4")
+	if err := os.WriteFile(flat, append(init, segment...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	video := probe(t, flat).Video
+	if video == nil || video.Codec != "h264" || video.Width != 320 || video.Height != 180 || video.PixFmt != "yuv420p" {
+		t.Fatalf("output video: %+v", video)
+	}
+}

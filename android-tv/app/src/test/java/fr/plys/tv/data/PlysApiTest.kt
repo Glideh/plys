@@ -15,6 +15,8 @@ import fr.plys.tv.ui.choiceValue
 import fr.plys.tv.ui.withChoice
 import fr.plys.tv.ui.withFilterSelection
 import fr.plys.tv.ui.audioClientCaps
+import fr.plys.tv.ui.VideoDecoding
+import fr.plys.tv.ui.videoClientCaps
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -435,6 +437,25 @@ class PlysApiTest {
         assertEquals("eac3", plusOnly.preferredAudioCodec)
         val ac3Only = audioClientCaps(listOf("h264"), listOf("aac", "ac3", "eac3"), listOf("ac3"))
         assertEquals(listOf("aac", "ac3"), ac3Only.audioCodecs)
+    }
+
+    @Test fun `video capabilities announce 4K and HDR only when every codec and the display handle them`() {
+        val base = audioClientCaps(listOf("h264", "hevc"), listOf("aac"), emptyList())
+        val uhd = listOf(VideoDecoding("h264", 2160, false), VideoDecoding("hevc", 2160, true))
+        val hdrTv = videoClientCaps(base, uhd, displayHdr10 = true)
+        assertEquals(2160, hdrTv.maxHeight)
+        assertTrue(hdrTv.hdr)
+        assertEquals(base.videoCodecs, hdrTv.videoCodecs)
+        assertEquals(base.audioCodecs, hdrTv.audioCodecs)
+
+        assertFalse(videoClientCaps(base, uhd, displayHdr10 = false).hdr)
+        assertFalse(videoClientCaps(base, listOf(VideoDecoding("h264", 2160, false), VideoDecoding("hevc", 2160, false)), true).hdr)
+
+        val fullHdH264 = videoClientCaps(base, listOf(VideoDecoding("h264", 1080, false), VideoDecoding("hevc", 2160, true)), true)
+        assertEquals(1080, fullHdH264.maxHeight)
+        assertEquals(1080, videoClientCaps(base, listOf(VideoDecoding("h264", 720, false), VideoDecoding("hevc", 720, false)), false).maxHeight)
+        // A codec the device does not announce (AV1 in software only) does not lower the limit.
+        assertEquals(2160, videoClientCaps(base, uhd + VideoDecoding("av1", 1080, false), true).maxHeight)
     }
 
     private class MemoryStore : SessionStore {
