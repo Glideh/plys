@@ -72,6 +72,11 @@ import fr.plys.tv.ui.PlysButton as Button
 
 @Composable
 fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier = Modifier) {
+    // Back on the splash leaves the app, as on any launch screen.
+    if (state.screen == Screen.Splash) {
+        SplashScreen(modifier)
+        return
+    }
     BackHandler(model.canGoBack || state.loading) { model.back() }
     if (state.screen == Screen.Login) {
         Box(modifier) {
@@ -99,7 +104,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                     Modifier.padding(start = if (detail) RailWidth + 24.dp else 0.dp, end = if (detail) 40.dp else 0.dp, top = if (detail) 20.dp else 0.dp, bottom = 12.dp))
             }
             when (val screen = state.screen) {
-                Screen.Login -> Unit
+                Screen.Splash, Screen.Login -> Unit
                 is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search) }
                 is Screen.Libraries -> key("libraries") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

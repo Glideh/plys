@@ -39,6 +39,8 @@ import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 
 sealed interface Screen {
+    /** Shown at launch while a stored session is restored, so a signed-in user never sees the sign-in form. */
+    data object Splash : Screen
     data object Login : Screen
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
@@ -80,7 +82,7 @@ data class SearchState(
 }
 
 data class CatalogState(
-    val screen: Screen = Screen.Login,
+    val screen: Screen = Screen.Splash,
     val loading: Boolean = false,
     val error: ClientException? = null,
     val canRetry: Boolean = true,
@@ -125,17 +127,19 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     init { perform { restore() } }
 
     private suspend fun restore() {
-        if (api.signedIn || api.restore()) {
-            loadHome()
-            savedState.get<String>("catalogQuery")?.let { raw ->
-                val stored = runCatching { Json.decodeFromString<CatalogQuery>(raw) }.getOrNull()
-                if (stored != null) {
-                    val position = savedState.get<Int>("focusedPosition") ?: stored.offset
-                    val query = stored.copy(offset = position / 40 * 40)
-                    val page = api.catalog(query)
-                    navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset))
-                    preparePaging(query, page)
-                }
+        if (!api.signedIn && !api.restore()) {
+            mutableState.value = mutableState.value.copy(screen = Screen.Login)
+            return
+        }
+        loadHome()
+        savedState.get<String>("catalogQuery")?.let { raw ->
+            val stored = runCatching { Json.decodeFromString<CatalogQuery>(raw) }.getOrNull()
+            if (stored != null) {
+                val position = savedState.get<Int>("focusedPosition") ?: stored.offset
+                val query = stored.copy(offset = position / 40 * 40)
+                val page = api.catalog(query)
+                navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset))
+                preparePaging(query, page)
             }
         }
     }
@@ -401,7 +405,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         mutableState.value = mutableState.value.copy(screen = screen, error = null)
         perform {
             val refreshed = when (screen) {
-                Screen.Login -> screen
+                Screen.Splash, Screen.Login -> screen
                 is Screen.Home -> { loadHome(); mutableState.value.screen }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
                 is Screen.Watchlist -> Screen.Watchlist(api.watchlist())
@@ -446,7 +450,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 if (!api.signedIn) {
                     history.clear()
                     mutableState.value = mutableState.value.copy(screen = Screen.Login)
-                } else if (mutableState.value.screen == Screen.Login) {
+                } else if (mutableState.value.screen == Screen.Login || mutableState.value.screen == Screen.Splash) {
                     retryAction = { restore() }
                     mutableState.value = mutableState.value.copy(screen = Screen.Home(HomeResponse()), canRetry = true)
                 }

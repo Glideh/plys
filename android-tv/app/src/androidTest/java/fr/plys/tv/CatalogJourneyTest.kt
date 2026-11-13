@@ -27,6 +27,8 @@ import org.json.JSONObject
 import org.json.JSONArray
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModelProvider
 import fr.plys.tv.data.HomeItem
 import fr.plys.tv.data.HomeResponse
@@ -100,6 +102,58 @@ class CatalogJourneyTest {
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }
+    }
+
+    @Test fun signedInLaunchShowsSplashThenHome() {
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.requestUrl!!.encodedPath
+                    val body = when {
+                        path == "/api/v1/setup/status" -> """{"needsSetup":false}"""
+                        path == "/api/v1/auth/login" -> """{"accessToken":"splash-fixture","refreshToken":"splash-refresh","user":{"id":"viewer","username":"Viewer","locale":"en"}}"""
+                        path == "/api/v1/auth/logout" -> "{}"
+                        path == "/api/v1/server" -> """{"id":"local"}"""
+                        path == "/api/v1/libraries" -> """{"items":[]}"""
+                        path == "/api/v1/me/home" -> """{"continueWatching":[],"nextUp":[]}"""
+                        path.startsWith("/api/v1/kinds/") -> """{"items":[],"total":0,"offset":0,"limit":1}"""
+                        else -> return MockResponse().setResponseCode(404)
+                    }
+                    return MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+                }
+            }
+            server.start()
+            val serverAddress = server.url("/").toString()
+            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+            rule.waitUntil(10000) { !model.state.value.loading }
+            rule.runOnIdle { model.login(serverAddress, "viewer", "fixture-password") }
+            rule.waitUntil(10000) { model.state.value.screen is Screen.Home && !model.state.value.loading }
+            // A new launch with the session already held starts on the splash and goes straight home, never through the sign-in form.
+            val screens = java.util.Collections.synchronizedList(mutableListOf<Screen>())
+            val relaunched = AtomicReference<CatalogViewModel>()
+            rule.runOnUiThread {
+                val next = CatalogViewModel(rule.activity.application, androidx.lifecycle.SavedStateHandle())
+                screens.add(next.state.value.screen)
+                relaunched.set(next)
+                rule.activity.setContent {
+                    val state by next.state.collectAsState()
+                    androidx.compose.runtime.SideEffect { screens.add(state.screen) }
+                    PlysTheme { fr.plys.tv.ui.CatalogApp(next, state) }
+                }
+            }
+            assertEquals(Screen.Splash, screens.first())
+            rule.waitUntil(10000) { relaunched.get().state.value.screen is Screen.Home && !relaunched.get().state.value.loading }
+            assertTrue(screens.none { it == Screen.Login })
+            rule.onAllNodesWithText(text(R.string.sign_in)).assertCountEquals(0)
+            rule.runOnIdle { model.logout() }
+        }
+    }
+
+    @Test fun splashShowsTheBrandOnly() {
+        rule.runOnUiThread { rule.activity.setContent { PlysTheme { fr.plys.tv.ui.SplashScreen() } } }
+        rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
+        rule.onAllNodesWithText(text(R.string.sign_in)).assertCountEquals(0)
+        screenshot("splash")
     }
 
     @Test fun watchlistFromSideRailAndDetail() {
