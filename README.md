@@ -163,7 +163,7 @@ Set these in `.env` when needed (complete installation):
 |---|---|---|
 | `COOKIE_SECURE` | `false` | `true` behind an HTTPS reverse proxy; keep `false` over plain http |
 | `PLYS_FEDERATION_REQUIRE_HTTPS` | `true` | Refuses paired servers whose public URL is not `https://`; set `false` only for pairing over plain http on a trusted network |
-| `PLYS_VERSION` | `latest` | Image version, e.g. `0.5.0` to stay on a release |
+| `PLYS_VERSION` | `latest` | Image version, e.g. `0.6.0` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
 | `TRUSTED_PROXIES` | compose network | Proxies allowed to set `X-Forwarded-For`, as comma-separated CIDRs or addresses (`none` trusts none). The API logs and rate-limits the right-most address outside them |
