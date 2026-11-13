@@ -8,6 +8,6 @@ export function useErrorMessage() {
     if (!(err instanceof ApiError)) return t('errors.generic')
     if (err.code === 'validation') return err.message
     const key = `errors.${err.code}`
-    return te(key) ? t(key) : t('errors.generic')
+    return te(key) ? t(key, { detail: err.message }) : t('errors.generic')
   }
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -202,11 +203,26 @@ func (s *Server) updateOpenSubtitles(w http.ResponseWriter, r *http.Request, req
 	}
 	if cur.APIKey != "" && s.OpenSubtitles != nil {
 		err := s.OpenSubtitles.Validate(ctx, opensubtitles.Credentials{APIKey: cur.APIKey, Username: cur.Username, Password: cur.Password})
-		if errors.Is(err, opensubtitles.ErrUnauthorized) {
-			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_credentials", "OpenSubtitles rejected this API key or login")
-			return false
-		}
 		if err != nil {
+			slog.WarnContext(ctx, "OpenSubtitles credentials check failed", "err", err)
+		}
+		var apiErr *opensubtitles.APIError
+		switch {
+		case err == nil:
+		case errors.Is(err, opensubtitles.ErrUnauthorized):
+			msg := "OpenSubtitles rejected this API key or login"
+			if errors.As(err, &apiErr) && apiErr.Message != "" {
+				msg += ": " + apiErr.Message
+			}
+			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_credentials", msg)
+			return false
+		case errors.Is(err, opensubtitles.ErrRateLimited):
+			httpx.Error(w, http.StatusTooManyRequests, "subtitles_rate_limited", "OpenSubtitles received too many requests, try again in a moment")
+			return false
+		case errors.As(err, &apiErr):
+			httpx.Error(w, http.StatusBadGateway, "subtitles_rejected", apiErr.Detail())
+			return false
+		default:
 			httpx.Error(w, http.StatusBadGateway, "subtitles_unreachable", "OpenSubtitles could not be reached to check the credentials")
 			return false
 		}

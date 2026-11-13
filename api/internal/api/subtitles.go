@@ -274,15 +274,22 @@ func (s *Server) deleteSubtitle(w http.ResponseWriter, r *http.Request) {
 }
 
 func subtitleProviderError(w http.ResponseWriter, r *http.Request, err error) {
+	var apiErr *opensubtitles.APIError
 	switch {
 	case errors.Is(err, opensubtitles.ErrNotConfigured):
 		httpx.Error(w, http.StatusConflict, "subtitles_not_configured", "online subtitle search is not configured on this server")
 	case errors.Is(err, opensubtitles.ErrUnauthorized):
+		slog.WarnContext(r.Context(), "OpenSubtitles rejected the server credentials", "err", err)
 		httpx.Error(w, http.StatusBadGateway, "subtitles_unauthorized", "OpenSubtitles rejected the server credentials")
 	case errors.Is(err, opensubtitles.ErrQuota):
 		httpx.Error(w, http.StatusTooManyRequests, "subtitles_quota", "the OpenSubtitles download quota is reached, try again later")
+	case errors.Is(err, opensubtitles.ErrRateLimited):
+		httpx.Error(w, http.StatusTooManyRequests, "subtitles_rate_limited", "OpenSubtitles received too many requests, try again in a moment")
 	case errors.Is(err, context.Canceled):
 		return
+	case errors.As(err, &apiErr):
+		slog.WarnContext(r.Context(), "OpenSubtitles request failed", "err", err)
+		httpx.Error(w, http.StatusBadGateway, "subtitles_rejected", apiErr.Detail())
 	default:
 		slog.WarnContext(r.Context(), "OpenSubtitles request failed", "err", err)
 		httpx.Error(w, http.StatusBadGateway, "subtitles_unreachable", "OpenSubtitles could not be reached")

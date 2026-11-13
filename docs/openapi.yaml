@@ -900,8 +900,16 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: OpenSubtitles rate limit hit while checking the login (`subtitles_rate_limited`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: TMDB or OpenSubtitles unreachable while checking the key (`tmdb_unreachable`, `subtitles_unreachable`)
+          description: |
+            TMDB or OpenSubtitles unreachable while checking the key (`tmdb_unreachable`, `subtitles_unreachable`), or
+            OpenSubtitles answering with an unexpected error (`subtitles_rejected`, whose message is the OpenSubtitles
+            message and HTTP status)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1105,8 +1113,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: OpenSubtitles rate limit (`subtitles_rate_limited`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: "OpenSubtitles unreachable (`subtitles_unreachable`) or rejecting the server credentials (`subtitles_unauthorized`)"
+          description: "OpenSubtitles unreachable (`subtitles_unreachable`), rejecting the server credentials (`subtitles_unauthorized`) or answering with another error (`subtitles_rejected`)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1153,12 +1166,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "429":
-          description: Daily OpenSubtitles download quota reached (`subtitles_quota`)
+          description: Daily OpenSubtitles download quota reached (`subtitles_quota`) or rate limit (`subtitles_rate_limited`)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "502":
-          description: "`subtitles_unreachable`, `subtitles_unauthorized`, or a file that is not a readable subtitle (`subtitles_invalid`)"
+          description: "`subtitles_unreachable`, `subtitles_unauthorized`, `subtitles_rejected`, or a file that is not a readable subtitle (`subtitles_invalid`)"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

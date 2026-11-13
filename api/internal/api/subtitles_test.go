@@ -22,7 +22,7 @@ func fakeOpenSubtitles(t *testing.T) *httptest.Server {
 			return
 		}
 		switch r.URL.Path {
-		case "/infos/formats":
+		case "/discover/popular":
 			_, _ = w.Write([]byte(`{"data":{}}`))
 		case "/subtitles":
 			if r.URL.Query().Get("query") != "alien" || r.URL.Query().Get("languages") != "fr" {

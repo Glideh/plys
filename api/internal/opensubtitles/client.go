@@ -31,7 +31,46 @@ var (
 	// ErrUnauthorized means the API key, or the login, was rejected.
 	ErrUnauthorized = errors.New("OpenSubtitles rejected the credentials")
 	ErrQuota        = errors.New("OpenSubtitles download quota reached")
+	// ErrRateLimited means too many requests were sent in a short time (logins are limited to one per second).
+	ErrRateLimited = errors.New("OpenSubtitles rate limit reached")
 )
+
+// APIError is an unexpected answer from OpenSubtitles, with the message it gave when there was one.
+type APIError struct {
+	Method  string
+	Path    string
+	Status  int
+	Message string
+
+	retryAfter string
+}
+
+func (e *APIError) Error() string {
+	msg := fmt.Sprintf("OpenSubtitles %s %s: status %d", e.Method, e.Path, e.Status)
+	if e.Message != "" {
+		msg += ": " + e.Message
+	}
+	return msg
+}
+
+// Detail returns the message to show to an administrator.
+func (e *APIError) Detail() string {
+	if e.Message != "" {
+		return fmt.Sprintf("%s (HTTP %d)", e.Message, e.Status)
+	}
+	return fmt.Sprintf("HTTP %d", e.Status)
+}
+
+// rejection keeps the OpenSubtitles message along with one of the sentinel errors.
+type rejection struct {
+	sentinel error
+	api      *APIError
+}
+
+func (r *rejection) Error() string { return r.sentinel.Error() + " (" + r.api.Error() + ")" }
+func (r *rejection) Unwrap() []error {
+	return []error{r.sentinel, r.api}
+}
 
 // Credentials are read on every call so that a change of the settings applies at once.
 type Credentials struct {
@@ -242,8 +281,9 @@ func (c *Client) Validate(ctx context.Context, cr Credentials) error {
 		_, _, err := c.login(ctx, cr)
 		return err
 	}
+	// The /infos endpoints are cached and answer even to an unknown key; this one checks it.
 	var discard json.RawMessage
-	return c.do(ctx, http.MethodGet, c.baseURL+"/infos/formats", cr.APIKey, "", nil, &discard)
+	return c.do(ctx, http.MethodGet, c.baseURL+"/discover/popular?languages=en", cr.APIKey, "", nil, &discard)
 }
 
 // session returns the API base URL and token to download with; without a login, downloads are anonymous.
@@ -283,7 +323,13 @@ type loginResponse struct {
 func (c *Client) login(ctx context.Context, cr Credentials) (string, string, error) {
 	body, _ := json.Marshal(map[string]string{"username": cr.Username, "password": cr.Password})
 	var resp loginResponse
-	if err := c.do(ctx, http.MethodPost, c.baseURL+"/login", cr.APIKey, "", body, &resp); err != nil {
+	err := c.do(ctx, http.MethodPost, c.baseURL+"/login", cr.APIKey, "", body, &resp)
+	// OpenSubtitles answers 400 to some refused logins, not only 401.
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusBadRequest {
+		return "", "", &rejection{sentinel: ErrUnauthorized, api: apiErr}
+	}
+	if err != nil {
 		return "", "", err
 	}
 	if resp.Token == "" {
@@ -316,6 +362,28 @@ func (c *Client) do(ctx context.Context, method, endpoint, apiKey, token string,
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	for attempt := 0; ; attempt++ {
+		if body != nil {
+			req.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		err := c.send(req, out)
+		// A short rate limit (one login per second) is waited for once.
+		var wait time.Duration
+		if r, ok := err.(*rejection); ok && r.sentinel == ErrRateLimited && attempt == 0 {
+			wait = retryAfter(r.api)
+		}
+		if wait <= 0 {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+}
+
+func (c *Client) send(req *http.Request, out any) error {
 	res, err := c.http.Do(req)
 	if err != nil {
 		return err
@@ -325,17 +393,55 @@ func (c *Client) do(ctx context.Context, method, endpoint, apiKey, token string,
 	if err != nil {
 		return err
 	}
-	switch {
-	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden:
-		return ErrUnauthorized
-	// OpenSubtitles answers 406 once the daily downloads are used up.
-	case res.StatusCode == http.StatusNotAcceptable || (res.StatusCode == http.StatusTooManyRequests && strings.HasSuffix(endpoint, "/download")):
-		return ErrQuota
-	case res.StatusCode < 200 || res.StatusCode > 299:
-		return fmt.Errorf("OpenSubtitles %s %s: status %d", method, req.URL.Path, res.StatusCode)
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		apiErr := &APIError{Method: req.Method, Path: req.URL.Path, Status: res.StatusCode, Message: errorMessage(data)}
+		if apiErr.Status == http.StatusTooManyRequests {
+			apiErr.retryAfter = res.Header.Get("Retry-After")
+		}
+		switch {
+		case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden:
+			return &rejection{sentinel: ErrUnauthorized, api: apiErr}
+		// OpenSubtitles answers 406 once the daily downloads are used up.
+		case res.StatusCode == http.StatusNotAcceptable || (res.StatusCode == http.StatusTooManyRequests && strings.HasSuffix(req.URL.Path, "/download")):
+			return &rejection{sentinel: ErrQuota, api: apiErr}
+		case res.StatusCode == http.StatusTooManyRequests:
+			return &rejection{sentinel: ErrRateLimited, api: apiErr}
+		}
+		return apiErr
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return fmt.Errorf("decode OpenSubtitles response: %w", err)
 	}
 	return nil
+}
+
+// retryAfter returns how long to wait before the single retry, or 0 when the wait is too long to hold a request.
+func retryAfter(e *APIError) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(e.retryAfter))
+	if err != nil || secs < 0 {
+		secs = 1
+	}
+	if secs > 3 {
+		return 0
+	}
+	return time.Duration(secs)*time.Second + 100*time.Millisecond
+}
+
+// errorMessage extracts the message of an error body: {"message": ...} or {"errors": [...]}.
+func errorMessage(data []byte) string {
+	var body struct {
+		Message string   `json:"message"`
+		Errors  []string `json:"errors"`
+	}
+	if json.Unmarshal(data, &body) != nil {
+		return ""
+	}
+	msg := body.Message
+	if msg == "" {
+		msg = strings.Join(body.Errors, ", ")
+	}
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	return msg
 }

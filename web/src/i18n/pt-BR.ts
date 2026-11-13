@@ -362,6 +362,8 @@ export default {
     subtitles_unauthorized: 'O OpenSubtitles recusou as credenciais do servidor. Um administrador precisa verificá-las.',
     subtitles_quota: 'O limite diário de downloads do OpenSubtitles foi atingido. Tente novamente mais tarde.',
     subtitles_unreachable: 'O OpenSubtitles está inacessível. Tente novamente mais tarde.',
+    subtitles_rejected: 'O OpenSubtitles recusou a solicitação: {detail}',
+    subtitles_rate_limited: 'O OpenSubtitles recebeu solicitações demais. Tente novamente em instantes.',
     subtitles_invalid: 'Este arquivo de legendas não pôde ser lido. Escolha outro.',
     last_admin: 'Pelo menos um administrador precisa permanecer.',
     cannot_delete_self: 'Você não pode excluir sua própria conta.',

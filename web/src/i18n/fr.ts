@@ -362,6 +362,8 @@ export default {
     subtitles_unauthorized: 'OpenSubtitles a refusé les identifiants du serveur. Un administrateur doit les vérifier.',
     subtitles_quota: 'La limite quotidienne de téléchargements OpenSubtitles est atteinte. Réessayez plus tard.',
     subtitles_unreachable: 'OpenSubtitles est injoignable. Réessayez plus tard.',
+    subtitles_rejected: 'OpenSubtitles a refusé la requête : {detail}',
+    subtitles_rate_limited: 'OpenSubtitles a reçu trop de requêtes. Réessayez dans un instant.',
     subtitles_invalid: 'Ce fichier de sous-titres est illisible. Choisissez-en un autre.',
     last_admin: 'Il doit rester au moins un administrateur.',
     cannot_delete_self: 'Vous ne pouvez pas supprimer votre propre compte.',

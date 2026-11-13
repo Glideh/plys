@@ -24,6 +24,8 @@ export type ApiErrorCode =
   | 'subtitles_unauthorized'
   | 'subtitles_quota'
   | 'subtitles_unreachable'
+  | 'subtitles_rejected'
+  | 'subtitles_rate_limited'
   | 'subtitles_invalid'
   | 'rate_limited'
   | 'peer_not_paired'

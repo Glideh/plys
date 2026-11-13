@@ -132,3 +132,65 @@ func TestSearchAndDownload(t *testing.T) {
 		t.Errorf("without key: %v", err)
 	}
 }
+
+func TestErrors(t *testing.T) {
+	var logins atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/discover/popular":
+			if r.Header.Get("Api-Key") != "key" {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"message":"You cannot consume this service"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		case "/login":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switch body["username"] {
+			case "busy":
+				// The first login is limited, the retry gets through.
+				if logins.Add(1) == 1 {
+					w.Header().Set("Retry-After", "0")
+					w.WriteHeader(http.StatusTooManyRequests)
+					return
+				}
+				_, _ = w.Write([]byte(`{"token":"tok"}`))
+			case "flood":
+				w.Header().Set("Retry-After", "60")
+				w.WriteHeader(http.StatusTooManyRequests)
+			case "me@example.com":
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"message":"Error, invalid username/password"}`))
+			default:
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"errors":["maintenance"]}`))
+			}
+		}
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "Plys vtest", func(context.Context) (Credentials, error) { return Credentials{}, nil })
+	ctx := context.Background()
+
+	if err := c.Validate(ctx, Credentials{APIKey: "key"}); err != nil {
+		t.Errorf("valid key: %v", err)
+	}
+	var apiErr *APIError
+	err := c.Validate(ctx, Credentials{APIKey: "bad"})
+	if !errors.Is(err, ErrUnauthorized) || !errors.As(err, &apiErr) || apiErr.Message != "You cannot consume this service" {
+		t.Errorf("unknown key: %v", err)
+	}
+	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "busy", Password: "p"}); err != nil {
+		t.Errorf("a short rate limit must be retried once: %v", err)
+	}
+	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "flood", Password: "p"}); !errors.Is(err, ErrRateLimited) {
+		t.Errorf("a long rate limit must not be waited for: %v", err)
+	}
+	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "me@example.com", Password: "p"}); !errors.Is(err, ErrUnauthorized) {
+		t.Errorf("a login refused with 400 means wrong credentials: %v", err)
+	}
+	err = c.Validate(ctx, Credentials{APIKey: "key", Username: "other", Password: "p"})
+	if errors.Is(err, ErrUnauthorized) || !errors.As(err, &apiErr) || apiErr.Detail() != "maintenance (HTTP 503)" {
+		t.Errorf("other statuses keep the OpenSubtitles message: %v", err)
+	}
+}
