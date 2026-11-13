@@ -5,8 +5,8 @@ import { parseFilters, serializeFilters, type CatalogFilters } from '@/api/catal
 import { useErrorMessage } from '@/composables/useErrorMessage'
 
 const PAGE_SIZE = 60
-/** Largest page the API serves (`maxPageSize`), used to reload a long list in few requests. */
-const MAX_PAGE_SIZE = 200
+/** Largest page the API serves (`maxPageSize`), used to reload the list shown in one request. */
+const MAX_PAGE_SIZE = 1000
 const SEARCH_DEBOUNCE_MS = 300
 
 export interface CatalogPageRequest {
@@ -22,7 +22,7 @@ export interface CatalogPageRequest {
  * The views using it are kept alive while the user browses items: while hidden, the list ignores the
  * route, and when it comes back it silently refreshes the pages already loaded (watched state, merges).
  */
-export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<ItemPage>) {
+export function useCatalogList(fetchPage: (req: CatalogPageRequest, signal: AbortSignal) => Promise<ItemPage>) {
   const route = useRoute()
   const router = useRouter()
   const errorMessage = useErrorMessage()
@@ -42,6 +42,14 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   let generation = 0
   let active = true
   let refreshing = false
+  let inFlight: AbortController | undefined
+
+  /** Aborts the request in flight, whose answer is no longer wanted, and returns the signal of the next one. */
+  function nextSignal(): AbortSignal {
+    inFlight?.abort()
+    inFlight = new AbortController()
+    return inFlight.signal
+  }
 
   function applyPage(page: ItemPage, reset: boolean) {
     items.value = reset ? page.items : [...items.value, ...page.items]
@@ -53,6 +61,7 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   async function load(reset: boolean) {
     if ((loading.value || refreshing) && !reset) return
     const gen = reset ? ++generation : generation
+    const signal = nextSignal()
     loading.value = true
     error.value = ''
     try {
@@ -62,7 +71,7 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
         offset: reset ? 0 : items.value.length,
         limit: PAGE_SIZE,
         filters: filters.value,
-      })
+      }, signal)
       if (gen !== generation) return
       applyPage(page, reset)
     } catch (err) {
@@ -76,12 +85,14 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   async function refreshLoaded() {
     if (loading.value || items.value.length === 0) return
     const gen = ++generation
+    const signal = nextSignal()
     const count = items.value.length
     const req = { query: query.value.trim(), sort: sort.value, filters: filters.value }
     refreshing = true
     try {
+      // Every request aggregates the whole catalog server side: one request covers up to MAX_PAGE_SIZE items.
       const offsets = Array.from({ length: Math.ceil(count / MAX_PAGE_SIZE) }, (_, i) => i * MAX_PAGE_SIZE)
-      const pages = await Promise.all(offsets.map((offset) => fetchPage({ ...req, offset, limit: Math.min(MAX_PAGE_SIZE, count - offset) })))
+      const pages = await Promise.all(offsets.map((offset) => fetchPage({ ...req, offset, limit: Math.min(MAX_PAGE_SIZE, count - offset) }, signal)))
       if (gen !== generation) return
       applyPage({ ...pages[pages.length - 1], items: pages.flatMap((p) => p.items) }, true)
     } catch {
@@ -142,6 +153,7 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   onUnmounted(() => {
     observer.disconnect()
     clearTimeout(debounce)
+    inFlight?.abort()
   })
 
   return { items, total, loading, error, query, sort, filters, unavailableServers, unavailableServerNames, reload: () => load(true) }

@@ -69,7 +69,9 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	results, unavailable, err := fanOutPeers(r.Context(), s, "home", func(ctx context.Context, peer store.Peer) (homeResponse, error) {
-		return s.fetchPeerHome(ctx, peer, principal.UserID)
+		return cachedPeerCall(ctx, s, s.peerHomes, peer, principal.UserID.String(), func(ctx context.Context) (homeResponse, error) {
+			return s.fetchPeerHome(ctx, peer, principal.UserID)
+		})
 	})
 	if err != nil {
 		httpx.InternalError(w, r, err)
@@ -93,16 +95,14 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, response)
 }
 
+// fetchPeerHome reads the home rails of one peer for the user; callers go through callPeer.
 func (s *Server) fetchPeerHome(ctx context.Context, peer store.Peer, userID uuid.UUID) (homeResponse, error) {
 	var response homeResponse
-	err := s.callPeer(ctx, peer, func(ctx context.Context) error {
-		token, err := s.federatedTokenFor(peer.ID, userID)
-		if err != nil {
-			return err
-		}
-		return s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/home", token, &response)
-	})
+	token, err := s.federatedTokenFor(peer.ID, userID)
 	if err != nil {
+		return response, err
+	}
+	if err := s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/home", token, &response); err != nil {
 		return response, err
 	}
 	for _, rail := range [][]sourcedHomeItem{response.ContinueWatching, response.NextUp} {

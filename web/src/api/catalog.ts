@@ -192,15 +192,15 @@ export interface MatchCandidate {
 }
 
 export const catalogApi = {
-  list: (libraryId: string, params: { query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }) => {
+  list: (libraryId: string, params: { query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }, signal?: AbortSignal) => {
     const qs = new URLSearchParams()
     for (const [key, value] of Object.entries({ ...params, filters: params.filters && serializeFilters(params.filters) })) if (value !== undefined && value !== '') qs.set(key, String(value))
-    return api<ItemPage>(`/libraries/${libraryId}/items?${qs}`)
+    return api<ItemPage>(`/libraries/${libraryId}/items?${qs}`, { signal })
   },
-  listKind: (kind: LibraryKind, params: { library?: string; query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }) => {
+  listKind: (kind: LibraryKind, params: { library?: string; query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }, signal?: AbortSignal) => {
     const qs = new URLSearchParams()
     for (const [key, value] of Object.entries({ ...params, filters: params.filters && serializeFilters(params.filters) })) if (value !== undefined && value !== '') qs.set(key, String(value))
-    return api<ItemPage>(`/kinds/${kind}/items?${qs}`)
+    return api<ItemPage>(`/kinds/${kind}/items?${qs}`, { signal })
   },
   search: (query: string, limit?: number) => {
     const qs = new URLSearchParams({ query })

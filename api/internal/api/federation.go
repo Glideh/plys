@@ -29,13 +29,21 @@ const (
 	handshakeDomain = "plys-handshake-v1:"
 	peerTimeout     = 10 * time.Second
 	maxPeerResponse = 64 << 10
+	// maxPeerCatalogResponse caps the decoded size of an aggregated answer, such as the whole catalog of a large peer.
+	maxPeerCatalogResponse = 64 << 20
+	// peerIdleConnsPerHost keeps enough idle connections for the parallel calls made to one peer.
+	peerIdleConnsPerHost = 16
 )
 
 var (
 	errPeerUnreachable = errors.New("peer unreachable")
 	// errPeerNotFound reports a 404 from a peer, such as an endpoint its version does not have yet.
 	errPeerNotFound = errors.New("peer answered not found")
-	errPeerRejected = errors.New("peer rejected the pairing")
+	// errPeerBadRequest reports a 400 from a peer, such as a parameter its version does not accept yet.
+	errPeerBadRequest = errors.New("peer refused the request")
+	// errPeerResponseTooLarge reports an answer longer than the size accepted for the call.
+	errPeerResponseTooLarge = errors.New("peer answer too large")
+	errPeerRejected         = errors.New("peer rejected the pairing")
 	// errPeerNotPaired means the peer refused this server's signature, usually because
 	// pairing is mutual and the peer's administrator has not added this server yet.
 	errPeerNotPaired = errors.New("peer does not recognize this server")
@@ -243,7 +251,7 @@ func (s *Server) fetchPeerJSON(ctx context.Context, method, target string, body 
 	if resp.StatusCode != http.StatusOK {
 		return peerStatusError(resp.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, maxPeerResponse)).Decode(out)
+	return decodePeerJSON(resp.Body, maxPeerResponse, out)
 }
 
 // peerStatusError classifies an unexpected status: a 5xx means the peer is down or overloaded.
@@ -254,7 +262,7 @@ func peerStatusError(status int) error {
 	case status == http.StatusNotFound:
 		return fmt.Errorf("%w: %w: %w", errPeerUnreachable, errPeerNotFound, errPeerUnexpected)
 	case status == http.StatusBadRequest:
-		return fmt.Errorf("%w: %w: status %d", errPeerUnreachable, errPeerUnexpected, status)
+		return fmt.Errorf("%w: %w: %w", errPeerUnreachable, errPeerBadRequest, errPeerUnexpected)
 	}
 	return fmt.Errorf("%w: status %d", errPeerUnreachable, status)
 }
@@ -263,7 +271,29 @@ func (s *Server) httpClient() *http.Client {
 	if s.HTTPClient != nil {
 		return s.HTTPClient
 	}
-	return &http.Client{Timeout: peerTimeout}
+	return sharedPeerHTTPClient
+}
+
+// sharedPeerHTTPClient serves servers built without New, so that connections are still reused.
+var sharedPeerHTTPClient = newPeerHTTPClient()
+
+// newPeerHTTPClient builds the client used for every peer call. Its transport keeps connections to each peer
+// open between calls, so that the parallel calls of an aggregation do not each pay a new TLS handshake.
+func newPeerHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConnsPerHost = peerIdleConnsPerHost
+	transport.ForceAttemptHTTP2 = true
+	return &http.Client{Timeout: peerTimeout, Transport: transport}
+}
+
+// decodePeerJSON decodes a peer answer of at most limit bytes, reporting a longer one as such instead of as broken JSON.
+func decodePeerJSON(body io.Reader, limit int64, out any) error {
+	limited := &io.LimitedReader{R: body, N: limit + 1}
+	err := json.NewDecoder(limited).Decode(out)
+	if limited.N <= 0 {
+		return fmt.Errorf("%w: more than %d bytes", errPeerResponseTooLarge, limit)
+	}
+	return err
 }
 
 func handshakeMessage(nonce []byte) []byte {

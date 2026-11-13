@@ -37,12 +37,15 @@ type Deps struct {
 	OpenSubtitles *opensubtitles.Client
 	// FederationRequireHTTPS refuses peers served over plain HTTP.
 	FederationRequireHTTPS bool
-	// HTTPClient reaches peers; nil uses a default client with a timeout.
+	// HTTPClient reaches peers; nil uses a shared client with a timeout and a pool of connections per peer.
 	HTTPClient *http.Client
 	// PeerUserSyncInterval is the minimum delay between two automatic user syncs of a peer; zero uses one minute.
 	PeerUserSyncInterval time.Duration
 	// PeerVersionTTL is how long a checked peer version is trusted; zero uses five minutes, a negative value always asks the peer.
 	PeerVersionTTL time.Duration
+	// PeerCacheTTL overrides how long peer catalog, filter and home answers are reused; zero keeps the defaults,
+	// a negative value disables the cache.
+	PeerCacheTTL time.Duration
 	// TrustedProxies may set X-Forwarded-For; the client address is the right-most hop outside them.
 	TrustedProxies []netip.Prefix
 }
@@ -53,21 +56,32 @@ type Server struct {
 	handshakes *fixedWindowLimiter
 	loginIPs   *backoffLimiter
 	loginUsers *backoffLimiter
+	// Recent peer answers, so that paging through an aggregated listing does not ask every peer again.
+	peerCatalogs *peerCache[[]sourcedCard]
+	peerFilters  *peerCache[catalogOptionsResponse]
+	peerHomes    *peerCache[homeResponse]
 }
 
 func New(d Deps) *Server {
+	if d.HTTPClient == nil {
+		d.HTTPClient = newPeerHTTPClient()
+	}
 	return &Server{
-		Deps:       d,
-		q:          store.New(d.Pool),
-		handshakes: newFixedWindowLimiter(handshakeLimit, handshakeWindow),
-		loginIPs:   newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
-		loginUsers: newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
+		Deps:         d,
+		q:            store.New(d.Pool),
+		handshakes:   newFixedWindowLimiter(handshakeLimit, handshakeWindow),
+		loginIPs:     newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
+		loginUsers:   newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
+		peerCatalogs: newPeerCache[[]sourcedCard](peerCatalogCacheTTL, d.PeerCacheTTL, peerCatalogCacheSize),
+		peerFilters:  newPeerCache[catalogOptionsResponse](peerFilterCacheTTL, d.PeerCacheTTL, peerFilterCacheSize),
+		peerHomes:    newPeerCache[homeResponse](peerHomeCacheTTL, d.PeerCacheTTL, peerHomeCacheSize),
 	}
 }
 
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, s.resolveClientIP, requestLogger, middleware.Recoverer)
+	// JSON answers are compressed: catalog listings, between peers in particular, are large and repetitive.
+	r.Use(middleware.RequestID, s.resolveClientIP, requestLogger, middleware.Recoverer, middleware.Compress(5, "application/json"))
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.Pool.Ping(r.Context()); err != nil {

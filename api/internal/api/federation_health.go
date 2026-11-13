@@ -73,6 +73,11 @@ func (s *Server) callPeer(ctx context.Context, p store.Peer, call func(context.C
 		}
 		return call(callCtx)
 	}()
+	if err != nil && ctx.Err() == nil && errors.Is(callCtx.Err(), context.DeadlineExceeded) {
+		// The aggregation budget ran out, not the peer: a slow but answering peer must not be marked as failing.
+		// A peer that does not answer at all still fails each request on the client timeout, shorter than the budget.
+		return fmt.Errorf("%w: aggregation budget exceeded: %v", errPeerUnreachable, err)
+	}
 	s.recordPeerResult(ctx, p, err)
 	if errors.Is(err, errPeerUnexpected) && ctx.Err() == nil {
 		// The peer may have changed version since the cached check: read it again for the next requests.
