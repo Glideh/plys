@@ -7,7 +7,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const errorMessage = useErrorMessage()
 
 const peers = ref<Peer[]>([])
@@ -23,6 +23,7 @@ const adding = ref(false)
 const addError = ref('')
 
 const syncingId = ref<string | null>(null)
+const pausingId = ref<string | null>(null)
 
 const editingId = ref<string | null>(null)
 const editUrl = ref('')
@@ -79,11 +80,32 @@ async function sync(peer: Peer) {
   try {
     const res = await peersApi.sync(peer.id)
     notice.value = t('servers.synced', res.users)
+    // A sync is also a manual check: an offline server that answers is back online.
+    if (peer.status === 'offline') await load()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
     syncingId.value = null
   }
+}
+
+async function togglePause(peer: Peer) {
+  pausingId.value = peer.id
+  error.value = ''
+  notice.value = ''
+  try {
+    const updated = await peersApi.setPaused(peer.id, !peer.paused)
+    notice.value = t(updated.paused ? 'servers.paused' : 'servers.resumed', { name: updated.name })
+    await load()
+  } catch (err) {
+    error.value = errorMessage(err)
+  } finally {
+    pausingId.value = null
+  }
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
 function startEdit(peer: Peer) {
@@ -186,9 +208,17 @@ onMounted(() => Promise.all([load(), loadPairingCode()]))
               <p v-if="peer.status === 'incompatible'" class="mt-1 text-xs text-slate-400">
                 {{ t('servers.versionMismatch', { local: peer.localVersion }) }}
               </p>
+              <p v-if="peer.paused" class="mt-1 text-xs text-slate-400">{{ t('servers.pausedHelp') }}</p>
+              <p v-else-if="peer.offlineSince" class="mt-1 text-xs text-slate-400">
+                {{ t('servers.offlineSince', { date: formatDate(peer.offlineSince) }) }}
+              </p>
+              <p v-if="peer.lastSeenAt && peer.status !== 'compatible'" class="mt-1 text-xs text-slate-500">
+                {{ t('servers.lastSeen', { date: formatDate(peer.lastSeenAt) }) }}
+              </p>
             </div>
             <div class="flex gap-2">
-              <BaseButton :disabled="peer.status !== 'compatible'" :loading="syncingId === peer.id" @click="sync(peer)">{{ t('servers.sync') }}</BaseButton>
+              <BaseButton :disabled="peer.status !== 'compatible' && peer.status !== 'offline'" :loading="syncingId === peer.id" @click="sync(peer)">{{ t('servers.sync') }}</BaseButton>
+              <BaseButton :loading="pausingId === peer.id" @click="togglePause(peer)">{{ t(peer.paused ? 'servers.resume' : 'servers.pause') }}</BaseButton>
               <BaseButton @click="startEdit(peer)">{{ t('servers.edit') }}</BaseButton>
               <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askRemove(peer)">{{ t('servers.remove') }}</BaseButton>
             </div>

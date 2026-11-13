@@ -10,6 +10,7 @@ import { watchlistApi, type WatchlistItem } from '@/api/watchlist'
 import CatalogGrid from '@/components/CatalogGrid.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import HomeRail from '@/components/HomeRail.vue'
+import PartialResultsNotice from '@/components/PartialResultsNotice.vue'
 import WatchlistRail from '@/components/WatchlistRail.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
@@ -93,7 +94,7 @@ onMounted(async () => {
     </div>
 
     <section v-if="search.active.value" class="space-y-10" :aria-label="t('home.searchResults')" aria-live="polite">
-      <p v-if="search.unavailableServers.value" class="text-sm text-amber-300" role="status">{{ t('filters.partial', search.unavailableServers.value) }}</p>
+      <PartialResultsNotice :count="search.unavailableServers.value" :names="search.unavailableServerNames.value" />
       <ErrorAlert v-if="search.error.value" :message="search.error.value" />
       <CatalogGrid v-else-if="search.loading.value && search.groups.value.length === 0" :items="[]" loading :kind="null" />
       <p v-else-if="!search.loading.value && search.groups.value.length === 0" class="rounded-xl border border-dashed border-white/10 px-6 py-16 text-center text-slate-500">

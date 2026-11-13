@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,6 +51,8 @@ var (
 type catalogOptionsResponse struct {
 	Options            map[string][]metadata.FilterOption `json:"options"`
 	UnavailableServers int                                `json:"unavailableServers"`
+	// UnavailableServerNames names the peers left out, so that clients can say which servers are missing.
+	UnavailableServerNames []string `json:"unavailableServerNames"`
 }
 
 var filterCategories = []string{"genres", "actors", "creators", "keywords", "languages", "countries"}
@@ -116,7 +119,7 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 		httpx.InternalError(w, r, err)
 		return
 	}
-	response := catalogOptionsResponse{Options: make(map[string][]metadata.FilterOption)}
+	response := catalogOptionsResponse{Options: make(map[string][]metadata.FilterOption), UnavailableServerNames: []string{}}
 	for _, row := range rows {
 		label := row.Label
 		if row.Category == "languages" {
@@ -133,17 +136,15 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 		response.Options[row.Category] = append(response.Options[row.Category], metadata.FilterOption{ID: row.ID, Label: label})
 	}
 	if !federated && libraryID == nil {
-		peers, err := s.q.ListPeers(r.Context())
+		results, unavailable, err := fanOutPeers(r.Context(), s, "filter options", func(ctx context.Context, peer store.Peer) (catalogOptionsResponse, error) {
+			return s.peerFilterOptions(ctx, peer, userID, kind, category, query, selected, locale)
+		})
 		if err != nil {
 			httpx.InternalError(w, r, err)
 			return
 		}
-		for _, peer := range peers {
-			remote, err := s.peerFilterOptions(r.Context(), peer, userID, kind, category, query, selected, locale)
-			if err != nil {
-				response.UnavailableServers++
-				continue
-			}
+		response.UnavailableServers, response.UnavailableServerNames = len(unavailable), unavailable
+		for _, remote := range results {
 			for key, options := range remote.Options {
 				response.Options[key] = append(response.Options[key], options...)
 			}
@@ -174,24 +175,24 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 }
 
 func (s *Server) peerFilterOptions(ctx context.Context, peer store.Peer, userID uuid.UUID, kind, category, query string, selected []string, locale string) (catalogOptionsResponse, error) {
-	if _, err := s.checkPeerVersion(ctx, peer); err != nil {
-		return catalogOptionsResponse{}, err
-	}
-	token, err := s.federatedTokenFor(peer.ID, userID)
-	if err != nil {
-		return catalogOptionsResponse{}, err
-	}
-	fetch := func(locale string) (catalogOptionsResponse, error) {
-		target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
-		var response catalogOptionsResponse
-		err := s.getPeerCatalog(ctx, target, token, &response)
-		return response, err
-	}
-	response, err := fetch(locale)
-	if err != nil && !slices.Contains(legacyFilterLocales, locale) {
-		// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
-		return fetch("en")
-	}
+	var response catalogOptionsResponse
+	err := s.callPeer(ctx, peer, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(peer.ID, userID)
+		if err != nil {
+			return err
+		}
+		fetch := func(locale string) error {
+			target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
+			response = catalogOptionsResponse{}
+			return s.getPeerCatalog(ctx, target, token, &response)
+		}
+		err = fetch(locale)
+		if err != nil && !errors.Is(err, errPeerDown) && !slices.Contains(legacyFilterLocales, locale) {
+			// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
+			return fetch("en")
+		}
+		return err
+	})
 	return response, err
 }
 

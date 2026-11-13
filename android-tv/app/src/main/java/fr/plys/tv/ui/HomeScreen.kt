@@ -101,7 +101,7 @@ fun HomeScreen(
             return@LazyColumn
         }
         if (data.unavailableServers > 0) item("partial") {
-            Text(stringResource(R.string.partial_results, data.unavailableServers), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
+            Text(partialResults(data.unavailableServers, data.unavailableServerNames), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = FocusGutter))
         }
         if (data.continueWatching.isNotEmpty()) item("continue") {
@@ -143,7 +143,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.searchResults(search:
     val groups = result?.groups.orEmpty()
     val unavailable = result?.unavailableServers ?: 0
     if (unavailable > 0) item("search-partial") {
-        Text(stringResource(R.string.partial_results, unavailable), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
+        Text(partialResults(unavailable, result?.unavailableServerNames.orEmpty()), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(horizontal = FocusGutter))
     }
     search.error?.let { error -> item("search-error") {

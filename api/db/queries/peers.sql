@@ -25,3 +25,19 @@ SELECT EXISTS (SELECT 1 FROM peers WHERE lower(url) = lower(@origin));
 
 -- name: DeletePeer :execrows
 DELETE FROM peers WHERE id = $1;
+
+-- name: SetPeerPaused :one
+UPDATE peers SET paused = $2 WHERE id = $1 RETURNING *;
+
+-- name: RecordPeerFailure :one
+-- Failures closer than @spacing_cutoff to the previous one are the same outage seen by concurrent requests.
+UPDATE peers SET
+  consecutive_failures = consecutive_failures + 1,
+  last_failure_at = @now,
+  offline_since = CASE WHEN consecutive_failures + 1 >= @threshold::int THEN coalesce(offline_since, @now) ELSE offline_since END
+WHERE id = @id AND (last_failure_at IS NULL OR last_failure_at < @spacing_cutoff)
+RETURNING *;
+
+-- name: RecordPeerSuccess :exec
+UPDATE peers SET consecutive_failures = 0, last_failure_at = NULL, offline_since = NULL, last_seen_at = now()
+WHERE id = $1;

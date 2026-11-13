@@ -7,13 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -136,78 +134,61 @@ func (s *Server) peerKindItems(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": cards, "total": total})
 }
 
-// peerKindCards reads every visible card of one kind from each paired peer; unreachable peers are counted and skipped.
-func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, int, error) {
-	peers, err := s.q.ListPeers(ctx)
+// peerKindCards reads every visible card of one kind from each paired peer; the names of the unavailable peers are returned.
+func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, []string, error) {
+	results, unavailable, err := fanOutPeers(ctx, s, "catalog", func(ctx context.Context, p store.Peer) ([]sourcedCard, error) {
+		return s.fetchPeerCards(ctx, p, userID, kind, query, sort, filters)
+	})
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
-	results := make([][]sourcedCard, len(peers))
-	errs := make([]error, len(peers))
-	var wg sync.WaitGroup
-	for i, p := range peers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[i], errs[i] = s.fetchPeerCards(ctx, p, userID, kind, query, sort, filters)
-		}()
-	}
-	wg.Wait()
 	var out []sourcedCard
-	unavailable := 0
-	for i, p := range peers {
-		if errs[i] != nil {
-			unavailable++
-			slog.Warn("federated catalog unavailable", "peer", p.ID, "err", errs[i])
-			continue
-		}
-		out = append(out, results[i]...)
+	for _, cards := range results {
+		out = append(out, cards...)
 	}
 	return out, unavailable, nil
 }
 
 // fetchPeerCards pages through the listing of one peer, with a federated token for the user.
 func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, error) {
-	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
-	defer cancel()
-	if _, err := s.checkPeerVersion(ctx, p); err != nil {
-		return nil, err
-	}
-	token, err := s.federatedTokenFor(p.ID, userID)
-	if err != nil {
-		return nil, err
-	}
 	var out []sourcedCard
-	for offset := 0; ; {
-		target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
-			"sort":    {sort},
-			"query":   {query},
-			"filters": {string(filters)},
-			"offset":  {strconv.Itoa(offset)},
-			"limit":   {strconv.Itoa(maxPageSize)},
-		}.Encode()
-		var page struct {
-			Items []federatedCard `json:"items"`
-			Total int32           `json:"total"`
+	err := s.callPeer(ctx, p, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(p.ID, userID)
+		if err != nil {
+			return err
 		}
-		if err := s.getPeerCatalog(ctx, target, token, &page); err != nil {
-			return nil, err
-		}
-		for _, c := range page.Items {
-			// Posters of a peer are relative to its own origin; the client needs the absolute address.
-			if c.PosterURL != nil && strings.HasPrefix(*c.PosterURL, "/") {
-				abs := p.Url + *c.PosterURL
-				c.PosterURL = &abs
+		for offset := 0; ; {
+			target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
+				"sort":    {sort},
+				"query":   {query},
+				"filters": {string(filters)},
+				"offset":  {strconv.Itoa(offset)},
+				"limit":   {strconv.Itoa(maxPageSize)},
+			}.Encode()
+			var page struct {
+				Items []federatedCard `json:"items"`
+				Total int32           `json:"total"`
 			}
-			out = append(out, sourcedCard{federatedCard: c, source: cardSourceDTO{
-				ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: c.ID,
-			}})
+			if err := s.getPeerCatalog(ctx, target, token, &page); err != nil {
+				return err
+			}
+			for _, c := range page.Items {
+				// Posters of a peer are relative to its own origin; the client needs the absolute address.
+				if c.PosterURL != nil && strings.HasPrefix(*c.PosterURL, "/") {
+					abs := p.Url + *c.PosterURL
+					c.PosterURL = &abs
+				}
+				out = append(out, sourcedCard{federatedCard: c, source: cardSourceDTO{
+					ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: c.ID,
+				}})
+			}
+			offset += len(page.Items)
+			if len(page.Items) == 0 || offset >= int(page.Total) {
+				return nil
+			}
 		}
-		offset += len(page.Items)
-		if len(page.Items) == 0 || offset >= int(page.Total) {
-			return out, nil
-		}
-	}
+	})
+	return out, err
 }
 
 func (s *Server) getPeerCatalog(ctx context.Context, target, token string, out any) error {
@@ -218,14 +199,11 @@ func (s *Server) getPeerCatalog(ctx context.Context, target, token string, out a
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", errPeerUnreachable, err)
+		return fmt.Errorf("%w: %w: %v", errPeerUnreachable, errPeerDown, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return fmt.Errorf("%w: %w", errPeerUnreachable, errPeerNotFound)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: status %d", errPeerUnreachable, resp.StatusCode)
+		return peerStatusError(resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxPeerResponse)).Decode(out)
 }

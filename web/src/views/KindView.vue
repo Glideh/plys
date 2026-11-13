@@ -9,6 +9,7 @@ import CatalogGrid from '@/components/CatalogGrid.vue'
 import CatalogFilters from '@/components/CatalogFilters.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import LibrarySelect from '@/components/LibrarySelect.vue'
+import PartialResultsNotice from '@/components/PartialResultsNotice.vue'
 import { useCatalogList } from '@/composables/useCatalogList'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 
@@ -20,7 +21,7 @@ const errorMessage = useErrorMessage()
 const libraries = ref<Library[]>([])
 const kindLibraries = computed(() => libraries.value.filter((l) => l.kind === props.kind))
 
-const { items, total, loading, error, query, sort, filters, unavailableServers, reload } = useCatalogList((req) => catalogApi.listKind(props.kind, req))
+const { items, total, loading, error, query, sort, filters, unavailableServers, unavailableServerNames, reload } = useCatalogList((req) => catalogApi.listKind(props.kind, req))
 
 function openLibrary(id: string | null) {
   if (id) router.push({ name: 'library', params: { id } })
@@ -75,7 +76,7 @@ onMounted(async () => {
       <CatalogFilters v-if="kind !== 'other'" v-model="filters" :kind="kind" />
     </header>
 
-    <p v-if="unavailableServers" class="mb-4 text-sm text-amber-300" role="status">{{ t('filters.partial', unavailableServers) }}</p>
+    <PartialResultsNotice :count="unavailableServers" :names="unavailableServerNames" class="mb-4" />
     <ErrorAlert v-if="error" class="mb-6" :message="error" />
 
     <p v-if="!loading && !error && items.length === 0" class="rounded-xl border border-dashed border-white/10 px-6 py-16 text-center text-slate-500">

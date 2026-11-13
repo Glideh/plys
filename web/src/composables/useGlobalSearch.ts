@@ -9,6 +9,7 @@ export function useGlobalSearch(query: Ref<string>, limit?: number) {
   const errorMessage = useErrorMessage()
   const groups = ref<SearchGroup[]>([])
   const unavailableServers = ref(0)
+  const unavailableServerNames = ref<string[]>([])
   const loading = ref(false)
   const error = ref('')
   const term = computed(() => query.value.trim())
@@ -23,6 +24,7 @@ export function useGlobalSearch(query: Ref<string>, limit?: number) {
       if (gen !== generation) return
       groups.value = result.groups
       unavailableServers.value = result.unavailableServers
+      unavailableServerNames.value = result.unavailableServerNames ?? []
     } catch (err) {
       if (gen === generation) error.value = errorMessage(err)
     } finally {
@@ -39,6 +41,7 @@ export function useGlobalSearch(query: Ref<string>, limit?: number) {
       if (!active.value) {
         groups.value = []
         unavailableServers.value = 0
+        unavailableServerNames.value = []
         loading.value = false
         return
       }
@@ -50,5 +53,5 @@ export function useGlobalSearch(query: Ref<string>, limit?: number) {
 
   onScopeDispose(() => clearTimeout(debounce))
 
-  return { groups, unavailableServers, loading, error, active, term }
+  return { groups, unavailableServers, unavailableServerNames, loading, error, active, term }
 }

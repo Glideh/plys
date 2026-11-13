@@ -83,6 +83,8 @@ func newTestEnvWith(t *testing.T, mutate func(*Deps)) testEnv {
 		Metadata: metadata.NewService(pool, st, cache, "ffmpeg", ""),
 		Images:   metadata.NewImageCache(cache, ""),
 		Playback: player, Subtitles: subs,
+		// Most federation tests change the peer version between requests and expect it to be seen at once.
+		PeerVersionTTL: -1,
 	}
 	if mutate != nil {
 		mutate(&deps)

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"time"
 
 	"github.com/google/uuid"
 	"toto/api/internal/store"
@@ -21,7 +22,20 @@ func compatiblePeerVersions(local, remote string) bool {
 	return localParts != nil && remoteParts != nil && localParts[1] == remoteParts[1]
 }
 
+// checkPeerVersion checks that a peer runs a compatible version. A version checked less than
+// peerVersionTTL ago is trusted without asking the peer; the monitor keeps it fresh.
 func (s *Server) checkPeerVersion(ctx context.Context, peer store.Peer) (store.Peer, error) {
+	if peer.Version != nil && peer.VersionCheckedAt != nil && time.Since(*peer.VersionCheckedAt) < s.peerVersionTTL() {
+		if !compatiblePeerVersions(Version, *peer.Version) {
+			return peer, errPeerIncompatible
+		}
+		return peer, nil
+	}
+	return s.refreshPeerVersion(ctx, peer)
+}
+
+// refreshPeerVersion asks the peer for its identity and version, and stores the version.
+func (s *Server) refreshPeerVersion(ctx context.Context, peer store.Peer) (store.Peer, error) {
 	var info struct {
 		ID        uuid.UUID `json:"id"`
 		PublicKey []byte    `json:"publicKey"`

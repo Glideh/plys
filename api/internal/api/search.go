@@ -61,7 +61,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 
 	type kindResult struct {
 		cards       []sourcedCard
-		unavailable int
+		unavailable []string
 		err         error
 	}
 	results := make([]kindResult, len(libraryKinds))
@@ -88,15 +88,19 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	groups := []searchGroupDTO{}
-	unavailable := 0
+	unavailable := []string{}
 	for i, kind := range libraryKinds {
 		res := results[i]
 		if res.err != nil {
 			httpx.InternalError(w, r, res.err)
 			return
 		}
-		// Each kind asks every peer, so an unreachable peer is counted once per kind.
-		unavailable = max(unavailable, res.unavailable)
+		// Each kind asks every peer, so an unreachable peer is named once per kind.
+		for _, name := range res.unavailable {
+			if !slices.Contains(unavailable, name) {
+				unavailable = append(unavailable, name)
+			}
+		}
 		slices.SortStableFunc(res.cards, func(a, b sourcedCard) int { return compareCards(a, b, "title") })
 		cards := rankSearchResults(groupCards(res.cards), raw)
 		if len(cards) == 0 {
@@ -104,7 +108,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		}
 		groups = append(groups, searchGroupDTO{Kind: kind, Items: cards[:min(limit, len(cards))], Total: len(cards)})
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"groups": groups, "unavailableServers": unavailable})
+	httpx.JSON(w, http.StatusOK, map[string]any{"groups": groups, "unavailableServers": len(unavailable), "unavailableServerNames": unavailable})
 }
 
 // rankSearchResults puts the titles that start with the query first and keeps the title order otherwise.

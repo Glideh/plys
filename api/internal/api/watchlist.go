@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +31,8 @@ type watchlistItemDTO struct {
 type watchlistResponse struct {
 	Items              []watchlistItemDTO `json:"items"`
 	UnavailableServers int                `json:"unavailableServers"`
+	// UnavailableServerNames names the peers left out, so that clients can say which servers are missing.
+	UnavailableServerNames []string `json:"unavailableServerNames"`
 }
 
 // setWatchlisted adds a title to the caller's watchlist or removes it; both are idempotent.
@@ -94,7 +95,7 @@ func (s *Server) peerWatchlist(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, watchlistResponse{Items: items})
+	httpx.JSON(w, http.StatusOK, watchlistResponse{Items: items, UnavailableServerNames: []string{}})
 }
 
 // watchlist merges the caller's watchlist on this server with the ones kept for them by the paired servers.
@@ -105,29 +106,16 @@ func (s *Server) watchlist(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	peers, err := s.q.ListPeers(r.Context())
+	results, unavailable, err := fanOutPeers(r.Context(), s, "watchlist", func(ctx context.Context, peer store.Peer) ([]watchlistItemDTO, error) {
+		return s.fetchPeerWatchlist(ctx, peer, principal.UserID)
+	})
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	results := make([][]watchlistItemDTO, len(peers))
-	errs := make([]error, len(peers))
-	var workers sync.WaitGroup
-	for index, peer := range peers {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			results[index], errs[index] = s.fetchPeerWatchlist(r.Context(), peer, principal.UserID)
-		}()
-	}
-	workers.Wait()
-	response := watchlistResponse{Items: items}
-	for index := range peers {
-		if errs[index] != nil {
-			response.UnavailableServers++
-			continue
-		}
-		response.Items = append(response.Items, results[index]...)
+	response := watchlistResponse{Items: items, UnavailableServers: len(unavailable), UnavailableServerNames: unavailable}
+	for _, result := range results {
+		response.Items = append(response.Items, result...)
 	}
 	slices.SortStableFunc(response.Items, func(left, right watchlistItemDTO) int {
 		if compared := right.AddedAt.Compare(left.AddedAt); compared != 0 {
@@ -139,21 +127,21 @@ func (s *Server) watchlist(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fetchPeerWatchlist(ctx context.Context, peer store.Peer, userID uuid.UUID) ([]watchlistItemDTO, error) {
-	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
-	defer cancel()
-	if _, err := s.checkPeerVersion(ctx, peer); err != nil {
-		return nil, err
-	}
-	token, err := s.federatedTokenFor(peer.ID, userID)
-	if err != nil {
-		return nil, err
-	}
 	var response watchlistResponse
-	if err := s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/watchlist", token, &response); err != nil {
+	err := s.callPeer(ctx, peer, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(peer.ID, userID)
+		if err != nil {
+			return err
+		}
+		err = s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/watchlist", token, &response)
 		// A peer older than the watchlist cannot hold any entry for this user.
 		if errors.Is(err, errPeerNotFound) {
-			return nil, nil
+			response.Items = nil
+			return nil
 		}
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
 	for index := range response.Items {

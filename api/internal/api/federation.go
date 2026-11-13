@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -83,6 +84,9 @@ type peerDTO struct {
 	LocalVersion     string     `json:"localVersion"`
 	Status           string     `json:"status"`
 	VersionCheckedAt *time.Time `json:"versionCheckedAt"`
+	Paused           bool       `json:"paused"`
+	LastSeenAt       *time.Time `json:"lastSeenAt"`
+	OfflineSince     *time.Time `json:"offlineSince"`
 }
 
 func peerToDTO(p store.Peer) peerDTO {
@@ -93,7 +97,16 @@ func peerToDTO(p store.Peer) peerDTO {
 			status = "compatible"
 		}
 	}
-	return peerDTO{ID: p.ID, URL: p.Url, Name: p.Name, Version: p.Version, LocalVersion: Version, Status: status, VersionCheckedAt: p.VersionCheckedAt}
+	switch {
+	case p.Paused:
+		status = "paused"
+	case p.OfflineSince != nil:
+		status = "offline"
+	}
+	return peerDTO{
+		ID: p.ID, URL: p.Url, Name: p.Name, Version: p.Version, LocalVersion: Version, Status: status, VersionCheckedAt: p.VersionCheckedAt,
+		Paused: p.Paused, LastSeenAt: p.LastSeenAt, OfflineSince: p.OfflineSince,
+	}
 }
 
 func (s *Server) addPeer(w http.ResponseWriter, r *http.Request) {
@@ -221,16 +234,29 @@ func (s *Server) fetchPeerJSON(ctx context.Context, method, target string, body 
 	}
 	resp, err := s.httpClient().Do(req)
 	if err != nil {
-		return fmt.Errorf("%w: %v", errPeerUnreachable, err)
+		return fmt.Errorf("%w: %w: %v", errPeerUnreachable, errPeerDown, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("%w: %w", errPeerUnreachable, errPeerNotPaired)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: status %d", errPeerUnreachable, resp.StatusCode)
+		return peerStatusError(resp.StatusCode)
 	}
 	return json.NewDecoder(io.LimitReader(resp.Body, maxPeerResponse)).Decode(out)
+}
+
+// peerStatusError classifies an unexpected status: a 5xx means the peer is down or overloaded.
+func peerStatusError(status int) error {
+	switch {
+	case status >= http.StatusInternalServerError:
+		return fmt.Errorf("%w: %w: status %d", errPeerUnreachable, errPeerDown, status)
+	case status == http.StatusNotFound:
+		return fmt.Errorf("%w: %w: %w", errPeerUnreachable, errPeerNotFound, errPeerUnexpected)
+	case status == http.StatusBadRequest:
+		return fmt.Errorf("%w: %w: status %d", errPeerUnreachable, errPeerUnexpected, status)
+	}
+	return fmt.Errorf("%w: status %d", errPeerUnreachable, status)
 }
 
 func (s *Server) httpClient() *http.Client {
@@ -264,22 +290,62 @@ func (s *Server) handshake(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string][]byte{"signature": s.Identity.Sign(handshakeMessage(req.Nonce))})
 }
 
+// listPeers reports the status kept by the peer monitor; only peers whose version check expired are asked again.
 func (s *Server) listPeers(w http.ResponseWriter, r *http.Request) {
 	peers, err := s.q.ListPeers(r.Context())
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	out := make([]peerDTO, 0, len(peers))
-	for _, p := range peers {
-		checked, checkErr := s.checkPeerVersion(r.Context(), p)
-		dto := peerToDTO(checked)
-		if checkErr != nil && !errors.Is(checkErr, errPeerIncompatible) {
-			dto.Status = "offline"
+	out := make([]peerDTO, len(peers))
+	var wg sync.WaitGroup
+	for i, p := range peers {
+		if peerSkipped(p) {
+			out[i] = peerToDTO(p)
+			continue
 		}
-		out = append(out, dto)
+		wg.Go(func() {
+			checked, err := s.checkPeerVersion(r.Context(), p)
+			s.recordPeerResult(r.Context(), p, err)
+			out[i] = peerToDTO(checked)
+			if errors.Is(err, errPeerDown) {
+				out[i].Status = "offline"
+			}
+		})
 	}
+	wg.Wait()
 	httpx.JSON(w, http.StatusOK, out)
+}
+
+type pausePeerRequest struct {
+	Paused *bool `json:"paused"`
+}
+
+// pausePeer lets an admin leave a peer out of every aggregated answer, for example during a planned downtime.
+// A paused peer is neither called nor probed; it can still call this server.
+func (s *Server) pausePeer(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "id")
+	if !ok {
+		return
+	}
+	var req pausePeerRequest
+	if !httpx.DecodeRequired(w, r, &req) {
+		return
+	}
+	if req.Paused == nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "paused is required")
+		return
+	}
+	p, err := s.q.SetPeerPaused(r.Context(), store.SetPeerPausedParams{ID: id, Paused: *req.Paused})
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "peer not found")
+		return
+	}
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, peerToDTO(p))
 }
 
 type updatePeerRequest struct {
@@ -353,7 +419,13 @@ func (s *Server) updatePeer(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	updated, _ = s.checkPeerVersion(ctx, updated)
+	// The peer just answered at its new address: a failure seen at the old one no longer applies.
+	if err := s.q.RecordPeerSuccess(ctx, id); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	updated.ConsecutiveFailures, updated.LastFailureAt, updated.OfflineSince = 0, nil, nil
+	updated, _ = s.refreshPeerVersion(ctx, updated)
 	httpx.JSON(w, http.StatusOK, peerToDTO(updated))
 }
 

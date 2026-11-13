@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
 	"toto/api/internal/auth"
@@ -22,10 +21,12 @@ type homeResponse struct {
 	ContinueWatching   []sourcedHomeItem `json:"continueWatching"`
 	NextUp             []sourcedHomeItem `json:"nextUp"`
 	UnavailableServers int               `json:"unavailableServers"`
+	// UnavailableServerNames names the peers left out, so that clients can say which servers are missing.
+	UnavailableServerNames []string `json:"unavailableServerNames"`
 }
 
 func (s *Server) localHome(ctx context.Context, userID uuid.UUID, isAdmin bool) (homeResponse, error) {
-	response := homeResponse{ContinueWatching: []sourcedHomeItem{}, NextUp: []sourcedHomeItem{}}
+	response := homeResponse{ContinueWatching: []sourcedHomeItem{}, NextUp: []sourcedHomeItem{}, UnavailableServerNames: []string{}}
 	continued, err := s.localContinueWatching(ctx, userID, isAdmin)
 	if err != nil {
 		return response, err
@@ -67,29 +68,17 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	peers, err := s.q.ListPeers(r.Context())
+	results, unavailable, err := fanOutPeers(r.Context(), s, "home", func(ctx context.Context, peer store.Peer) (homeResponse, error) {
+		return s.fetchPeerHome(ctx, peer, principal.UserID)
+	})
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	results := make([]homeResponse, len(peers))
-	errs := make([]error, len(peers))
-	var workers sync.WaitGroup
-	for index, peer := range peers {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			results[index], errs[index] = s.fetchPeerHome(r.Context(), peer, principal.UserID)
-		}()
-	}
-	workers.Wait()
-	for index := range peers {
-		if errs[index] != nil {
-			response.UnavailableServers++
-			continue
-		}
-		response.ContinueWatching = append(response.ContinueWatching, results[index].ContinueWatching...)
-		response.NextUp = append(response.NextUp, results[index].NextUp...)
+	response.UnavailableServers, response.UnavailableServerNames = len(unavailable), unavailable
+	for _, result := range results {
+		response.ContinueWatching = append(response.ContinueWatching, result.ContinueWatching...)
+		response.NextUp = append(response.NextUp, result.NextUp...)
 	}
 	order := func(left, right sourcedHomeItem) int {
 		if compared := right.UpdatedAt.Compare(left.UpdatedAt); compared != 0 {
@@ -105,17 +94,15 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) fetchPeerHome(ctx context.Context, peer store.Peer, userID uuid.UUID) (homeResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
-	defer cancel()
 	var response homeResponse
-	if _, err := s.checkPeerVersion(ctx, peer); err != nil {
-		return response, err
-	}
-	token, err := s.federatedTokenFor(peer.ID, userID)
+	err := s.callPeer(ctx, peer, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(peer.ID, userID)
+		if err != nil {
+			return err
+		}
+		return s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/home", token, &response)
+	})
 	if err != nil {
-		return response, err
-	}
-	if err := s.getPeerCatalog(ctx, peer.Url+"/api/v1/federation/home", token, &response); err != nil {
 		return response, err
 	}
 	for _, rail := range [][]sourcedHomeItem{response.ContinueWatching, response.NextUp} {

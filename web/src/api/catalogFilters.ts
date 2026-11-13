@@ -25,7 +25,7 @@ export const selectionKeys = ['genres', 'excludeGenres', 'actors', 'creators', '
 export type SelectionKey = typeof selectionKeys[number]
 export type FilterCategory = Exclude<SelectionKey, 'excludeGenres'>
 export interface FilterOption { id: string; label: string }
-export interface FilterOptionsPage { options: Partial<Record<FilterCategory, FilterOption[]>>; unavailableServers: number }
+export interface FilterOptionsPage { options: Partial<Record<FilterCategory, FilterOption[]>>; unavailableServers: number; unavailableServerNames?: string[] }
 export const numberKeys = ['yearMin', 'yearMax', 'ratingMin', 'votesMin', 'runtimeMin', 'runtimeMax'] as const
 export type NumberKey = typeof numberKeys[number]
 /** Technical criteria picked from a fixed list of values. */

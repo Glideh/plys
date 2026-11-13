@@ -49,7 +49,7 @@ describe('useGlobalSearch', () => {
   })
 
   it('debounces typing and searches the trimmed query once', async () => {
-    fetchMock.mockResolvedValue(json(200, { groups: [movies], unavailableServers: 1 }))
+    fetchMock.mockResolvedValue(json(200, { groups: [movies], unavailableServers: 1, unavailableServerNames: ['Peer'] }))
     const { query, search } = setup()
     query.value = 'ali'
     await nextTick()
@@ -63,6 +63,7 @@ describe('useGlobalSearch', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/v1/search?query=alien')
     expect(search.groups.value).toEqual([movies])
     expect(search.unavailableServers.value).toBe(1)
+    expect(search.unavailableServerNames.value).toEqual(['Peer'])
     expect(search.loading.value).toBe(false)
   })
 

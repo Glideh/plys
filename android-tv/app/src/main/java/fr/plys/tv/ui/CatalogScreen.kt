@@ -52,7 +52,7 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
             Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
             Text(pluralStringResource(R.plurals.title_count, screen.page.total, screen.page.total), style = MaterialTheme.typography.bodyLarge,
                 color = Plys.Muted, modifier = Modifier.padding(bottom = 4.dp))
-            if (screen.page.unavailableServers > 0) Text(stringResource(R.string.partial_results, screen.page.unavailableServers),
+            if (screen.page.unavailableServers > 0) Text(partialResults(screen.page.unavailableServers, screen.page.unavailableServerNames),
                 style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
         }
         CatalogToolbar(screen, model, libraries)

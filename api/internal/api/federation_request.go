@@ -74,6 +74,8 @@ func (s *Server) authenticatePeer(r *http.Request) (store.Peer, error) {
 	if !ed25519.Verify(peer.PublicKey, peerRequestMessage(r.Method, r.URL.Path, ts), sig) {
 		return store.Peer{}, errInvalidPeerRequest
 	}
+	// A signed request proves the peer is up again, without waiting for the monitor.
+	s.markPeerSeen(r.Context(), peer)
 	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {
 		return store.Peer{}, errInvalidPeerRequest
 	}
@@ -109,14 +111,19 @@ func (s *Server) peerUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 // syncPeerUsers mirrors the users of a paired peer as shadow rows and removes those the peer no longer lists.
+// It also works as a manual check: an offline peer that answers is back online.
 func (s *Server) syncPeerUsers(ctx context.Context, peer store.Peer) (int, error) {
-	if _, err := s.checkPeerVersion(ctx, peer); err != nil {
-		return 0, err
-	}
 	var list struct {
 		Items []peerUserDTO `json:"items"`
 	}
-	if err := s.fetchPeerJSON(ctx, http.MethodGet, peer.Url+"/api/v1/federation/users", nil, &list); err != nil {
+	err := func() error {
+		if _, err := s.checkPeerVersion(ctx, peer); err != nil {
+			return err
+		}
+		return s.fetchPeerJSON(ctx, http.MethodGet, peer.Url+"/api/v1/federation/users", nil, &list)
+	}()
+	s.recordPeerResult(ctx, peer, err)
+	if err != nil {
 		return 0, err
 	}
 	seen := make(map[uuid.UUID]bool, len(list.Items))
@@ -127,7 +134,7 @@ func (s *Server) syncPeerUsers(ctx context.Context, peer store.Peer) (int, error
 		seen[u.ID] = true
 	}
 
-	err := pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.Pool, func(tx pgx.Tx) error {
 		q := s.q.WithTx(tx)
 		// Stale rows go first: a remaining user may have taken a username freed by a removed one.
 		existing, err := q.ListRemoteUserIDs(ctx, &peer.ID)
@@ -168,6 +175,9 @@ func (s *Server) refreshStalePeerUsers(ctx context.Context) bool {
 	}
 	var due []store.Peer
 	for _, p := range peers {
+		if peerSkipped(p) {
+			continue
+		}
 		now := time.Now()
 		cutoff := now.Add(-interval)
 		claimed, err := s.q.ClaimPeerUserSync(ctx, store.ClaimPeerUserSyncParams{

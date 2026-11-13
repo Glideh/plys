@@ -7,8 +7,14 @@ export interface Peer {
   name: string
   version: string | null
   localVersion: string
-  status: 'compatible' | 'incompatible' | 'unverified' | 'offline'
+  /** `offline` after two failed calls in a row; `paused` when an admin left the server out. */
+  status: 'compatible' | 'incompatible' | 'unverified' | 'offline' | 'paused'
   versionCheckedAt: string | null
+  paused: boolean
+  /** Last time the server answered or called this one. */
+  lastSeenAt: string | null
+  /** Set while the server does not answer; the API probes it again in the background. */
+  offlineSince: string | null
 }
 
 export const peersApi = {
@@ -18,6 +24,9 @@ export const peersApi = {
   add: (code: string) => api<Peer & { pairingPending: boolean }>('/admin/federation/peers', { method: 'POST', body: { code } }),
   update: (id: string, url: string) =>
     api<Peer>(`/admin/federation/peers/${id}`, { method: 'PATCH', body: { url } }),
+  /** A paused server is left out of every aggregated answer, without being reported as unavailable. */
+  setPaused: (id: string, paused: boolean) =>
+    api<Peer>(`/admin/federation/peers/${id}/paused`, { method: 'PUT', body: { paused } }),
   sync: (id: string) => api<{ users: number }>(`/admin/federation/peers/${id}/sync`, { method: 'POST' }),
   remove: (id: string) => api<void>(`/admin/federation/peers/${id}`, { method: 'DELETE' }),
 }

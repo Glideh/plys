@@ -2,11 +2,9 @@ package api
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -91,47 +89,32 @@ func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin boo
 		out = append(out, cardSourceDTO{ServerID: s.Identity.ID, ServerName: name, ItemID: row.ID})
 	}
 
-	peers, err := s.q.ListPeers(ctx)
+	results, _, err := fanOutPeers(ctx, s, "title", func(ctx context.Context, p store.Peer) ([]cardSourceDTO, error) {
+		return s.fetchPeerTitleSources(ctx, p, userID, kind, tmdbID)
+	})
 	if err != nil {
 		return nil, err
 	}
-	results := make([][]cardSourceDTO, len(peers))
-	errs := make([]error, len(peers))
-	var wg sync.WaitGroup
-	for i, p := range peers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			results[i], errs[i] = s.fetchPeerTitleSources(ctx, p, userID, kind, tmdbID)
-		}()
-	}
-	wg.Wait()
-	for i, p := range peers {
-		if errs[i] != nil {
-			slog.Warn("federated title unavailable", "peer", p.ID, "err", errs[i])
-			continue
-		}
-		out = append(out, results[i]...)
+	for _, sources := range results {
+		out = append(out, sources...)
 	}
 	return out, nil
 }
 
 // fetchPeerTitleSources asks one peer which of its items carry the same title, for the user.
 func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID uuid.UUID, kind string, tmdbID int32) ([]cardSourceDTO, error) {
-	ctx, cancel := context.WithTimeout(ctx, peerCatalogTimeout)
-	defer cancel()
-	if _, err := s.checkPeerVersion(ctx, p); err != nil {
-		return nil, err
-	}
-	token, err := s.federatedTokenFor(p.ID, userID)
-	if err != nil {
-		return nil, err
-	}
-	target := p.Url + "/api/v1/federation/catalog/titles/" + url.PathEscape(kind) + "/" + strconv.Itoa(int(tmdbID))
 	var page struct {
 		Items []titleRefDTO `json:"items"`
 	}
-	if err := s.getPeerCatalog(ctx, target, token, &page); err != nil {
+	err := s.callPeer(ctx, p, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(p.ID, userID)
+		if err != nil {
+			return err
+		}
+		target := p.Url + "/api/v1/federation/catalog/titles/" + url.PathEscape(kind) + "/" + strconv.Itoa(int(tmdbID))
+		return s.getPeerCatalog(ctx, target, token, &page)
+	})
+	if err != nil {
 		return nil, err
 	}
 	out := make([]cardSourceDTO, 0, len(page.Items))

@@ -41,6 +41,8 @@ type Deps struct {
 	HTTPClient *http.Client
 	// PeerUserSyncInterval is the minimum delay between two automatic user syncs of a peer; zero uses one minute.
 	PeerUserSyncInterval time.Duration
+	// PeerVersionTTL is how long a checked peer version is trusted; zero uses five minutes, a negative value always asks the peer.
+	PeerVersionTTL time.Duration
 	// TrustedProxies may set X-Forwarded-For; the client address is the right-most hop outside them.
 	TrustedProxies []netip.Prefix
 }
@@ -164,6 +166,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/admin/federation/peers", s.addPeer)
 				r.Post("/admin/federation/peers/{id}/sync", s.syncPeer)
 				r.Patch("/admin/federation/peers/{id}", s.updatePeer)
+				r.Put("/admin/federation/peers/{id}/paused", s.pausePeer)
 				r.Delete("/admin/federation/peers/{id}", s.deletePeer)
 				r.Patch("/admin/settings", s.updateSettings)
 				r.Get("/admin/system/transcoding", s.transcodingInfo)

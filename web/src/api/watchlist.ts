@@ -16,7 +16,7 @@ export interface WatchlistItem {
 
 export const watchlistApi = {
   /** The watchlist across this server and its paired servers, most recently added first. */
-  list: () => api<{ items: WatchlistItem[]; unavailableServers: number }>('/me/watchlist'),
+  list: () => api<{ items: WatchlistItem[]; unavailableServers: number; unavailableServerNames?: string[] }>('/me/watchlist'),
   /** Adds or removes a title on the server holding it (this server when `server` is null). */
   set: (server: ServerRef | null, itemId: string, listed: boolean) =>
     serverApi<void>(server, `/items/${itemId}/watchlist`, { method: listed ? 'POST' : 'DELETE' }),

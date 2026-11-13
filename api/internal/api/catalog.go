@@ -154,7 +154,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 			ServerID: s.Identity.ID, ServerName: serverName, ServerURL: publicURL, ItemID: c.ID,
 		}})
 	}
-	unavailable := 0
+	unavailable := []string{}
 	// A library filter names a local library, so peers are not asked.
 	if libraryID == nil {
 		raw := strings.TrimSpace(r.URL.Query().Get("query"))
@@ -172,7 +172,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 	start, end := min(params.offset, total), min(params.offset+params.limit, total)
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items": groups[start:end], "total": total, "offset": params.offset, "limit": params.limit,
-		"unavailableServers": unavailable,
+		"unavailableServers": len(unavailable), "unavailableServerNames": unavailable,
 	})
 }
 

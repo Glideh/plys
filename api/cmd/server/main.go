@@ -93,7 +93,7 @@ func run() error {
 		return opensubtitles.Credentials{APIKey: v.APIKey, Username: v.Username, Password: v.Password}, err
 	})
 
-	handler := api.New(api.Deps{
+	server := api.New(api.Deps{
 		Pool:                   pool,
 		Tokens:                 auth.NewIssuer(secret, accessTokenTTL),
 		CookieSecure:           cfg.CookieSecure,
@@ -108,7 +108,9 @@ func run() error {
 		OpenSubtitles:          osubs,
 		FederationRequireHTTPS: cfg.FederationRequireHTTPS,
 		TrustedProxies:         cfg.TrustedProxies,
-	}).Routes()
+	})
+	go server.RunPeerMonitor(ctx)
+	handler := server.Routes()
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,

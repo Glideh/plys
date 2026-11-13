@@ -462,7 +462,8 @@ paths:
                   total: { type: integer }
                   offset: { type: integer }
                   limit: { type: integer }
-                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers" }
+                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers. Paused peers are not counted." }
+                  unavailableServerNames: { type: array, items: { type: string }, description: "Names of the excluded peers, in no particular order" }
         "400": { $ref: "#/components/responses/Error" }
 
   /search:
@@ -483,7 +484,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [groups, unavailableServers]
+                required: [groups, unavailableServers, unavailableServerNames]
                 properties:
                   groups:
                     type: array
@@ -495,7 +496,8 @@ paths:
                         kind: { type: string, enum: [movies, series, other] }
                         items: { type: array, items: { $ref: "#/components/schemas/ItemCard" } }
                         total: { type: integer, description: Number of matching titles of the kind, beyond the returned items }
-                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers" }
+                  unavailableServers: { type: integer, description: "Number of excluded incompatible, unverified or unreachable peers. Paused peers are not counted." }
+                  unavailableServerNames: { type: array, items: { type: string }, description: "Names of the excluded peers, in no particular order" }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
 
@@ -544,7 +546,11 @@ paths:
     get:
       operationId: listPeers
       summary: List paired servers with their current version and compatibility (admin)
-      description: Compatibility compares only SemVer major versions. Unknown or invalid versions are unverified. Reachability is checked without removing the pairing.
+      description: >
+        Compatibility compares only SemVer major versions. Unknown or invalid versions are unverified. A peer is
+        offline after two consecutive failed calls: aggregated answers then skip it, and the server probes it in the
+        background (after 30 s, 1 min, then every 5 min) until it answers again. A paused peer is neither called nor
+        probed. The status comes from these checks; a version older than five minutes is checked again.
       responses:
         "200":
           description: Paired servers
@@ -583,6 +589,33 @@ paths:
         "400": { description: "Invalid pairing code, own code, plain HTTP refused or key not proven (invalid_pairing_code, self_pairing, peer_requires_https, peer_rejected)" }
         "409": { description: The server is already paired (peer_exists) }
         "502": { description: The peer could not be reached (peer_unreachable) }
+
+  /admin/federation/peers/{id}/paused:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: pausePeer
+      summary: Pause or resume a paired server (admin)
+      description: >
+        A paused peer is left out of every aggregated answer without being counted as unavailable, is never probed,
+        and no federated token is issued for it. It can still call this server. The pairing is kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paused]
+              properties:
+                paused: { type: boolean }
+      responses:
+        "200":
+          description: Updated server
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Peer" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /admin/federation/peers/{id}/sync:
     parameters:
@@ -1274,9 +1307,10 @@ components:
       items: { type: integer, minimum: 1, maximum: 2147483647 }
     CatalogFilterOptions:
       type: object
-      required: [options, unavailableServers]
+      required: [options, unavailableServers, unavailableServerNames]
       properties:
         unavailableServers: { type: integer }
+        unavailableServerNames: { type: array, items: { type: string }, description: "Names of the excluded peers, in no particular order" }
         options:
           type: object
           additionalProperties:
@@ -1290,15 +1324,18 @@ components:
                 label: { type: string }
     Peer:
       type: object
-      required: [id, url, name, version, localVersion, status, versionCheckedAt]
+      required: [id, url, name, version, localVersion, status, versionCheckedAt, paused, lastSeenAt, offlineSince]
       properties:
         id: { type: string, format: uuid }
         url: { type: string, format: uri }
         name: { type: string }
         version: { type: [string, "null"] }
         localVersion: { type: string }
-        status: { type: string, enum: [compatible, incompatible, unverified, offline] }
+        status: { type: string, enum: [compatible, incompatible, unverified, offline, paused] }
         versionCheckedAt: { type: [string, "null"], format: date-time }
+        paused: { type: boolean }
+        lastSeenAt: { type: [string, "null"], format: date-time, description: Last time the peer answered or called this server }
+        offlineSince: { type: [string, "null"], format: date-time, description: Set while the peer is offline }
     ClientCaps:
       type: object
       description: What the client can decode or output directly; the server transcodes the rest.
@@ -1572,11 +1609,12 @@ components:
             source: { $ref: "#/components/schemas/MediaSource" }
     Home:
       type: object
-      required: [continueWatching, nextUp, unavailableServers]
+      required: [continueWatching, nextUp, unavailableServers, unavailableServerNames]
       properties:
         continueWatching: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
         nextUp: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/SourcedHomeItem" } }
         unavailableServers: { type: integer, minimum: 0 }
+        unavailableServerNames: { type: array, items: { type: string }, description: "Names of the excluded peers, in no particular order" }
     WatchlistItem:
       type: object
       required: [id, kind, title, year, posterUrl, addedAt, source]
@@ -1590,10 +1628,11 @@ components:
         source: { $ref: "#/components/schemas/MediaSource" }
     Watchlist:
       type: object
-      required: [items, unavailableServers]
+      required: [items, unavailableServers, unavailableServerNames]
       properties:
         items: { type: array, items: { $ref: "#/components/schemas/WatchlistItem" } }
         unavailableServers: { type: integer, minimum: 0 }
+        unavailableServerNames: { type: array, items: { type: string }, description: "Names of the excluded peers, in no particular order" }
     HomeItem:
       type: object
       required: [id, kind, title, posterUrl, positionSeconds, durationSeconds, updatedAt]

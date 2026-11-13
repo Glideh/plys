@@ -92,6 +92,7 @@ func (s *Server) authenticateFederatedToken(r *http.Request, token string) (fede
 	if err != nil {
 		return federatedClaims{}, err
 	}
+	s.markPeerSeen(r.Context(), peer)
 	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {
 		return federatedClaims{}, err
 	}
@@ -114,6 +115,10 @@ func (s *Server) federationToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		httpx.InternalError(w, r, err)
+		return
+	}
+	if peerSkipped(peer) {
+		httpx.Error(w, http.StatusConflict, "peer_incompatible", "the peer must be reachable and use the same major server version")
 		return
 	}
 	if _, err := s.checkPeerVersion(r.Context(), peer); err != nil {

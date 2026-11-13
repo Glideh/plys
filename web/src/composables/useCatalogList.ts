@@ -26,6 +26,7 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
   const loading = ref(false)
   const error = ref('')
   const unavailableServers = ref(0)
+  const unavailableServerNames = ref<string[]>([])
   const filters = ref<CatalogFilters>(parseFilters(route.query.filters))
   const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
   const sort = ref<ItemSort>(itemSorts.includes(route.query.sort as ItemSort) ? (route.query.sort as ItemSort) : 'title')
@@ -51,6 +52,7 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
       items.value = reset ? page.items : [...items.value, ...page.items]
       total.value = page.total
       unavailableServers.value = page.unavailableServers ?? 0
+      unavailableServerNames.value = page.unavailableServerNames ?? []
     } catch (err) {
       if (gen === generation) error.value = errorMessage(err)
     } finally {
@@ -92,5 +94,5 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest) => Promise<I
     clearTimeout(debounce)
   })
 
-  return { items, total, loading, error, query, sort, filters, unavailableServers, reload: () => load(true) }
+  return { items, total, loading, error, query, sort, filters, unavailableServers, unavailableServerNames, reload: () => load(true) }
 }

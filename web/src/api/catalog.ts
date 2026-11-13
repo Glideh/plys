@@ -37,6 +37,8 @@ export interface ItemPage {
   offset: number
   limit: number
   unavailableServers?: number
+  /** Names of the excluded servers; paused servers are neither counted nor named. */
+  unavailableServerNames?: string[]
 }
 
 /** Searches shorter than this, once trimmed, are rejected by the API. */
@@ -54,6 +56,8 @@ export interface SearchResult {
   /** Only the kinds with matches, in the order movies, series, other. */
   groups: SearchGroup[]
   unavailableServers: number
+  /** Names of the excluded servers; paused servers are neither counted nor named. */
+  unavailableServerNames?: string[]
 }
 
 export interface Track {

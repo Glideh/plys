@@ -31,7 +31,9 @@ data class ItemCard(
 )
 
 @Serializable
-data class ItemPage(val items: List<ItemCard>, val total: Int, val offset: Int, val limit: Int, val unavailableServers: Int = 0)
+data class ItemPage(val items: List<ItemCard>, val total: Int, val offset: Int, val limit: Int, val unavailableServers: Int = 0,
+    val unavailableServerNames: List<String> = emptyList(),
+)
 
 /** The best matches of one library kind; total counts every matching title. */
 @Serializable
@@ -40,7 +42,7 @@ data class SearchGroup(val kind: String, val items: List<ItemCard> = emptyList()
 }
 
 @Serializable
-data class SearchResult(val groups: List<SearchGroup> = emptyList(), val unavailableServers: Int = 0)
+data class SearchResult(val groups: List<SearchGroup> = emptyList(), val unavailableServers: Int = 0, val unavailableServerNames: List<String> = emptyList())
 
 /** Searches shorter than this, once trimmed, are rejected by the API. */
 const val MIN_SEARCH_LENGTH = 3
@@ -74,13 +76,14 @@ data class WatchlistItem(
 )
 
 @Serializable
-data class WatchlistResponse(val items: List<WatchlistItem> = emptyList(), val unavailableServers: Int = 0)
+data class WatchlistResponse(val items: List<WatchlistItem> = emptyList(), val unavailableServers: Int = 0, val unavailableServerNames: List<String> = emptyList())
 
 @Serializable
 data class HomeResponse(
     val continueWatching: List<HomeItem> = emptyList(),
     val nextUp: List<HomeItem> = emptyList(),
     val unavailableServers: Int = 0,
+    val unavailableServerNames: List<String> = emptyList(),
 )
 
 @Serializable
@@ -124,7 +127,7 @@ data class CatalogQuery(
 data class FilterOption(val id: String, val label: String)
 
 @Serializable
-data class FilterOptions(val options: Map<String, List<FilterOption>> = emptyMap(), val unavailableServers: Int = 0)
+data class FilterOptions(val options: Map<String, List<FilterOption>> = emptyMap(), val unavailableServers: Int = 0, val unavailableServerNames: List<String> = emptyList())
 
 @Serializable
 data class ServerInfo(val id: String, val version: String = "")

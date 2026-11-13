@@ -118,6 +118,11 @@ type Peer struct {
 	UsersSyncAttemptedAt *time.Time
 	Version              *string
 	VersionCheckedAt     *time.Time
+	Paused               bool
+	ConsecutiveFailures  int32
+	LastFailureAt        *time.Time
+	OfflineSince         *time.Time
+	LastSeenAt           *time.Time
 }
 
 type PlaybackProgress struct {

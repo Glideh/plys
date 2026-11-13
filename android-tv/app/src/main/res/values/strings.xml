@@ -74,6 +74,7 @@
     <string name="continue_watching">Continue watching</string>
     <string name="next_up">Next episodes</string>
     <string name="partial_results">%1$d servers unavailable or incompatible.</string>
+    <string name="partial_results_named">Servers unavailable or incompatible: %1$s.</string>
     <string name="app_name">Plys TV</string>
     <string name="server">Server address (https://…)</string>
     <string name="username">Username</string>

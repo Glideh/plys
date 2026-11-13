@@ -29,7 +29,7 @@ fun WatchlistScreen(screen: Screen.Watchlist, model: CatalogViewModel) {
             Text(stringResource(R.string.watchlist), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
             Text(pluralStringResource(R.plurals.title_count, items.size, items.size), style = MaterialTheme.typography.bodyLarge,
                 color = Plys.Muted, modifier = Modifier.padding(bottom = 4.dp))
-            if (screen.data.unavailableServers > 0) Text(stringResource(R.string.partial_results, screen.data.unavailableServers),
+            if (screen.data.unavailableServers > 0) Text(partialResults(screen.data.unavailableServers, screen.data.unavailableServerNames),
                 style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
         }
         if (items.isEmpty()) EmptyState(stringResource(R.string.watchlist_empty), Modifier.padding(top = 12.dp))
