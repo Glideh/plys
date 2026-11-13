@@ -23,7 +23,8 @@ import (
 
 const (
 	defaultPageSize = 60
-	maxPageSize     = 200
+	// maxPageSize lets a client reload the pages it already shows in one request.
+	maxPageSize = 1000
 )
 
 var itemSorts = []string{"title", "year", "added", "rating"}
@@ -66,7 +67,7 @@ func (s *Server) listLibraryItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	params, ok := parseItemListParams(w, r)
+	params, ok := parseItemListParams(w, r, maxPageSize)
 	if !ok {
 		return
 	}
@@ -125,7 +126,7 @@ func (s *Server) listKindItems(w http.ResponseWriter, r *http.Request) {
 		}
 		libraryID = &id
 	}
-	params, ok := parseItemListParams(w, r)
+	params, ok := parseItemListParams(w, r, maxPageSize)
 	if !ok {
 		return
 	}
@@ -182,8 +183,9 @@ type itemListParams struct {
 	limit, offset int
 }
 
-// parseItemListParams reads the sort, pagination and search query parameters shared by the item listings.
-func parseItemListParams(w http.ResponseWriter, r *http.Request) (itemListParams, bool) {
+// parseItemListParams reads the sort, pagination and search query parameters shared by the item listings;
+// maxLimit is the largest page the listing serves.
+func parseItemListParams(w http.ResponseWriter, r *http.Request, maxLimit int) (itemListParams, bool) {
 	qs := r.URL.Query()
 	var p itemListParams
 	p.sort = qs.Get("sort")
@@ -194,7 +196,7 @@ func parseItemListParams(w http.ResponseWriter, r *http.Request) (itemListParams
 		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating")
 		return p, false
 	}
-	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxPageSize)
+	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxLimit)
 	if err != nil {
 		httpx.Error(w, http.StatusBadRequest, "validation", "limit "+err.Error())
 		return p, false

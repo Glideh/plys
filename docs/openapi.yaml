@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Plys API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Media library API used by the web front-end and the native Android TV client.
 
@@ -419,7 +419,7 @@ paths:
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
         "200":
           description: Page of items
@@ -448,7 +448,7 @@ paths:
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
         - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 60 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
         "200":
           description: Page of items
@@ -521,6 +521,44 @@ paths:
               schema: { $ref: "#/components/schemas/CatalogFilterOptions" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+
+  /federation/catalog/kinds/{kind}/items:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [movies, series, other] } }
+    get:
+      operationId: peerKindItems
+      summary: Local top-level entries of one kind for the shadow user named by a compatible peer's federated token
+      description: >
+        Serves pages of up to 20000 entries, so that a peer reads a whole catalog in one call; peers up to 0.5 serve
+        200 at most and answer 400 above. The origin keeps the merged answer for a short time (90 s) and pages through it.
+      parameters:
+        - $ref: "#/components/parameters/CatalogFilters"
+        - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20000, default: 60 } }
+      responses:
+        "200":
+          description: Local entries only, never re-exporting other peers, with the keys the origin merges and sorts on
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: "#/components/schemas/ItemCard"
+                        - type: object
+                          properties:
+                            tmdbId: { type: [integer, "null"] }
+                            sortTitle: { type: string }
+                            addedAt: { type: string, format: date-time }
+                  total: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
 
   /federation/catalog/kinds/{kind}/filters:
     parameters:

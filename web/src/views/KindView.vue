@@ -21,7 +21,7 @@ const errorMessage = useErrorMessage()
 const libraries = ref<Library[]>([])
 const kindLibraries = computed(() => libraries.value.filter((l) => l.kind === props.kind))
 
-const { items, total, loading, error, query, sort, filters, unavailableServers, unavailableServerNames, reload } = useCatalogList((req) => catalogApi.listKind(props.kind, req))
+const { items, total, loading, error, query, sort, filters, unavailableServers, unavailableServerNames, reload } = useCatalogList((req, signal) => catalogApi.listKind(props.kind, req, signal))
 
 function openLibrary(id: string | null) {
   if (id) router.push({ name: 'library', params: { id } })

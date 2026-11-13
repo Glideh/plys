@@ -116,9 +116,11 @@ interface RequestOptions {
   auth?: boolean
   /** Lets the request outlive the page (tab closing). */
   keepalive?: boolean
+  /** Aborts the request, so that the server stops working on an answer nobody waits for. */
+  signal?: AbortSignal
 }
 
-export async function api<T>(path: string, { method = 'GET', body, auth = true, keepalive }: RequestOptions = {}): Promise<T> {
+export async function api<T>(path: string, { method = 'GET', body, auth = true, keepalive, signal }: RequestOptions = {}): Promise<T> {
   const send = () => {
     const headers: Record<string, string> = {}
     const raw = body instanceof Blob
@@ -130,6 +132,7 @@ export async function api<T>(path: string, { method = 'GET', body, auth = true, 
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
       credentials: 'same-origin',
       keepalive,
+      signal,
     })
   }
 

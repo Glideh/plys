@@ -20,7 +20,7 @@ const library = ref<Library | null>(null)
 const libraries = ref<Library[]>([])
 const sameKindLibraries = computed(() => libraries.value.filter((l) => l.kind === library.value?.kind))
 
-const { items, total, loading, error, query, sort, filters, reload } = useCatalogList((req) => catalogApi.list(props.id, req))
+const { items, total, loading, error, query, sort, filters, reload } = useCatalogList((req, signal) => catalogApi.list(props.id, req, signal))
 
 function selectLibrary(id: string | null) {
   if (id) router.push({ name: 'library', params: { id } })

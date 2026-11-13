@@ -85,6 +85,8 @@ func newTestEnvWith(t *testing.T, mutate func(*Deps)) testEnv {
 		Playback: player, Subtitles: subs,
 		// Most federation tests change the peer version between requests and expect it to be seen at once.
 		PeerVersionTTL: -1,
+		// They also change the peer answers between requests; the cache has its own tests.
+		PeerCacheTTL: -1,
 	}
 	if mutate != nil {
 		mutate(&deps)

@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -26,6 +26,12 @@ const (
 	// allRows asks a listing for every row, so that merged listings are paged after grouping.
 	allRows            = 1<<31 - 1
 	peerCatalogTimeout = 15 * time.Second
+	// maxPeerPageSize is the largest page a peer may ask for, so that it reads a whole catalog in one call.
+	maxPeerPageSize = 20000
+	// legacyPeerPageSize is the largest page that peers released before maxPeerPageSize serve.
+	legacyPeerPageSize = 200
+	// peerPageConcurrency bounds the pages read at once from a peer that serves small pages only.
+	peerPageConcurrency = 4
 )
 
 // federatedCard is a catalogue entry with the keys a peer exports so that the origin can merge and group it.
@@ -122,7 +128,7 @@ func (s *Server) peerKindItems(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	params, ok := parseItemListParams(w, r)
+	params, ok := parseItemListParams(w, r, maxPeerPageSize)
 	if !ok {
 		return
 	}
@@ -137,7 +143,10 @@ func (s *Server) peerKindItems(w http.ResponseWriter, r *http.Request) {
 // peerKindCards reads every visible card of one kind from each paired peer; the names of the unavailable peers are returned.
 func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, []string, error) {
 	results, unavailable, err := fanOutPeers(ctx, s, "catalog", func(ctx context.Context, p store.Peer) ([]sourcedCard, error) {
-		return s.fetchPeerCards(ctx, p, userID, kind, query, sort, filters)
+		key := strings.Join([]string{userID.String(), kind, query, sort, string(filters)}, "\x00")
+		return cachedPeerCall(ctx, s, s.peerCatalogs, p, key, func(ctx context.Context) ([]sourcedCard, error) {
+			return s.fetchPeerCards(ctx, p, userID, kind, query, sort, filters)
+		})
 	})
 	if err != nil {
 		return nil, nil, err
@@ -149,46 +158,78 @@ func (s *Server) peerKindCards(ctx context.Context, userID uuid.UUID, kind, quer
 	return out, unavailable, nil
 }
 
-// fetchPeerCards pages through the listing of one peer, with a federated token for the user.
+type peerCardPage struct {
+	Items []federatedCard `json:"items"`
+	Total int32           `json:"total"`
+}
+
+// fetchPeerCards reads the whole listing of one peer, with a federated token for the user. It asks for every card
+// in one page; a peer released before large pages refuses it, and is then read in parallel pages of legacyPeerPageSize.
 func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.UUID, kind, query, sort string, filters json.RawMessage) ([]sourcedCard, error) {
+	token, err := s.federatedTokenFor(p.ID, userID)
+	if err != nil {
+		return nil, err
+	}
+	fetch := func(ctx context.Context, offset, limit int) (peerCardPage, error) {
+		target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
+			"sort":    {sort},
+			"query":   {query},
+			"filters": {string(filters)},
+			"offset":  {strconv.Itoa(offset)},
+			"limit":   {strconv.Itoa(limit)},
+		}.Encode()
+		var page peerCardPage
+		err := s.getPeerCatalog(ctx, target, token, &page)
+		return page, err
+	}
+	pageSize := maxPeerPageSize
+	first, err := fetch(ctx, 0, pageSize)
+	if errors.Is(err, errPeerBadRequest) {
+		pageSize = legacyPeerPageSize
+		first, err = fetch(ctx, 0, pageSize)
+	}
+	if err != nil {
+		return nil, err
+	}
+	pages := []peerCardPage{first}
+	// The step is the size of the first page, in case the peer serves smaller pages than asked.
+	if step := len(first.Items); step > 0 && step < int(first.Total) {
+		offsets := []int{}
+		for offset := step; offset < int(first.Total); offset += step {
+			offsets = append(offsets, offset)
+		}
+		rest := make([]peerCardPage, len(offsets))
+		errs := make([]error, len(offsets))
+		slots := make(chan struct{}, peerPageConcurrency)
+		var wg sync.WaitGroup
+		for i, offset := range offsets {
+			wg.Go(func() {
+				slots <- struct{}{}
+				defer func() { <-slots }()
+				rest[i], errs[i] = fetch(ctx, offset, step)
+			})
+		}
+		wg.Wait()
+		if err := errors.Join(errs...); err != nil {
+			return nil, err
+		}
+		pages = append(pages, rest...)
+	}
+
 	var out []sourcedCard
-	err := s.callPeer(ctx, p, func(ctx context.Context) error {
-		token, err := s.federatedTokenFor(p.ID, userID)
-		if err != nil {
-			return err
+	for _, page := range pages {
+		for _, c := range page.Items {
+			// Posters of a peer are relative to its own origin; the client needs the absolute address.
+			if c.PosterURL != nil && strings.HasPrefix(*c.PosterURL, "/") {
+				abs := p.Url + *c.PosterURL
+				c.PosterURL = &abs
+			}
+			out = append(out, sourcedCard{federatedCard: c, source: cardSourceDTO{
+				ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: c.ID,
+			}})
 		}
-		for offset := 0; ; {
-			target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
-				"sort":    {sort},
-				"query":   {query},
-				"filters": {string(filters)},
-				"offset":  {strconv.Itoa(offset)},
-				"limit":   {strconv.Itoa(maxPageSize)},
-			}.Encode()
-			var page struct {
-				Items []federatedCard `json:"items"`
-				Total int32           `json:"total"`
-			}
-			if err := s.getPeerCatalog(ctx, target, token, &page); err != nil {
-				return err
-			}
-			for _, c := range page.Items {
-				// Posters of a peer are relative to its own origin; the client needs the absolute address.
-				if c.PosterURL != nil && strings.HasPrefix(*c.PosterURL, "/") {
-					abs := p.Url + *c.PosterURL
-					c.PosterURL = &abs
-				}
-				out = append(out, sourcedCard{federatedCard: c, source: cardSourceDTO{
-					ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: c.ID,
-				}})
-			}
-			offset += len(page.Items)
-			if len(page.Items) == 0 || offset >= int(page.Total) {
-				return nil
-			}
-		}
-	})
-	return out, err
+	}
+	return out, nil
 }
 
 func (s *Server) getPeerCatalog(ctx context.Context, target, token string, out any) error {
@@ -205,7 +246,7 @@ func (s *Server) getPeerCatalog(ctx context.Context, target, token string, out a
 	if resp.StatusCode != http.StatusOK {
 		return peerStatusError(resp.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(resp.Body, maxPeerResponse)).Decode(out)
+	return decodePeerJSON(resp.Body, maxPeerCatalogResponse, out)
 }
 
 // compareCards orders cards like the local listing query: the sort key, then the sort title and the ID.

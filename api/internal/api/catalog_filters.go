@@ -137,7 +137,10 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 	}
 	if !federated && libraryID == nil {
 		results, unavailable, err := fanOutPeers(r.Context(), s, "filter options", func(ctx context.Context, peer store.Peer) (catalogOptionsResponse, error) {
-			return s.peerFilterOptions(ctx, peer, userID, kind, category, query, selected, locale)
+			key := strings.Join([]string{userID.String(), kind, category, query, strings.Join(selected, ","), locale}, "\x00")
+			return cachedPeerCall(ctx, s, s.peerFilters, peer, key, func(ctx context.Context) (catalogOptionsResponse, error) {
+				return s.peerFilterOptions(ctx, peer, userID, kind, category, query, selected, locale)
+			})
 		})
 		if err != nil {
 			httpx.InternalError(w, r, err)
@@ -174,25 +177,23 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 	httpx.JSON(w, http.StatusOK, response)
 }
 
+// peerFilterOptions reads the filter suggestions of one peer for the user; callers go through callPeer.
 func (s *Server) peerFilterOptions(ctx context.Context, peer store.Peer, userID uuid.UUID, kind, category, query string, selected []string, locale string) (catalogOptionsResponse, error) {
 	var response catalogOptionsResponse
-	err := s.callPeer(ctx, peer, func(ctx context.Context) error {
-		token, err := s.federatedTokenFor(peer.ID, userID)
-		if err != nil {
-			return err
-		}
-		fetch := func(locale string) error {
-			target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
-			response = catalogOptionsResponse{}
-			return s.getPeerCatalog(ctx, target, token, &response)
-		}
-		err = fetch(locale)
-		if err != nil && !errors.Is(err, errPeerDown) && !slices.Contains(legacyFilterLocales, locale) {
-			// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
-			return fetch("en")
-		}
-		return err
-	})
+	token, err := s.federatedTokenFor(peer.ID, userID)
+	if err != nil {
+		return response, err
+	}
+	fetch := func(locale string) error {
+		target := peer.Url + "/api/v1/federation/catalog/kinds/" + kind + "/filters?" + url.Values{"category": {category}, "query": {query}, "selected": {strings.Join(selected, ",")}, "locale": {locale}}.Encode()
+		response = catalogOptionsResponse{}
+		return s.getPeerCatalog(ctx, target, token, &response)
+	}
+	err = fetch(locale)
+	if err != nil && !errors.Is(err, errPeerDown) && !slices.Contains(legacyFilterLocales, locale) {
+		// Peers released before pt-BR reject it; English labels beat no suggestions, and clients relabel ISO names anyway.
+		err = fetch("en")
+	}
 	return response, err
 }
 
