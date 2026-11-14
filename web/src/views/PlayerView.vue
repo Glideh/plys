@@ -60,6 +60,12 @@ const title = computed(() => {
   return it.title
 })
 
+/** Films and videos show their year next to the title; episodes and parts already carry their context. */
+const titleYear = computed(() => {
+  const it = item.value
+  return it && it.kind !== 'episode' && it.kind !== 'part' && it.year ? String(it.year) : null
+})
+
 const startAt = Number(route.query.t) > 0 ? Number(route.query.t) : 0
 
 /** A track index picked on the item page, or null when the query does not hold one. */
@@ -372,7 +378,9 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
         <button type="button" class="rounded-full p-2 hover:bg-white/15" :aria-label="t('player.back')" @click="leave">
           <svg viewBox="0 0 24 24" class="size-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
         </button>
-        <h1 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ title }}</h1>
+        <h1 class="min-w-0 flex-1 truncate text-lg font-semibold">
+          {{ title }}<span v-if="titleYear" class="ml-2 font-normal text-slate-300">{{ titleYear }}</span>
+        </h1>
         <span v-if="endsAt" class="text-sm whitespace-nowrap text-slate-200">{{ t('player.endsAt', { time: endsAt }) }}</span>
         <span v-if="mode" class="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">{{ mode }}</span>
       </header>

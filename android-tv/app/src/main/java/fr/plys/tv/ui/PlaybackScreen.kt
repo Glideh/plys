@@ -64,6 +64,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
@@ -253,7 +256,11 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                     episodeCode(state.item.seasonNumber.takeIf { state.item.kind == "episode" }, state.item.episodeNumber),
                 ).joinToString(" · ")
                 if (context.isNotBlank()) Text(context, style = MaterialTheme.typography.titleMedium, color = Plys.Accent300)
-                Text(detailTitle(state.item), style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                val year = playerYear(state.item)
+                Text(buildAnnotatedString {
+                    append(detailTitle(state.item))
+                    if (year != null) withStyle(SpanStyle(color = Plys.Muted)) { append("  $year") }
+                }, style = MaterialTheme.typography.headlineMedium, color = Color.White)
             }
         }
         if (visible) Column(
@@ -317,6 +324,9 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
 }
 
 /** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */
+/** Films and videos show their year next to the title; episodes and parts already carry their context. */
+internal fun playerYear(item: ItemDetail): Int? = item.year?.takeIf { item.kind != "episode" && item.kind != "part" && it > 0 }
+
 @Composable
 private fun UpNext(countdown: Int, modifier: Modifier, playNow: () -> Unit, cancel: () -> Unit) {
     Row(Modifier.background(Plys.Surface900.copy(alpha = 0.92f), Plys.Card).padding(horizontal = 20.dp, vertical = 14.dp),
