@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterCount, parseFilters, serializeFilters } from './catalogFilters'
+import { filterCount, parseFilters, personCatalogRoute, serializeFilters } from './catalogFilters'
 
 describe('catalog filters', () => {
   it('round-trips criteria through a shareable URL', () => {
@@ -19,5 +19,14 @@ describe('catalog filters', () => {
   })
   it('uses a stable serialization and preserves zero bounds', () => {
     expect(serializeFilters({ genres: [878, 27, 878], ratingMin: 0, audio: 'ac3' })).toBe(serializeFilters({ audio: 'ac3', ratingMin: 0, genres: [27, 878] }))
+  })
+})
+
+describe('person catalog route', () => {
+  it('opens the catalog of the title kind filtered on the person', () => {
+    expect(personCatalogRoute('movie', 'actors', 10205)).toEqual({ name: 'kind', params: { kind: 'movies' }, query: { filters: '{"actors":[10205]}' } })
+    expect(personCatalogRoute('episode', 'creators', 66633).params.kind).toBe('series')
+    expect(personCatalogRoute('video', 'actors', 1).params.kind).toBe('other')
+    expect(parseFilters(personCatalogRoute('series', 'creators', 66633).query.filters)).toEqual({ creators: [66633] })
   })
 })

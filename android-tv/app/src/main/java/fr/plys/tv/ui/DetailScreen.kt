@@ -112,10 +112,14 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                 if (item.children.isNotEmpty()) item("children") {
                     ChildrenRow(item, model, source, focusFirst = !canPlay)
                 }
-                if (item.cast.isNotEmpty()) item("cast") { PeopleRow(R.string.cast, item.cast, model.api, source) }
+                if (item.cast.isNotEmpty()) item("cast") {
+                    PeopleRow(R.string.cast, item.cast, model.api, source) { model.openPerson(item, "actors", it) }
+                }
                 val directors = item.directorPeople
                 if (directors.isNotEmpty()) item("directors") {
-                    PeopleRow(if (item.kind == "series") R.string.creators_title else R.string.directors_title, directors, model.api, source)
+                    PeopleRow(if (item.kind == "series") R.string.creators_title else R.string.directors_title, directors, model.api, source) {
+                        model.openPerson(item, "creators", it)
+                    }
                 }
             }
         }

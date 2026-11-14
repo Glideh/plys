@@ -192,6 +192,9 @@ class PlysApi(
 
     fun filterOptionLabel(category: String, id: String): String = filterLabels["$category:$id"] ?: id
 
+    /** Names a filter value picked outside the filter dialog, such as a person of a detail page. */
+    fun rememberFilterLabel(category: String, id: String, label: String) { filterLabels["$category:$id"] = label }
+
     suspend fun item(id: String, source: ServerRef? = null): ItemDetail = locked { decode(sourceRequest(source, "items/$id")) }
 
     suspend fun start(

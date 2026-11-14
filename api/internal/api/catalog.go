@@ -232,6 +232,8 @@ func intParam(raw string, fallback, minV, maxV int) (int, error) {
 }
 
 type castDTO struct {
+	// ID is the TMDB person, absent when unknown; clients filter the catalog on it (actors or creators).
+	ID        int     `json:"id,omitempty"`
 	Name      string  `json:"name"`
 	Character string  `json:"character,omitempty"`
 	PhotoURL  *string `json:"photoUrl"`
@@ -377,11 +379,12 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		SeasonNumber: it.SeasonNumber, EpisodeNumber: it.EpisodeNumber, EpisodeNumberEnd: it.EpisodeNumberEnd,
 		PartNumber: it.PartNumber, Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
 	}
-	if dto.Cast, err = castFromJSON(it.CastMembers); err != nil {
+	labels := personLabels(it.FilterLabels)
+	if dto.Cast, err = castFromJSON(it.CastMembers, labels["actors"]); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	if dto.DirectorCredits, err = castFromJSON(it.DirectorMembers); err != nil {
+	if dto.DirectorCredits, err = castFromJSON(it.DirectorMembers, labels["creators"]); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
@@ -589,12 +592,15 @@ func codecLabel(codec string) string {
 }
 
 type storedCast struct {
+	ID          int    `json:"id"`
 	Name        string `json:"name"`
 	Character   string `json:"character"`
 	ProfilePath string `json:"profilePath"`
 }
 
-func castFromJSON(raw []byte) ([]castDTO, error) {
+// castFromJSON reads stored credits. People stored before their TMDB ID was kept get it from the item's filter
+// labels (name to ID), which the same metadata refresh wrote.
+func castFromJSON(raw []byte, ids map[string]int) ([]castDTO, error) {
 	var cast []storedCast
 	if err := json.Unmarshal(raw, &cast); err != nil {
 		return nil, err
@@ -602,7 +608,40 @@ func castFromJSON(raw []byte) ([]castDTO, error) {
 	out := make([]castDTO, 0, len(cast))
 	for _, c := range cast {
 		path := c.ProfilePath
-		out = append(out, castDTO{Name: c.Name, Character: c.Character, PhotoURL: imageURL(&path, "w185")})
+		id := c.ID
+		if id <= 0 {
+			id = ids[c.Name]
+		}
+		out = append(out, castDTO{ID: id, Name: c.Name, Character: c.Character, PhotoURL: imageURL(&path, "w185")})
 	}
 	return out, nil
+}
+
+// personLabels maps, per filter category, a person's name to their TMDB ID. A name shared by two people of the
+// same category maps to nothing, rather than to the wrong one.
+func personLabels(raw []byte) map[string]map[string]int {
+	var labels map[string][]struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &labels) != nil {
+		return nil
+	}
+	out := make(map[string]map[string]int, 2)
+	for _, category := range []string{"actors", "creators"} {
+		ids := make(map[string]int, len(labels[category]))
+		for _, option := range labels[category] {
+			id, err := strconv.Atoi(option.ID)
+			if err != nil || id <= 0 {
+				continue
+			}
+			if _, dup := ids[option.Label]; dup {
+				ids[option.Label] = 0
+				continue
+			}
+			ids[option.Label] = id
+		}
+		out[category] = ids
+	}
+	return out
 }

@@ -1,3 +1,5 @@
+import type { ItemKind, LibraryKind } from './libraries'
+
 export const resolutions = ['2160p', '1080p', '720p', 'SD'] as const
 export type Resolution = typeof resolutions[number]
 export const audioFormats = ['atmos', 'truehd', 'eac3', 'ac3', 'dtsHdMa', 'dts', 'flac', 'pcm', 'aac', 'opus', 'mp3'] as const
@@ -76,4 +78,10 @@ export function serializeFilters(filters: CatalogFilters): string | undefined {
 export function filterCount(filters: CatalogFilters): number {
   return selectionKeys.filter((key) => filters[key]?.length).length + numberKeys.filter((key) => filters[key] !== undefined).length
     + choiceKeys.filter((key) => filters[key]).length
+}
+
+/** Catalog of a title's kind filtered on one person (TMDB ID), opened from the cast and crew of an item page. */
+export function personCatalogRoute(kind: ItemKind, category: 'actors' | 'creators', id: number) {
+  const catalogKind: LibraryKind = kind === 'series' || kind === 'season' || kind === 'episode' ? 'series' : kind === 'video' ? 'other' : 'movies'
+  return { name: 'kind', params: { kind: catalogKind }, query: { filters: serializeFilters({ [category]: [id] }) } }
 }

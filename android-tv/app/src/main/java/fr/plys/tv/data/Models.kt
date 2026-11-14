@@ -182,7 +182,19 @@ data class MediaTrack(
 )
 
 @Serializable
-data class CastMember(val name: String, val character: String = "", val photoUrl: String? = null)
+// id is the TMDB person, the value of the actors and creators filters; absent from older servers or metadata.
+data class CastMember(val name: String, val character: String = "", val photoUrl: String? = null, val id: Int? = null)
+
+/** Catalog of a title's kind filtered on one person (category "actors" or "creators"), opened from its detail page. */
+fun personCatalogQuery(itemKind: String, category: String, personId: Int): CatalogQuery {
+    val kind = when (itemKind) {
+        "series", "season", "episode" -> CatalogKind.SERIES
+        "video" -> CatalogKind.OTHER
+        else -> CatalogKind.MOVIES
+    }
+    val filters = if (category == "creators") CatalogFilters(creators = listOf(personId)) else CatalogFilters(actors = listOf(personId))
+    return CatalogQuery(kind, filters = filters)
+}
 
 /** subtitleIndex picks a track of the file, externalSubtitleId a downloaded subtitle; at most one is set. */
 data class PlaybackSelection(

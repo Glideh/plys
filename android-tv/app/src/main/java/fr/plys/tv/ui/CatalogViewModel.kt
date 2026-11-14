@@ -8,6 +8,8 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import fr.plys.tv.data.CatalogPagingSource
+import fr.plys.tv.data.personCatalogQuery
+import fr.plys.tv.data.CastMember
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.data.ClientException
 import fr.plys.tv.data.ItemDetail
@@ -234,6 +236,13 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun clearSearch() = search("")
 
     fun openKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind))
+
+    /** The catalog filtered on a person of the detail page; back returns to the title. */
+    fun openPerson(item: ItemDetail, category: String, person: CastMember) {
+        val id = person.id ?: return
+        api.rememberFilterLabel(category, id.toString(), person.name)
+        openCatalog(personCatalogQuery(item.kind, category, id))
+    }
 
     /** The full listing of one kind for the current search, from the home screen. */
     fun openSearchKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind, query = mutableState.value.search.term))

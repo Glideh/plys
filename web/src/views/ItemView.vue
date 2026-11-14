@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { Heart, Info, RotateCcw } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Track, type Version } from '@/api/catalog'
+import { personCatalogRoute } from '@/api/catalogFilters'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
@@ -126,6 +127,8 @@ function subtitleLabel(s: Track): string {
 const paths = computed(() => (server ? [] : (item.value?.versions.map((v) => v.path).filter((p): p is string => !!p) ?? [])))
 const hasLocation = computed(() => !server && (!!item.value?.folder || paths.value.length > 0))
 const multiServer = computed(() => new Set(choices.value.map((c) => c.server.serverId)).size > 1)
+// Directors or creators, with their TMDB ID when known; older servers only send the names.
+const directorPeople = computed(() => (item.value?.directorCredits?.length ? item.value.directorCredits : (item.value?.directors ?? []).map((name) => ({ name, id: undefined }))))
 const hasOwnMetadata = computed(() => ['movie', 'series', 'video'].includes(item.value?.kind ?? ''))
 const backdrop = computed(() => item.value?.backdropUrl ?? (item.value?.kind === 'episode' ? item.value.thumbUrl : null))
 // Seasons and episodes have no backdrop of their own: the series' one is not loaded to keep a single request.
@@ -460,15 +463,30 @@ async function onMatched(merged: boolean) {
           <h2 class="mb-4 text-xl font-semibold">{{ t('catalog.cast') }}</h2>
           <p v-if="item.directors.length" class="mb-4 text-sm text-slate-400">
             {{ item.kind === 'series' ? t('catalog.createdBy') : t('catalog.directedBy') }} :
-            <span class="text-slate-200">{{ item.directors.join(', ') }}</span>
+            <template v-for="(p, i) in directorPeople" :key="p.name">
+              <template v-if="i">, </template>
+              <RouterLink
+                v-if="p.id"
+                :to="personCatalogRoute(item.kind, 'creators', p.id)"
+                :title="t('catalog.personTitles', { name: p.name })"
+                class="text-slate-200 underline-offset-4 hover:text-white hover:underline"
+              >{{ p.name }}</RouterLink>
+              <span v-else class="text-slate-200">{{ p.name }}</span>
+            </template>
           </p>
           <ul class="flex gap-4 overflow-x-auto pb-2">
             <li v-for="c in item.cast" :key="c.name + c.character" class="w-28 shrink-0 text-center">
-              <div class="mx-auto size-24 overflow-hidden rounded-full bg-surface-800 ring-1 ring-white/10">
-                <img v-if="c.photoUrl" :src="c.photoUrl" :alt="c.name" loading="lazy" class="size-full object-cover" />
-              </div>
-              <p class="mt-2 truncate text-sm font-medium">{{ c.name }}</p>
-              <p v-if="c.character" class="truncate text-xs text-slate-500">{{ c.character }}</p>
+              <component
+                :is="c.id ? RouterLink : 'div'"
+                v-bind="c.id ? { to: personCatalogRoute(item.kind, 'actors', c.id), title: t('catalog.personTitles', { name: c.name }) } : {}"
+                class="group block rounded-lg"
+              >
+                <div class="mx-auto size-24 overflow-hidden rounded-full bg-surface-800 ring-1 ring-white/10 transition group-hover:ring-2 group-hover:ring-accent-400 group-focus-visible:ring-2 group-focus-visible:ring-accent-400">
+                  <img v-if="c.photoUrl" :src="c.photoUrl" :alt="c.name" loading="lazy" class="size-full object-cover" />
+                </div>
+                <p class="mt-2 truncate text-sm font-medium" :class="{ 'group-hover:text-white': c.id }">{{ c.name }}</p>
+                <p v-if="c.character" class="truncate text-xs text-slate-500">{{ c.character }}</p>
+              </component>
             </li>
           </ul>
         </section>

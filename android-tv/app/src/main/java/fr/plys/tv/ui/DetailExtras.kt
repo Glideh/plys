@@ -53,6 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import fr.plys.tv.R
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.semantics.Role
 import fr.plys.tv.data.CastMember
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.MediaTrack
@@ -236,15 +239,18 @@ fun Choice(label: String, selected: Boolean, enabled: Boolean = true, onClick: (
     }
 }
 
-/** Cast, directors or creators, each in a disc with the name below. */
+/** Cast, directors or creators, each in a disc with the name below; a person with a TMDB ID opens their titles. */
 @Composable
-fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: ServerRef?) {
+fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: ServerRef?, open: (CastMember) -> Unit) {
     Column {
         RailTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = RowFocusPadding) {
             items(people) { person ->
                 var focused by remember { mutableStateOf(false) }
-                Column(Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }.focusable(),
+                val interactions = remember { MutableInteractionSource() }
+                val action = Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }
+                Column(if (person.id != null) action.clickable(interactionSource = interactions, indication = null, role = Role.Button) { open(person) }
+                    else action.focusable(),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Box(Modifier.size(80.dp).clip(CircleShape)
                         .border(if (focused) 3.dp else 1.dp, if (focused) Plys.Accent300 else Plys.Hairline, CircleShape)) {

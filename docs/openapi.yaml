@@ -1561,6 +1561,7 @@ components:
             type: object
             required: [name, photoUrl]
             properties:
+              id: { type: integer, description: "TMDB person ID, the value of the creators catalog filter. Absent when unknown." }
               name: { type: string }
               photoUrl: { type: [string, "null"] }
         cast:
@@ -1569,6 +1570,7 @@ components:
             type: object
             required: [name, photoUrl]
             properties:
+              id: { type: integer, description: "TMDB person ID, the value of the actors catalog filter. Absent when unknown." }
               name: { type: string }
               character: { type: string }
               photoUrl: { type: [string, "null"] }

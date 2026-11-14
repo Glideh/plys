@@ -127,6 +127,14 @@ export interface Ancestor {
   seasonNumber?: number
 }
 
+/** A credited person; id is the TMDB person, absent when unknown (older servers or metadata). */
+export interface Person {
+  id?: number
+  name: string
+  character?: string
+  photoUrl: string | null
+}
+
 export interface ItemDetail {
   id: string
   kind: ItemKind
@@ -141,7 +149,9 @@ export interface ItemDetail {
   rating: number | null
   genres: string[]
   directors: string[]
-  cast: { name: string; character?: string; photoUrl: string | null }[]
+  /** Directors or creators with their picture; absent from older servers, empty until the metadata is refreshed. */
+  directorCredits?: Person[]
+  cast: Person[]
   posterUrl: string | null
   backdropUrl: string | null
   thumbUrl: string | null

@@ -223,3 +223,37 @@ func TestItemDirectorCredits(t *testing.T) {
 		t.Errorf("director picture must be a referenced image: %v %v", known, err)
 	}
 }
+
+func TestItemPeopleTMDBIDs(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+	writeFiles(t, e.root, "films/Alien.1979.mkv")
+	films := e.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	// Ridley Scott carries his ID; the cast was stored before IDs were kept and gets them from the filter labels,
+	// except for a name two actors share.
+	_, err := e.srv.Pool.Exec(context.Background(), `UPDATE items SET
+		director_members = '[{"id": 578, "name": "Ridley Scott"}]',
+		cast_members = '[{"name": "Sigourney Weaver", "character": "Ripley"}, {"name": "John Doe"}, {"name": "Nobody"}]',
+		filter_labels = '{"actors": [{"id": "10205", "label": "Sigourney Weaver"}, {"id": "1", "label": "John Doe"}, {"id": "2", "label": "John Doe"}]}'
+		WHERE library_id = $1`, films)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := do(t, e.h, http.MethodGet, "/api/v1/libraries/"+films+"/items", admin, nil).body["items"].([]any)[0].(map[string]any)["id"].(string)
+	r := do(t, e.h, http.MethodGet, "/api/v1/items/"+id, admin, nil)
+	if r.status != http.StatusOK {
+		t.Fatalf("item: %d %v", r.status, r.body)
+	}
+	if c := r.body["directorCredits"].([]any)[0].(map[string]any); c["id"] != float64(578) {
+		t.Errorf("director id: %v", c)
+	}
+	cast := r.body["cast"].([]any)
+	if c := cast[0].(map[string]any); c["id"] != float64(10205) || c["character"] != "Ripley" {
+		t.Errorf("actor id from the filter labels: %v", c)
+	}
+	for _, c := range cast[1:] {
+		if _, ok := c.(map[string]any)["id"]; ok {
+			t.Errorf("ambiguous or unknown actor must have no id: %v", c)
+		}
+	}
+}

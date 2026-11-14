@@ -140,6 +140,7 @@ export default {
     cast: 'Elenco',
     directedBy: 'Direção de',
     createdBy: 'Criado por',
+    personTitles: 'Títulos com {name}',
     season: 'Temporada {n}',
     specials: 'Especiais',
     episode: 'Episódio {n}',

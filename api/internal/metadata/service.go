@@ -265,7 +265,7 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 	for _, member := range m.Credits.Crew {
 		if member.Job == "Director" {
 			creators = append(creators, Genre{ID: member.ID, Name: member.Name})
-			directorPeople = append(directorPeople, castMember{Name: member.Name, ProfilePath: member.ProfilePath})
+			directorPeople = append(directorPeople, castMember{ID: member.ID, Name: member.Name, ProfilePath: member.ProfilePath})
 		}
 	}
 	directors, err := json.Marshal(directorPeople)
@@ -388,7 +388,7 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 	for _, cr := range tv.CreatedBy {
 		creators = append(creators, cr.Name)
 		creatorIDs = append(creatorIDs, Genre{ID: cr.ID, Name: cr.Name})
-		creatorPeople = append(creatorPeople, castMember{Name: cr.Name, ProfilePath: cr.ProfilePath})
+		creatorPeople = append(creatorPeople, castMember{ID: cr.ID, Name: cr.Name, ProfilePath: cr.ProfilePath})
 	}
 	creatorMembers, err := json.Marshal(creatorPeople)
 	if err != nil {
@@ -774,6 +774,8 @@ func LocalThumbName(id uuid.UUID) string {
 }
 
 type castMember struct {
+	// ID is the TMDB person, the value of the actors and creators catalog filters.
+	ID          int    `json:"id,omitempty"`
 	Name        string `json:"name"`
 	Character   string `json:"character,omitempty"`
 	ProfilePath string `json:"profilePath,omitempty"`
@@ -782,7 +784,7 @@ type castMember struct {
 func castJSON(cast []CastMember) ([]byte, error) {
 	out := make([]castMember, 0, min(len(cast), maxCast))
 	for _, c := range cast[:min(len(cast), maxCast)] {
-		out = append(out, castMember{Name: c.Name, Character: c.Character, ProfilePath: c.ProfilePath})
+		out = append(out, castMember{ID: c.ID, Name: c.Name, Character: c.Character, ProfilePath: c.ProfilePath})
 	}
 	return json.Marshal(out)
 }
