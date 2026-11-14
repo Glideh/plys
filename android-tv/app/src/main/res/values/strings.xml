@@ -139,6 +139,9 @@
     <string name="up_next">Next episode</string>
     <string name="up_next_in">Starts in %1$d s</string>
     <string name="play_next_now">Play now</string>
+    <string name="autoplay">Autoplay</string>
+    <string name="autoplay_on">On</string>
+    <string name="autoplay_off">Off</string>
     <string name="error_subtitles_quota">The daily OpenSubtitles download limit is reached. Try again later.</string>
     <string name="error_subtitles_online">Online subtitles are unavailable on this server right now.</string>
     <string name="subtitles_search">Search online…</string>

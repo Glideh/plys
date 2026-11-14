@@ -78,6 +78,8 @@ class PlysApi(
     private val filterLabels = mutableMapOf<String, String>()
     val signedIn: Boolean get() = session != null
     val savedServer: String get() = store.server()
+    /** The signed-in user's preference, as the server last returned it. */
+    val autoplayNext: Boolean get() = session?.user?.autoplayNext ?: false
 
     // Rotation is serialized with all API calls; a refresh token must never be submitted twice.
     private suspend fun <T> locked(action: suspend () -> T): T = withContext(Dispatchers.IO) {
@@ -111,6 +113,13 @@ class PlysApi(
         peerTokens.clear()
         filterLabels.clear()
         localServerId = null
+    }
+
+    /** Saves the auto next preference on the server, where the web player reads it too, and returns the saved value. */
+    suspend fun setAutoplayNext(enabled: Boolean): Boolean = locked {
+        val user = decode<User>(request("me", "PATCH", json.encodeToString(AutoplayRequest(enabled))))
+        session = session?.copy(user = user)
+        user.autoplayNext
     }
 
     /** Public identity of the signed-in server, shown at the bottom of the side rail. */

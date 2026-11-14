@@ -139,6 +139,9 @@
     <string name="up_next">Próximo episódio</string>
     <string name="up_next_in">Começa em %1$d s</string>
     <string name="play_next_now">Reproduzir agora</string>
+    <string name="autoplay">Reprodução automática</string>
+    <string name="autoplay_on">Ativada</string>
+    <string name="autoplay_off">Desativada</string>
     <string name="error_subtitles_quota">O limite diário de downloads do OpenSubtitles foi atingido. Tente novamente mais tarde.</string>
     <string name="error_subtitles_online">As legendas online estão indisponíveis neste servidor no momento.</string>
     <string name="subtitles_search">Buscar online…</string>

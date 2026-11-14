@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,12 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
@@ -71,11 +78,13 @@ import androidx.tv.material3.Text
 import fr.plys.tv.MainActivity
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.R
+import fr.plys.tv.data.ClientException
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.PlaybackSelection
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Date
 import fr.plys.tv.ui.PlysButton as Button
 
@@ -126,9 +135,17 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     var controlsHeight by remember { mutableIntStateOf(0) }
     var interaction by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf("") }
-    var autoNext by remember(state.item.id) { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    // The preference is the user's, shared with the web player; cancelling the countdown only skips this episode.
+    var autoplay by remember { mutableStateOf(api.autoplayNext) }
+    var cancelled by remember(state.item.id) { mutableStateOf(false) }
     var countdown by remember(state.item.id) { mutableIntStateOf(AUTO_NEXT_SECONDS) }
-    val upNext = state.ended && state.item.next != null && autoNext && state.error == null && !state.loading
+    val upNext = state.ended && state.item.next != null && autoplay && !cancelled && state.error == null && !state.loading
+    fun toggleAutoplay() {
+        val wanted = !autoplay
+        autoplay = wanted
+        scope.launch { autoplay = try { api.setAutoplayNext(wanted) } catch (_: ClientException) { !wanted } }
+    }
     LaunchedEffect(upNext) {
         if (!upNext) return@LaunchedEffect
         countdown = AUTO_NEXT_SECONDS
@@ -251,7 +268,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             Progress(state.position, state.duration, showEnd = !state.ended)
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.ended && !upNext) Text(stringResource(R.string.ended), color = Plys.Muted)
-            if (upNext) UpNext(countdown, Modifier.focusRequester(playFocus), playNow = model::next, cancel = { autoNext = false })
+            if (upNext) UpNext(countdown, Modifier.focusRequester(playFocus), playNow = model::next, cancel = { cancelled = true })
             else Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 when {
                     state.error != null -> IconAction(Icons.Outlined.Refresh, R.string.retry, Modifier.focusRequester(playFocus), onClick = model::retry)
@@ -266,6 +283,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 if (version != null && version.audio.size > 1) IconAction(Icons.Outlined.Audiotrack, R.string.audio) { menu = "audio" }
                 if (version != null && (version.subtitles.isNotEmpty() || version.externalSubtitles.isNotEmpty() || state.item.subtitleSearch)) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
                 if (state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }
+                if (state.item.next != null) AutoplayToggle(autoplay, ::toggleAutoplay)
                 if (state.loading) CircularProgressIndicator(Modifier.size(28.dp), color = Plys.Accent400, strokeWidth = 3.dp)
             }
         }
@@ -311,6 +329,16 @@ private fun UpNext(countdown: Int, modifier: Modifier, playNow: () -> Unit, canc
         }
         Action(R.string.play_next_now, modifier = modifier, primary = true, onClick = playNow)
         Action(R.string.cancel, onClick = cancel)
+    }
+}
+
+/** Switches the auto next preference, filled with the accent while it is on, like the web player's toggle. */
+@Composable
+private fun AutoplayToggle(enabled: Boolean, onToggle: () -> Unit) {
+    val state = stringResource(if (enabled) R.string.autoplay_on else R.string.autoplay_off)
+    Button(onClick = onToggle, primary = enabled, shape = androidx.compose.foundation.shape.CircleShape,
+        modifier = Modifier.semantics { role = Role.Switch; toggleableState = ToggleableState(enabled); stateDescription = state }) {
+        Text(stringResource(R.string.autoplay), style = MaterialTheme.typography.labelLarge)
     }
 }
 

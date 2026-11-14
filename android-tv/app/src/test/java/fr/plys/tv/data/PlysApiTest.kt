@@ -67,6 +67,19 @@ class PlysApiTest {
         assertEquals(StoredSession(server.url("/").toString(), "refresh-1"), store.value)
     }
 
+    @Test fun `auto next preference is read from the session and saved on the server`() = runBlocking {
+        login()
+        assertFalse(api.autoplayNext)
+        json("""{"id":"u","username":"viewer","locale":"fr","autoplayNext":true}""")
+        assertTrue(api.setAutoplayNext(true))
+        val request = server.takeRequest()
+        assertEquals("PATCH", request.method)
+        assertEquals("/api/v1/me", request.path)
+        assertEquals("""{"autoplayNext":true}""", request.body.readUtf8())
+        assertEquals("Bearer access-1", request.getHeader("Authorization"))
+        assertTrue(api.autoplayNext)
+    }
+
     @Test fun `first run requires setup in web client`() = runBlocking {
         json("""{"needsSetup":true}""")
         try {

@@ -6,7 +6,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 
 @Serializable
-data class User(val id: String, val username: String, val locale: String)
+data class User(
+    val id: String,
+    val username: String,
+    val locale: String,
+    /** Starts the next episode or part when one ends; shared with the web player. */
+    val autoplayNext: Boolean = false,
+)
 
 @Serializable
 data class Session(val accessToken: String, val refreshToken: String, val user: User)
@@ -297,6 +303,9 @@ data class PlaybackSession(
 
 @Serializable
 data class ProgressRequest(val positionSeconds: Double, val durationSeconds: Double)
+
+@Serializable
+data class AutoplayRequest(val autoplayNext: Boolean)
 
 @Serializable
 data class LoginRequest(
