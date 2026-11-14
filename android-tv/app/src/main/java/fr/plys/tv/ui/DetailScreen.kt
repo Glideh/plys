@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,11 +44,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -90,19 +95,24 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Header(item, screen)
                             item.overview?.takeIf { it.isNotBlank() }?.let { Synopsis(it) { synopsis = true } }
-                            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            // One line whatever the actions: once a title is started the play button turns into "Resume at…"
+                            // and a restart button joins it, which squeezed the last buttons until their labels wrapped and
+                            // the header grew. The restart and watchlist buttons are icons, like on the web, and the row
+                            // scrolls sideways (following the focus) if a long translation still runs out of room.
+                            Row(Modifier.padding(top = 8.dp).outdent(FocusGutter).horizontalScroll(rememberScrollState()).padding(horizontal = FocusGutter),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (canPlay) {
                                     val position = item.playTarget?.positionSeconds ?: item.positionSeconds
                                     Button(onClick = { model.play(item) }, primary = true, modifier = Modifier.focusInitially(),
                                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 10.dp)) {
                                         Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp), tint = LocalContentColor.current)
                                         Spacer(Modifier.width(8.dp))
-                                        Text(playLabel(item, playable, position), style = MaterialTheme.typography.titleMedium)
+                                        Text(playLabel(item, playable, position), style = MaterialTheme.typography.titleMedium, maxLines = 1, softWrap = false)
                                     }
-                                    if (position > 0 && item.playableVersion != null) Action(R.string.restart) { model.play(item, restart = true) }
+                                    if (position > 0 && item.playableVersion != null) Action(R.string.restart, iconOnly = true) { model.play(item, restart = true) }
                                 } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable), color = Plys.Warning)
                                 if (canPlay || item.kind == "episode") Action(if (item.watched) R.string.mark_unwatched else R.string.mark_watched) { model.toggleWatched() }
-                                if (item.canWatchlist) Action(if (item.inWatchlist) R.string.remove_from_watchlist else R.string.add_to_watchlist) { model.toggleWatchlist() }
+                                if (item.canWatchlist) Action(if (item.inWatchlist) R.string.remove_from_watchlist else R.string.add_to_watchlist, iconOnly = true) { model.toggleWatchlist() }
                                 item.next?.let { next -> Action(R.string.next_episode) { model.openItem(next.id, source) } }
                             }
                         }
@@ -231,6 +241,16 @@ private val MinimalScroll = object : BringIntoViewSpec {
             else -> end - containerSize
         }
     }
+}
+
+/**
+ * Widens the element by [gutter] on both sides without taking more room, so a scrolling row, which clips its
+ * content at its edges, leaves space for the slightly enlarged focused button at either end.
+ */
+private fun Modifier.outdent(gutter: Dp) = layout { measurable, constraints ->
+    val extra = gutter.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = 2 * extra))
+    layout((placeable.width - 2 * extra).coerceAtLeast(0), placeable.height) { placeable.place(-extra, 0) }
 }
 
 /** Seasons and episodes without metadata have no title: show their number instead. */

@@ -194,14 +194,69 @@ class CatalogJourneyTest {
             rule.waitUntil(10000) { rule.onAllNodesWithText("Alien").fetchSemanticsNodes().isNotEmpty() }
             screenshot("watchlist")
             rule.onNodeWithText("Alien").activate()
-            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.remove_from_watchlist)).fetchSemanticsNodes().isNotEmpty() }
-            rule.onNodeWithText(text(R.string.remove_from_watchlist)).activate()
-            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.add_to_watchlist)).fetchSemanticsNodes().isNotEmpty() }
+            rule.waitUntil(10000) { rule.onAllNodesWithContentDescription(text(R.string.remove_from_watchlist)).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithContentDescription(text(R.string.remove_from_watchlist)).activate()
+            rule.waitUntil(10000) { rule.onAllNodesWithContentDescription(text(R.string.add_to_watchlist)).fetchSemanticsNodes().isNotEmpty() }
             assertTrue(!listed.get())
             // Going back reloads the watchlist, now without the removed title.
             rule.runOnIdle { model.back() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.watchlist_empty)).fetchSemanticsNodes().isNotEmpty() }
             rule.onAllNodesWithText("Alien").assertCountEquals(0)
+            rule.runOnIdle { model.logout() }
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
+    @Test fun startedTitleKeepsTheDetailLayout() {
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val path = request.requestUrl!!.encodedPath
+                    val versions = """[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","codec":"aac","channels":2,"default":true},{"index":2,"language":"fr","codec":"aac","channels":2}],"subtitles":[{"index":5,"language":"fr","codec":"subrip"}]}]"""
+                    fun film(id: String, position: Int) = """{"id":"$id","kind":"movie","title":"Alien","overview":"A crew encounters an unknown life form.","year":1979,"runtimeMinutes":117,"positionSeconds":$position,"versions":$versions,"children":[]}"""
+                    val body = when {
+                        path == "/api/v1/setup/status" -> """{"needsSetup":false}"""
+                        path == "/api/v1/auth/login" -> """{"accessToken":"started-fixture","refreshToken":"started-refresh","user":{"id":"viewer","username":"Viewer","locale":"en"}}"""
+                        path == "/api/v1/auth/logout" -> "{}"
+                        path == "/api/v1/server" -> """{"id":"local"}"""
+                        path == "/api/v1/libraries" -> """{"items":[]}"""
+                        path == "/api/v1/me/home" -> """{"continueWatching":[],"nextUp":[]}"""
+                        path.startsWith("/api/v1/kinds/") -> """{"items":[],"total":0,"offset":0,"limit":1}"""
+                        path == "/api/v1/items/fresh" -> film("fresh", 0)
+                        path == "/api/v1/items/started" -> film("started", 3725)
+                        else -> return MockResponse().setResponseCode(404)
+                    }
+                    return MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+                }
+            }
+            server.start()
+            val serverAddress = server.url("/").toString()
+            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+            rule.waitUntil(10000) { !model.state.value.loading }
+            rule.runOnIdle { model.login(serverAddress, "viewer", "fixture-password") }
+            rule.waitUntil(10000) { model.state.value.screen is Screen.Home && !model.state.value.loading }
+            fun open(id: String, play: String) {
+                rule.runOnIdle { model.openItem(id) }
+                rule.waitUntil(10000) { rule.onAllNodesWithText(play).fetchSemanticsNodes().isNotEmpty() }
+            }
+            open("fresh", text(R.string.play))
+            val freshPlay = rule.onNodeWithText(text(R.string.play)).getUnclippedBoundsInRoot()
+            val freshAudio = rule.onNodeWithContentDescription(text(R.string.audio)).getUnclippedBoundsInRoot()
+            rule.onAllNodesWithContentDescription(text(R.string.restart)).assertCountEquals(0)
+            rule.runOnIdle { model.back() }
+            // Resuming adds a restart button: the actions stay on one line and the pickers below do not move.
+            val resume = rule.activity.getString(R.string.resume, "1:02:05")
+            open("started", resume)
+            screenshot("detail-started")
+            val play = rule.onNodeWithText(resume).getUnclippedBoundsInRoot()
+            assertEquals(freshPlay.top, play.top)
+            assertEquals(freshPlay.height, play.height)
+            for (action in listOf(rule.onNodeWithContentDescription(text(R.string.restart)), rule.onNodeWithText(text(R.string.mark_watched)),
+                rule.onNodeWithContentDescription(text(R.string.add_to_watchlist)))) {
+                val bounds = action.assertIsDisplayed().getUnclippedBoundsInRoot()
+                assertTrue(bounds.top >= play.top && bounds.bottom <= play.bottom)
+            }
+            assertEquals(freshAudio.top, rule.onNodeWithContentDescription(text(R.string.audio)).getUnclippedBoundsInRoot().top)
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }

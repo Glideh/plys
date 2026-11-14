@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -222,7 +223,7 @@ fun Poster(path: String?, api: PlysApi, modifier: Modifier, source: ServerRef? =
 }
 
 @Composable
-fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
+fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, primary: Boolean = false, iconOnly: Boolean = false, onClick: () -> Unit) {
     val icon = when (label) {
         R.string.home -> Icons.Outlined.Home
         R.string.back -> Icons.AutoMirrored.Outlined.ArrowBack
@@ -241,12 +242,15 @@ fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, p
         R.string.next_episode, R.string.play_next_now -> Icons.Outlined.SkipNext
         else -> null
     }
-    Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary) {
-        if (icon != null) {
-            val tint = if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current
-            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint); Spacer(Modifier.width(8.dp))
-        }
-        Text(stringResource(label))
+    val tint = if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current
+    // An icon-only action, like the web's restart and watchlist buttons, names itself to accessibility services.
+    if (iconOnly && icon != null) Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+        Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(20.dp), tint = tint)
+    } else Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary) {
+        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint); Spacer(Modifier.width(8.dp)) }
+        // A label never wraps: squeezed into a narrow button it broke onto many lines and made the whole row tall.
+        Text(stringResource(label), maxLines = 1, softWrap = false)
     }
 }
 
