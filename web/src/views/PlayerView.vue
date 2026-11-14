@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { type ExternalSubtitle, type ItemDetail, type Track } from '@/api/catalog'
-import { serverApi, serverFromQuery, serverQuery } from '@/api/federation'
+import { absoluteUrl, serverApi, serverFromQuery, serverQuery } from '@/api/federation'
 import { playbackTransport } from '@/api/playback'
 import { subtitlesApi } from '@/api/subtitles'
 import BaseButton from '@/components/BaseButton.vue'
@@ -65,6 +65,12 @@ const titleYear = computed(() => {
   const it = item.value
   return it && it.kind !== 'episode' && it.kind !== 'part' && it.year ? String(it.year) : null
 })
+
+// --- logo while paused -----------------------------------------------------------------------------
+
+const logoFailed = ref(false)
+// A peer answers with URLs relative to its own origin.
+const logoUrl = computed(() => (logoFailed.value ? null : absoluteUrl(server, item.value?.logoUrl ?? null)))
 
 const startAt = Number(route.query.t) > 0 ? Number(route.query.t) : 0
 
@@ -328,6 +334,8 @@ async function deleteExternal(sub: ExternalSubtitle) {
 
 const failure = computed(() => (loadError.value || (status.value === 'error' ? errorMessage(player.error.value) : '')))
 
+const showLogo = computed(() => !!logoUrl.value && paused.value && status.value === 'ready' && !ended.value && !failure.value)
+
 function pick(kind: 'audio' | 'subtitles', index: number | null) {
   menu.value = null
   if (kind === 'audio') player.setAudio(index as number)
@@ -348,6 +356,12 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
     <div v-if="!failure && (status === 'loading' || waiting)" class="pointer-events-none absolute inset-0 grid place-items-center">
       <span class="size-14 animate-spin rounded-full border-4 border-white/20 border-t-accent-400" role="status" />
     </div>
+
+    <Transition enter-from-class="opacity-0" leave-to-class="opacity-0" enter-active-class="transition-opacity duration-500" leave-active-class="transition-opacity duration-200">
+      <div v-if="showLogo" class="pointer-events-none absolute inset-0 grid place-items-center bg-black/35 p-8">
+        <img :src="logoUrl!" :alt="title" class="max-h-[28vh] max-w-[min(60vw,48rem)] object-contain drop-shadow-[0_4px_24px_rgba(0,0,0,0.6)]" @error="logoFailed = true" />
+      </div>
+    </Transition>
 
     <div v-if="ended && !failure" class="absolute inset-0 grid place-items-center bg-black/70 p-6">
       <div class="max-w-md text-center">

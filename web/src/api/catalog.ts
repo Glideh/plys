@@ -154,6 +154,8 @@ export interface ItemDetail {
   cast: Person[]
   posterUrl: string | null
   backdropUrl: string | null
+  /** Title logo shown by the player while paused; seasons, episodes and parts carry their series' or movie's. Absent from older servers. */
+  logoUrl?: string | null
   thumbUrl: string | null
   tmdbId: number | null
   matchStatus: MatchStatus

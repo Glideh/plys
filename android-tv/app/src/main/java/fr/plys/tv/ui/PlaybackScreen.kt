@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -78,6 +79,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import fr.plys.tv.MainActivity
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.R
@@ -235,6 +237,11 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             },
             modifier = Modifier.fillMaxSize(),
         )
+        val logo = pauseLogo(state)
+        if (logo != null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+            AsyncImage(model = api.posterUrl(logo, source), contentDescription = detailTitle(state.item),
+                modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(0.3f), contentScale = ContentScale.Fit)
+        }
         if (seekPresses > 0) {
             val target = (state.position + pendingSeek).coerceIn(0.0, state.duration.takeIf { it > 0 } ?: Double.MAX_VALUE)
             val sign = if (pendingSeek < 0) "−" else "+"
@@ -326,6 +333,10 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
 /** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */
 /** Films and videos show their year next to the title; episodes and parts already carry their context. */
 internal fun playerYear(item: ItemDetail): Int? = item.year?.takeIf { item.kind != "episode" && item.kind != "part" && it > 0 }
+
+/** The title logo shown over the paused video, or null while it plays, loads, has ended or failed. */
+internal fun pauseLogo(state: PlayerState): String? =
+    state.item.logoUrl?.takeIf { it.isNotBlank() && state.paused && !state.loading && !state.ended && state.error == null }
 
 @Composable
 private fun UpNext(countdown: Int, modifier: Modifier, playNow: () -> Unit, cancel: () -> Unit) {

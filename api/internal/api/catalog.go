@@ -317,6 +317,7 @@ type itemDetailDTO struct {
 	Cast             []castDTO     `json:"cast"`
 	PosterURL        *string       `json:"posterUrl"`
 	BackdropURL      *string       `json:"backdropUrl"`
+	LogoURL          *string       `json:"logoUrl"`
 	ThumbURL         *string       `json:"thumbUrl"`
 	TMDBID           *int32        `json:"tmdbId"`
 	MatchStatus      string        `json:"matchStatus"`
@@ -388,10 +389,13 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	if dto.Ancestors, err = s.ancestors(r, it); err != nil {
+	// Seasons, episodes and parts show the logo of their series or movie.
+	var logoPath *string
+	if dto.Ancestors, logoPath, err = s.ancestors(r, it); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	dto.LogoURL = imageURL(logoPath, "w500")
 	if dto.Versions, err = s.versions(r, it.ID); err != nil {
 		httpx.InternalError(w, r, err)
 		return
@@ -433,18 +437,21 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, dto)
 }
 
-// ancestors returns the chain from the top-level item down to the parent (series, season).
-func (s *Server) ancestors(r *http.Request, it store.Item) ([]ancestorDTO, error) {
+// ancestors returns the chain from the top-level item down to the parent (series, season), and the logo of the
+// top-level item.
+func (s *Server) ancestors(r *http.Request, it store.Item) ([]ancestorDTO, *string, error) {
 	out := []ancestorDTO{}
+	logo := it.LogoPath
 	for parent := it.ParentID; parent != nil; {
 		p, err := s.q.GetItem(r.Context(), *parent)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out = append([]ancestorDTO{{ID: p.ID, Kind: p.Kind, Title: p.Title, SeasonNumber: p.SeasonNumber}}, out...)
+		logo = p.LogoPath
 		parent = p.ParentID
 	}
-	return out, nil
+	return out, logo, nil
 }
 
 func (s *Server) children(r *http.Request, id uuid.UUID) ([]childDTO, error) {

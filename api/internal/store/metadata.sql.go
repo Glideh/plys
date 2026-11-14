@@ -105,7 +105,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, part_number, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, part_number, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -153,6 +153,7 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.FilterLabels,
 		&i.EnrichmentVersion,
 		&i.DirectorMembers,
+		&i.LogoPath,
 	)
 	return i, err
 }
@@ -179,7 +180,7 @@ func (q *Queries) GetItemThumbSource(ctx context.Context, itemID *uuid.UUID) (Ge
 const isImagePathReferenced = `-- name: IsImagePathReferenced :one
 SELECT EXISTS (
     SELECT 1 FROM items
-    WHERE poster_path = $1::text OR backdrop_path = $1::text OR thumb_path = $1::text
+    WHERE poster_path = $1::text OR backdrop_path = $1::text OR thumb_path = $1::text OR logo_path = $1::text
        OR cast_members @> jsonb_build_array(jsonb_build_object('profilePath', $1::text))
        OR director_members @> jsonb_build_array(jsonb_build_object('profilePath', $1::text))
 )
@@ -274,7 +275,7 @@ SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = $1 AND i.kind IN ('movie', 'series', 'video')
   AND (
     i.match_status = 'pending'
-    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 2)
+    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3)
     OR (i.match_status IN ('matched', 'manual') AND i.metadata_language IS DISTINCT FROM $2::text)
     OR (i.kind = 'series' AND EXISTS (
         SELECT 1 FROM items s
@@ -330,7 +331,7 @@ func (q *Queries) ListItemsToMatch(ctx context.Context, arg ListItemsToMatchPara
 const listLibrariesForFilterEnrichment = `-- name: ListLibrariesForFilterEnrichment :many
 SELECT l.id, l.name, l.kind, l.created_at, l.updated_at, l.last_scanned_at, l.restricted, l.metadata_language FROM libraries l WHERE EXISTS (
     SELECT 1 FROM items i WHERE i.library_id = l.id AND i.kind IN ('movie', 'series')
-      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 2
+      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3
 )
 `
 
@@ -464,7 +465,7 @@ const updateItemFilters = `-- name: UpdateItemFilters :exec
 UPDATE items SET genre_ids = $1::integer[], actor_ids = $2::integer[],
   creator_ids = $3::integer[], keyword_ids = $4::integer[],
   original_language = $5, countries = $6::text[], vote_count = $7,
-  filter_labels = $8::jsonb, enrichment_version = 2
+  filter_labels = $8::jsonb, enrichment_version = 3
 WHERE id = $9
 `
 
@@ -514,12 +515,13 @@ UPDATE items SET
     director_members    = coalesce($15::jsonb, '[]'),
     poster_path         = $16,
     backdrop_path       = $17,
-    thumb_path          = coalesce($18, thumb_path),
-    match_status        = $19,
-    metadata_language   = $20,
+    logo_path           = $18,
+    thumb_path          = coalesce($19, thumb_path),
+    match_status        = $20,
+    metadata_language   = $21,
     metadata_updated_at = now(),
     updated_at          = now()
-WHERE id = $21
+WHERE id = $22
 `
 
 type UpdateItemMetadataParams struct {
@@ -540,6 +542,7 @@ type UpdateItemMetadataParams struct {
 	DirectorMembers  []byte
 	PosterPath       *string
 	BackdropPath     *string
+	LogoPath         *string
 	ThumbPath        *string
 	MatchStatus      string
 	MetadataLanguage *string
@@ -565,6 +568,7 @@ func (q *Queries) UpdateItemMetadata(ctx context.Context, arg UpdateItemMetadata
 		arg.DirectorMembers,
 		arg.PosterPath,
 		arg.BackdropPath,
+		arg.LogoPath,
 		arg.ThumbPath,
 		arg.MatchStatus,
 		arg.MetadataLanguage,

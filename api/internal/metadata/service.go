@@ -284,7 +284,7 @@ func (s *Service) refreshMovie(ctx context.Context, c *TMDB, lang string, lib st
 			Year: optYear(m.ReleaseDate), Overview: opt(m.Overview), Tagline: opt(m.Tagline),
 			ReleaseDate: parseDate(m.ReleaseDate), RuntimeMinutes: optInt(m.Runtime), Rating: optRating(m.VoteAverage),
 			Genres: genreNames(m.Genres), CastMembers: cast, Directors: crewNames(m.Credits, "Director"), DirectorMembers: directors,
-			PosterPath: opt(m.PosterPath), BackdropPath: opt(m.BackdropPath),
+			PosterPath: opt(m.PosterPath), BackdropPath: opt(m.BackdropPath), LogoPath: opt(BestLogo(m.Images.Logos, lang)),
 			MatchStatus: status, MetadataLanguage: &lang,
 		})
 		if err != nil {
@@ -408,7 +408,7 @@ func (s *Service) refreshSeries(ctx context.Context, c *TMDB, lang string, lib s
 			Year: optYear(tv.FirstAirDate), Overview: opt(tv.Overview), Tagline: opt(tv.Tagline),
 			ReleaseDate: parseDate(tv.FirstAirDate), RuntimeMinutes: optInt(runtime), Rating: optRating(tv.VoteAverage),
 			Genres: genreNames(tv.Genres), CastMembers: cast, Directors: creators, DirectorMembers: creatorMembers,
-			PosterPath: opt(tv.PosterPath), BackdropPath: opt(tv.BackdropPath),
+			PosterPath: opt(tv.PosterPath), BackdropPath: opt(tv.BackdropPath), LogoPath: opt(BestLogo(tv.Images.Logos, lang)),
 			MatchStatus: status, MetadataLanguage: &lang,
 		})
 		if err != nil {

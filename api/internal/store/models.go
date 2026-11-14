@@ -65,6 +65,7 @@ type Item struct {
 	FilterLabels      []byte
 	EnrichmentVersion int32
 	DirectorMembers   []byte
+	LogoPath          *string
 }
 
 type Library struct {

@@ -1576,6 +1576,9 @@ components:
               photoUrl: { type: [string, "null"] }
         posterUrl: { type: [string, "null"] }
         backdropUrl: { type: [string, "null"] }
+        logoUrl:
+          type: [string, "null"]
+          description: TMDB title logo (PNG with transparency), shown by the players while paused. Seasons, episodes and parts carry the logo of their series or movie. Absent from older servers.
         thumbUrl: { type: [string, "null"] }
         tmdbId: { type: [integer, "null"] }
         matchStatus: { type: string, enum: [pending, matched, unmatched, manual, skipped] }

@@ -276,6 +276,8 @@ data class ItemDetail(
     val rating: Double? = null,
     val genres: List<String> = emptyList(),
     val backdropUrl: String? = null,
+    /** Title logo shown while paused; episodes and parts carry their series' or movie's. Absent from older servers. */
+    val logoUrl: String? = null,
     val thumbUrl: String? = null,
     /** Series then season for an episode; movie for a part. */
     val ancestors: List<Ancestor> = emptyList(),

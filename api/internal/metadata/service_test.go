@@ -60,6 +60,11 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 			respond(w, map[string]any{
 				"id": 348, "title": title, "original_title": "Alien", "overview": overview,
 				"release_date": "1979-05-25", "runtime": 117, "vote_average": 8.2, "poster_path": "/alien.jpg",
+				"images": map[string]any{"logos": []map[string]any{
+					{"file_path": "/alien-en.png", "iso_639_1": "en", "vote_average": 5.3},
+					{"file_path": "/alien-fr.svg", "iso_639_1": "fr", "vote_average": 5.5},
+					{"file_path": "/alien-fr.png", "iso_639_1": "fr", "vote_average": 5.1},
+				}},
 				"vote_count": 5000, "original_language": "en", "production_countries": []map[string]any{{"iso_3166_1": "GB", "name": "United Kingdom"}},
 				"keywords": map[string]any{"keywords": []map[string]any{{"id": 123, "name": "space"}}},
 				"genres":   []map[string]any{{"id": 27, "name": "Horreur"}, {"id": 878, "name": "Science-Fiction"}},
@@ -178,10 +183,13 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 2 {
+	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 3 {
 		t.Fatalf("missing enrichment: %+v", item)
 	}
-	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 1, match_status = 'manual', keyword_ids = '{}', director_members = '[]' WHERE id = $1`, itemID); err != nil {
+	if item.LogoPath == nil || *item.LogoPath != "/alien-fr.png" {
+		t.Fatalf("logo in the metadata language expected: %v", item.LogoPath)
+	}
+	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 2, match_status = 'manual', keyword_ids = '{}', director_members = '[]', logo_path = NULL WHERE id = $1`, itemID); err != nil {
 		t.Fatal(err)
 	}
 	env.svc.BackfillFilters(context.Background())
@@ -189,8 +197,12 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.EnrichmentVersion != 2 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
+	if item.EnrichmentVersion != 3 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
 		t.Fatalf("backfill: %+v", item)
+	}
+	// Titles enriched before logos existed get one on the next pass.
+	if item.LogoPath == nil || *item.LogoPath != "/alien-fr.png" {
+		t.Fatalf("logo not backfilled: %v", item.LogoPath)
 	}
 	// Titles enriched before director pictures existed get them on the next pass.
 	if !strings.Contains(string(item.DirectorMembers), `"profilePath": "/rs.jpg"`) {
@@ -361,6 +373,37 @@ func pick(results []SearchResult, title string, year int) (int, bool) {
 		return 0, false
 	}
 	return c[0].id, true
+}
+
+func TestBestLogo(t *testing.T) {
+	lang := func(s string) *string { return &s }
+	logos := []Image{
+		{FilePath: "/none.png", VoteAverage: 9},
+		{FilePath: "/en-low.png", Language: lang("en"), VoteAverage: 4},
+		{FilePath: "/en-high.png", Language: lang("en"), VoteAverage: 6},
+		{FilePath: "/de.png", Language: lang("de"), VoteAverage: 10},
+		{FilePath: "/fr.svg", Language: lang("fr"), VoteAverage: 10},
+	}
+	cases := []struct{ lang, want string }{
+		{"fr-FR", "/en-high.png"}, // the French logo is an SVG: English comes next
+		{"de-DE", "/de.png"},
+		{"en-US", "/en-high.png"},
+		{"ja-JP", "/en-high.png"},
+	}
+	for _, c := range cases {
+		if got := BestLogo(logos, c.lang); got != c.want {
+			t.Errorf("BestLogo(%s) = %q, want %q", c.lang, got, c.want)
+		}
+	}
+	if got := BestLogo(logos[:1], "fr-FR"); got != "/none.png" {
+		t.Errorf("a logo without text is better than none: %q", got)
+	}
+	if got := BestLogo(nil, "fr-FR"); got != "" {
+		t.Errorf("no logo: %q", got)
+	}
+	if got := imageLanguages("pt-BR"); got != "pt,en,null" {
+		t.Errorf("imageLanguages(pt-BR) = %q", got)
+	}
 }
 
 func TestRankResults(t *testing.T) {

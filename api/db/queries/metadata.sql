@@ -4,7 +4,7 @@ SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = @library_id AND i.kind IN ('movie', 'series', 'video')
   AND (
     i.match_status = 'pending'
-    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 2)
+    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3)
     OR (i.match_status IN ('matched', 'manual') AND i.metadata_language IS DISTINCT FROM @language::text)
     OR (i.kind = 'series' AND EXISTS (
         SELECT 1 FROM items s
@@ -20,7 +20,7 @@ SELECT * FROM items WHERE id = $1;
 -- name: ListLibrariesForFilterEnrichment :many
 SELECT l.* FROM libraries l WHERE EXISTS (
     SELECT 1 FROM items i WHERE i.library_id = l.id AND i.kind IN ('movie', 'series')
-      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 2
+      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3
 );
 
 -- name: UpdateItemMetadata :exec
@@ -42,6 +42,7 @@ UPDATE items SET
     director_members    = coalesce(@director_members::jsonb, '[]'),
     poster_path         = @poster_path,
     backdrop_path       = @backdrop_path,
+    logo_path           = @logo_path,
     thumb_path          = coalesce(@thumb_path, thumb_path),
     match_status        = @match_status,
     metadata_language   = @metadata_language,
@@ -56,7 +57,7 @@ UPDATE items SET match_status = $2, metadata_updated_at = now() WHERE id = $1;
 UPDATE items SET genre_ids = @genre_ids::integer[], actor_ids = @actor_ids::integer[],
   creator_ids = @creator_ids::integer[], keyword_ids = @keyword_ids::integer[],
   original_language = @original_language, countries = @countries::text[], vote_count = @vote_count,
-  filter_labels = @filter_labels::jsonb, enrichment_version = 2
+  filter_labels = @filter_labels::jsonb, enrichment_version = 3
 WHERE id = @id;
 
 -- name: SetItemThumb :exec
@@ -108,7 +109,7 @@ LIMIT 1;
 -- name: IsImagePathReferenced :one
 SELECT EXISTS (
     SELECT 1 FROM items
-    WHERE poster_path = @path::text OR backdrop_path = @path::text OR thumb_path = @path::text
+    WHERE poster_path = @path::text OR backdrop_path = @path::text OR thumb_path = @path::text OR logo_path = @path::text
        OR cast_members @> jsonb_build_array(jsonb_build_object('profilePath', @path::text))
        OR director_members @> jsonb_build_array(jsonb_build_object('profilePath', @path::text))
 );

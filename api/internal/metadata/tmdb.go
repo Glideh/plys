@@ -166,7 +166,20 @@ type Credits struct {
 	} `json:"crew"`
 }
 
+// Image is one picture of a title's image gallery; Language is null for pictures without text.
+type Image struct {
+	FilePath    string  `json:"file_path"`
+	Language    *string `json:"iso_639_1"`
+	VoteAverage float64 `json:"vote_average"`
+	Width       int     `json:"width"`
+}
+
+type Images struct {
+	Logos []Image `json:"logos"`
+}
+
 type Movie struct {
+	Images              Images `json:"images"`
 	VoteCount           *int32 `json:"vote_count"`
 	OriginalLanguage    string `json:"original_language"`
 	ProductionCountries []struct {
@@ -197,6 +210,7 @@ type TVSeasonSummary struct {
 }
 
 type TV struct {
+	Images           Images   `json:"images"`
 	VoteCount        *int32   `json:"vote_count"`
 	OriginalLanguage string   `json:"original_language"`
 	OriginCountry    []string `json:"origin_country"`
@@ -284,13 +298,13 @@ func (c *TMDB) SearchTV(ctx context.Context, query string, year int, lang string
 
 func (c *TMDB) Movie(ctx context.Context, id int, lang string) (Movie, error) {
 	var out Movie
-	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,keywords"}}, &out)
+	err := c.get(ctx, "/movie/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,keywords,images"}, "include_image_language": {imageLanguages(lang)}}, &out)
 	return out, err
 }
 
 func (c *TMDB) TV(ctx context.Context, id int, lang string) (TV, error) {
 	var out TV
-	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,external_ids,keywords"}}, &out)
+	err := c.get(ctx, "/tv/"+strconv.Itoa(id), url.Values{"language": {lang}, "append_to_response": {"credits,external_ids,keywords,images"}, "include_image_language": {imageLanguages(lang)}}, &out)
 	return out, err
 }
 
@@ -304,6 +318,44 @@ func (c *TMDB) FindIMDb(ctx context.Context, imdbID string) (FindResult, error) 
 	var out FindResult
 	err := c.get(ctx, "/find/"+url.PathEscape(imdbID), url.Values{"external_source": {"imdb_id"}}, &out)
 	return out, err
+}
+
+// imageLanguages lists the image languages worth fetching for a metadata language ("fr-FR" → "fr,en,null").
+func imageLanguages(lang string) string {
+	code, _, _ := strings.Cut(lang, "-")
+	code = strings.ToLower(code)
+	if code == "" || code == "en" {
+		return "en,null"
+	}
+	return code + ",en,null"
+}
+
+// BestLogo picks the logo to show: in the metadata language, else in English, else without text, and the best
+// rated one among those. Only PNG files are kept: the image cache serves raster pictures, not SVG.
+func BestLogo(logos []Image, lang string) string {
+	code, _, _ := strings.Cut(strings.ToLower(lang), "-")
+	rank := func(l Image) int {
+		switch {
+		case l.Language != nil && *l.Language == code:
+			return 0
+		case l.Language != nil && *l.Language == "en":
+			return 1
+		case l.Language == nil || *l.Language == "":
+			return 2
+		}
+		return 3
+	}
+	best, bestRank := Image{}, 4
+	for _, l := range logos {
+		if !strings.HasSuffix(strings.ToLower(l.FilePath), ".png") || !strings.HasPrefix(l.FilePath, "/") {
+			continue
+		}
+		r := rank(l)
+		if r < bestRank || (r == bestRank && (l.VoteAverage > best.VoteAverage || (l.VoteAverage == best.VoteAverage && l.Width > best.Width))) {
+			best, bestRank = l, r
+		}
+	}
+	return best.FilePath
 }
 
 func yearOf(date string) int {

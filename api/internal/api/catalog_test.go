@@ -257,3 +257,34 @@ func TestItemPeopleTMDBIDs(t *testing.T) {
 		}
 	}
 }
+
+func TestItemLogoInheritedByEpisodes(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+	writeFiles(t, e.root, "films/Alien.1979.mkv", "series/Show.S01E01.mkv")
+	films := e.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	series := e.createScannedLibrary(t, admin, "Séries", "series", "series", nil)
+	if _, err := e.srv.Pool.Exec(context.Background(), `UPDATE items SET logo_path = '/show-logo.png' WHERE library_id = $1 AND kind = 'series'`, series); err != nil {
+		t.Fatal(err)
+	}
+
+	alien := do(t, e.h, http.MethodGet, "/api/v1/libraries/"+films+"/items", admin, nil).body["items"].([]any)[0].(map[string]any)
+	if r := do(t, e.h, http.MethodGet, "/api/v1/items/"+alien["id"].(string), admin, nil); r.status != http.StatusOK || r.body["logoUrl"] != nil {
+		t.Errorf("a title without logo answers null: %d %v", r.status, r.body["logoUrl"])
+	}
+
+	const want = "/api/v1/images/tmdb/w500/show-logo.png"
+	show := do(t, e.h, http.MethodGet, "/api/v1/libraries/"+series+"/items", admin, nil).body["items"].([]any)[0].(map[string]any)
+	detail := do(t, e.h, http.MethodGet, "/api/v1/items/"+show["id"].(string), admin, nil).body
+	if detail["logoUrl"] != want {
+		t.Errorf("series logo: %v", detail["logoUrl"])
+	}
+	season := do(t, e.h, http.MethodGet, "/api/v1/items/"+detail["children"].([]any)[0].(map[string]any)["id"].(string), admin, nil).body
+	episode := do(t, e.h, http.MethodGet, "/api/v1/items/"+season["children"].([]any)[0].(map[string]any)["id"].(string), admin, nil).body
+	if season["logoUrl"] != want || episode["logoUrl"] != want {
+		t.Errorf("seasons and episodes show their series' logo: %v %v", season["logoUrl"], episode["logoUrl"])
+	}
+	if known, err := e.srv.q.IsImagePathReferenced(context.Background(), "/show-logo.png"); err != nil || !known {
+		t.Errorf("logos must be referenced images: %v %v", known, err)
+	}
+}
