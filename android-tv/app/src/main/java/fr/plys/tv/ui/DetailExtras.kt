@@ -29,6 +29,8 @@ import androidx.tv.material3.Surface
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -69,6 +71,13 @@ fun MediaTrack.trackLabel(): String = listOfNotNull(
     "#${index + 1}".takeIf { language.isBlank() && title.isBlank() },
     codec.uppercase().takeIf { it.isNotBlank() }, channelLayout(channels),
 ).joinToString(" · ")
+
+/**
+ * The track as named on the detail screen's button, which has little room: its language and title, without the
+ * formats that the version summary and the dialog already show. Falls back to the full label when both are blank.
+ */
+fun MediaTrack.shortLabel(): String =
+    listOfNotNull(language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() }).joinToString(" · ").ifEmpty { trackLabel() }
 
 fun channelLayout(channels: Int): String? = when (channels) {
     0 -> null
@@ -162,6 +171,7 @@ fun versionChoiceLabel(choice: VersionChoice, withServer: Boolean): String {
  * The version, audio and subtitle pickers of the detail screen. Versions gather every server holding the title,
  * like the web's item page; a series or season, which has no version of its own, picks its server instead.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
     val item = screen.playable
@@ -176,20 +186,19 @@ fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
     var menu by remember { mutableStateOf("") }
     val current = choices.firstOrNull { it.copy.source?.serverId == screen.source?.serverId && it.copy.item.id == item.id && it.version.id == version?.id }
     val subtitle = subtitles.firstOrNull { it.index == chosen.subtitleIndex }
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = RowFocusPadding) {
-        if (servers.isNotEmpty()) item {
-            TrackButton(Icons.Outlined.Dns, "${stringResource(R.string.server_name)} : ${screen.source?.serverName.orEmpty()}") { menu = "server" }
-        }
-        if (choices.size > 1) item {
+    // Wraps onto several lines rather than scrolling, so every choice stays visible and the focused button,
+    // slightly enlarged, is never cut off. The icon names the picker, the button only shows the current choice.
+    FlowRow(Modifier.fillMaxWidth().padding(FocusGutter), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (servers.isNotEmpty()) TrackButton(Icons.Outlined.Dns, stringResource(R.string.server_name), screen.source?.serverName.orEmpty()) { menu = "server" }
+        if (choices.size > 1) {
             val label = current?.let { versionChoiceLabel(it, withServer) } ?: version?.label.orEmpty()
-            TrackButton(Icons.Outlined.HighQuality, "${stringResource(R.string.version)} : $label") { menu = "version" }
+            TrackButton(Icons.Outlined.HighQuality, stringResource(R.string.version), label) { menu = "version" }
         }
-        if (audio.size > 1) item {
-            TrackButton(Icons.Outlined.Audiotrack, "${stringResource(R.string.audio)} : ${audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel().orEmpty()}") { menu = "audio" }
-        }
-        if (subtitles.isNotEmpty()) item {
-            TrackButton(Icons.Outlined.Subtitles, "${stringResource(R.string.subtitles)} : ${subtitle?.trackLabel() ?: stringResource(R.string.no_subtitles)}") { menu = "subtitles" }
-        }
+        if (audio.size > 1) TrackButton(Icons.Outlined.Audiotrack, stringResource(R.string.audio),
+            audio.firstOrNull { it.index == chosen.audioIndex }?.shortLabel().orEmpty()) { menu = "audio" }
+        if (subtitles.isNotEmpty()) TrackButton(Icons.Outlined.Subtitles, stringResource(R.string.subtitles),
+            subtitle?.shortLabel() ?: stringResource(R.string.no_subtitles)) { menu = "subtitles" }
     }
     when (menu) {
         "server" -> ChoiceDialog(stringResource(R.string.server_name), { menu = "" }) {
@@ -219,11 +228,12 @@ fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
 }
 
 @Composable
-private fun TrackButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
-    PlysButton(onClick = onClick, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current)
+private fun TrackButton(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String, label: String, onClick: () -> Unit) {
+    PlysButton(onClick = onClick, modifier = Modifier.widthIn(max = 340.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+        Icon(icon, contentDescription = name, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current)
         androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
-        Text(label, maxLines = 1, style = MaterialTheme.typography.bodySmall)
+        Text(label.ifEmpty { name }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
     }
 }
 

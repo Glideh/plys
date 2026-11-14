@@ -108,7 +108,7 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                         }
                     }
                 }
-                item("tracks") { Box(Modifier.padding(start = 172.dp + 32.dp).then(showTop)) { PlaybackSelectionControls(screen, model) } }
+                item("tracks") { Box(Modifier.fillMaxWidth().padding(start = 172.dp + 32.dp).then(showTop)) { PlaybackSelectionControls(screen, model) } }
                 if (item.children.isNotEmpty()) item("children") {
                     ChildrenRow(item, model, source, focusFirst = !canPlay)
                 }
