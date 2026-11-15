@@ -48,7 +48,7 @@ import fr.plys.tv.R
 import fr.plys.tv.data.CatalogKind
 
 /** Width of the folded rail: the screens start after it. */
-val RailWidth = 80.dp
+val RailWidth = 64.dp
 private val ExpandedRailWidth = 260.dp
 
 enum class Section { HOME, SEARCH, WATCHLIST, MOVIES, SERIES, OTHER, NONE }
@@ -85,7 +85,7 @@ fun SideRail(
         else Brush.horizontalGradient(listOf(Plys.Surface950, Plys.Surface950))
     Box(modifier.fillMaxHeight().width(if (expanded) width + 120.dp else width).background(scrim)) {
         Column(
-            Modifier.fillMaxHeight().width(width).padding(vertical = 24.dp, horizontal = 12.dp)
+            Modifier.fillMaxHeight().width(width).padding(vertical = 24.dp, horizontal = 8.dp)
                 .onFocusChanged { expanded = it.hasFocus }
                 .focusProperties {
                     @Suppress("DEPRECATION")
@@ -93,7 +93,7 @@ fun SideRail(
                 },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Brand(expanded, Modifier.padding(start = 8.dp, bottom = 24.dp))
+            Brand(expanded, Modifier.padding(start = 4.dp, bottom = 24.dp))
             RailItem(Icons.Outlined.Home, R.string.home, current == Section.HOME, expanded, requesters.getValue(Section.HOME), home)
             RailItem(Icons.Outlined.Search, R.string.search, current == Section.SEARCH, expanded, requesters.getValue(Section.SEARCH), search)
             RailItem(Icons.Outlined.FavoriteBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), watchlist)
@@ -106,7 +106,7 @@ fun SideRail(
             // The web's footer: the server version, readable once the rail unfolds.
             if (expanded && serverVersion.isNotEmpty()) {
                 Text(stringResource(R.string.server_version, serverVersion), style = MaterialTheme.typography.labelSmall,
-                    color = Plys.Subtle, maxLines = 1, modifier = Modifier.padding(start = 14.dp))
+                    color = Plys.Subtle, maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 12.dp))
             }
         }
     }
@@ -118,7 +118,10 @@ fun Brand(showName: Boolean = true, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(40.dp))
         AnimatedVisibility(showName, enter = fadeIn(), exit = fadeOut()) {
-            Text(stringResource(R.string.brand), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Plys.TextStrong)
+            // Never wrapped: while the rail unfolds or folds the name has almost no room, and wrapping it letter by
+            // letter would make this row taller and push every rail entry down during the animation.
+            Text(stringResource(R.string.brand), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold,
+                color = Plys.TextStrong, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -128,7 +131,7 @@ private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded:
     val text = stringResource(label)
     PlysButton(
         onClick = onClick, shape = RoundedCornerShape(12.dp),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
         modifier = Modifier.fillMaxWidth().focusRequester(requester),
     ) {
         // Resting content is light and focused content dark: the current section keeps an accent that reads on both.
@@ -138,7 +141,7 @@ private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded:
         if (expanded) {
             Spacer(Modifier.width(16.dp))
             Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                maxLines = 1, modifier = Modifier.weight(1f))
+                maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
         }
     }
 }
