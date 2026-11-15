@@ -101,12 +101,11 @@
     <string name="watched">Assistido</string>
     <string name="season">Temporada %1$d</string>
     <string name="episode">Episódio %1$d</string>
-    <string name="part">Parte %1$d</string>
     <string name="pause">Pausar</string>
     <string name="rewind">−30 s</string>
     <string name="forward">+30 s</string>
     <string name="ended">Reprodução concluída.</string>
-    <string name="next_episode">Próximo episódio / parte</string>
+    <string name="next_episode">Próximo episódio</string>
     <string name="unavailable">Nenhuma versão reproduzível está disponível.</string>
     <string name="error_network">Não foi possível acessar o servidor. Verifique o endereço e sua conexão.</string>
     <string name="error_credentials">Nome de usuário ou senha inválidos.</string>
@@ -139,7 +138,6 @@
     <string name="time_left">Faltam %1$s</string>
     <string name="seasons">Temporadas</string>
     <string name="episodes">Episódios</string>
-    <string name="parts">Partes</string>
     <string name="server_name">Servidor</string>
     <string name="up_next">Próximo episódio</string>
     <string name="up_next_in">Começa em %1$d s</string>

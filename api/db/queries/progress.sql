@@ -24,18 +24,18 @@ DELETE FROM playback_progress WHERE user_id = @user_id AND item_id = ANY(@item_i
 
 -- name: ListPlayableUnder :many
 -- Playable items of a node (itself, its children or grandchildren) in viewing order, with the user's progress.
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        COALESCE(p.watched, false) AS watched, COALESCE(p.position_seconds, 0)::float8 AS position_seconds,
        p.updated_at AS progress_at
 FROM items i
 LEFT JOIN playback_progress p ON p.item_id = i.id AND p.user_id = @user_id
-WHERE i.kind IN ('movie', 'episode', 'part', 'video')
+WHERE i.kind IN ('movie', 'episode', 'video')
   AND (i.id = @root OR i.parent_id = @root OR i.parent_id IN (SELECT c.id FROM items c WHERE c.parent_id = @root))
   AND EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id AND f.missing_since IS NULL AND f.probe_error IS NULL)
-ORDER BY COALESCE(i.season_number, 0) = 0, i.season_number, i.episode_number, i.part_number, i.sort_title, i.id;
+ORDER BY COALESCE(i.season_number, 0) = 0, i.season_number, i.episode_number, i.sort_title, i.id;
 
 -- name: ListContinueWatching :many
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        COALESCE(gp.title, par.title, '')::text AS show_title, COALESCE(gp.poster_path, par.poster_path, i.poster_path) AS poster_path,
        i.thumb_path, p.position_seconds, p.duration_seconds, p.updated_at
 FROM playback_progress p
@@ -44,7 +44,7 @@ JOIN libraries l ON l.id = i.library_id
 LEFT JOIN items par ON par.id = i.parent_id
 LEFT JOIN items gp ON gp.id = par.parent_id
 WHERE p.user_id = @user_id AND NOT p.watched AND p.position_seconds >= @min_seconds::float8
-  AND i.kind IN ('movie', 'episode', 'part', 'video')
+  AND i.kind IN ('movie', 'episode', 'video')
   AND (@is_admin::bool OR NOT l.restricted
        OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = @user_id))
   AND EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id AND f.missing_since IS NULL AND f.probe_error IS NULL)
@@ -77,7 +77,7 @@ upcoming AS (
     WHERE NOT e.watched AND e.sno * 100000 + e.eno > seen.furthest
     ORDER BY e.series_id, e.sno, e.eno
 )
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        s.title AS show_title, s.poster_path AS poster_path, i.thumb_path,
        0::float8 AS position_seconds, 0::float8 AS duration_seconds, n.last_at::timestamptz AS updated_at
 FROM upcoming n

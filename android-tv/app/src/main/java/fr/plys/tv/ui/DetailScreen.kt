@@ -206,11 +206,7 @@ private fun playLabel(item: ItemDetail, playable: ItemDetail, position: Double):
 
 @Composable
 private fun ChildrenRow(item: ItemDetail, model: CatalogViewModel, source: ServerRef?, focusFirst: Boolean) {
-    val title = when (item.kind) {
-        "series" -> R.string.seasons
-        "season" -> R.string.episodes
-        else -> R.string.parts
-    }
+    val title = if (item.kind == "series") R.string.seasons else R.string.episodes
     Column {
         RailTitle(title)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
@@ -228,7 +224,6 @@ private fun ChildrenRow(item: ItemDetail, model: CatalogViewModel, source: Serve
                         modifier = modifier.width(248.dp), landscape = true, watched = child.watched,
                         label = when (child.kind) {
                             "episode" -> child.episodeNumber?.let { "E$it" }
-                            "part" -> child.partNumber?.let { stringResource(R.string.part, it) }
                             else -> null
                         },
                         subtitle = listOfNotNull(
@@ -285,7 +280,6 @@ private fun childLabel(item: ChildItem): String {
     val label = when (item.kind) {
         "season" -> stringResource(R.string.season, item.seasonNumber ?: 0)
         "episode" -> stringResource(R.string.episode, item.episodeNumber ?: 0)
-        "part" -> stringResource(R.string.part, item.partNumber ?: 0)
         else -> ""
     }
     return listOf(label, item.title).filter { it.isNotBlank() }.distinct().joinToString(" · ")

@@ -13,9 +13,8 @@ class PlayerYearTest {
         assertEquals(2021, playerYear(item("video", 2021)))
     }
 
-    @Test fun `episodes, parts and unknown years show none`() {
+    @Test fun `episodes and unknown years show none`() {
         assertNull(playerYear(item("episode", 2010)))
-        assertNull(playerYear(item("part", 2010)))
         assertNull(playerYear(item("movie", null)))
         assertNull(playerYear(item("movie", 0)))
     }

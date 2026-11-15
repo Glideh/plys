@@ -72,42 +72,31 @@ func TestParseEpisode(t *testing.T) {
 	}
 }
 
-func TestParseFileVersion(t *testing.T) {
-	cases := []struct {
-		path    string
-		part    int
-		edition string
-	}{
-		{"/media/Films/[yggtorrent.com]Guerre et Paix.1966.DVD 2.MULTI.DVDRip.XVid-AC3.afrique31/Guerre et Paix.avi", 2, ""},
-		{"/media/Films/Loose.Change.Final.Cut.2007.VOSTFR.DVDRIP.avi/Partie 1.avi", 1, ""},
-		{"/media/Films/Movie.2001.CD2.avi", 2, ""},
-		{"/media/Films/Blade.Runner.1982.Final.Cut.2160p.UHD.mkv", 0, "Final Cut"},
-		{"/media/Films/Kingdom.of.Heaven.2005.Directors.Cut.1080p.mkv", 0, "Director's Cut"},
-		{"/media/Films/The.Lord.of.the.Rings.2001.EXTENDED.1080p.mkv", 0, "Extended"},
-		{"/media/Films/Prisoners.2013.1080p.BluRay.DVDRip.mkv", 0, ""},
+func TestParseEdition(t *testing.T) {
+	cases := []struct{ path, edition string }{
+		{"/media/Films/Loose.Change.Final.Cut.2007.VOSTFR.DVDRIP.avi/Partie 1.avi", ""},
+		{"/media/Films/Blade.Runner.1982.Final.Cut.2160p.UHD.mkv", "Final Cut"},
+		{"/media/Films/Kingdom.of.Heaven.2005.Directors.Cut.1080p.mkv", "Director's Cut"},
+		{"/media/Films/The.Lord.of.the.Rings.2001.EXTENDED.1080p.mkv", "Extended"},
+		{"/media/Films/Prisoners.2013.1080p.BluRay.DVDRip.mkv", ""},
 	}
 	for _, c := range cases {
-		if got := ParseFileVersion(c.path); got.Part != c.part || got.Edition != c.edition {
-			t.Errorf("ParseFileVersion(%q) = %+v, want part %d edition %q", c.path, got, c.part, c.edition)
+		if got := ParseEdition(c.path); got != c.edition {
+			t.Errorf("ParseEdition(%q) = %q, want %q", c.path, got, c.edition)
 		}
 	}
+}
 
-	parts := []string{
-		"/media/Films/[yggtorrent.com]Guerre et Paix.1966.DVD 1.MULTI.DVDRip/Guerre et Paix.avi",
-		"/media/Films/[yggtorrent.com]Guerre et Paix.1966.DVD 2.MULTI.DVDRip/Guerre et Paix.avi",
+func TestParseMovieKeepsPartInTitle(t *testing.T) {
+	cases := map[string]MovieInfo{
+		"Harry.Potter.and.the.Deathly.Hallows.Part.1.2010.1080p.mkv": {Title: "Harry Potter and the Deathly Hallows Part 1", Year: 2010},
+		"Harry.Potter.and.the.Deathly.Hallows.Part.2.2011.1080p.mkv": {Title: "Harry Potter and the Deathly Hallows Part 2", Year: 2011},
+		"Movie.Title.CD1.avi": {Title: "Movie Title CD1"},
 	}
-	if ParseFileVersion(parts[0]).Key != ParseFileVersion(parts[1]).Key {
-		t.Error("parts of one version must share a version key")
-	}
-	versions := []string{
-		"/media/Films/Disney/Clochette et la Pierre de Lune 2009 1080p.mkv",
-		"/media/Films/Disney/Clochette et la Pierre de Lune 2009 1080p (1).mkv",
-	}
-	if ParseFileVersion(versions[0]).Key == ParseFileVersion(versions[1]).Key {
-		t.Error("distinct files without part numbers are distinct versions")
-	}
-	if got := ParseMovie("Movie.Title.CD1.avi"); got.Title != "Movie Title" {
-		t.Errorf("part token must be stripped from the title, got %q", got.Title)
+	for name, want := range cases {
+		if got := ParseMovie(name); got.Title != want.Title || got.Year != want.Year {
+			t.Errorf("ParseMovie(%q) = %+v, want %+v", name, got, want)
+		}
 	}
 }
 

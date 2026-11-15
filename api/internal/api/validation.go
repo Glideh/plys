@@ -38,7 +38,7 @@ type userDTO struct {
 	Remote bool `json:"remote"`
 	// OriginServer names the paired server of a remote user.
 	OriginServer string `json:"originServer,omitempty"`
-	// AutoplayNext starts the next episode or part when one ends.
+	// AutoplayNext starts the next episode when one ends.
 	AutoplayNext bool      `json:"autoplayNext"`
 	CreatedAt    time.Time `json:"createdAt"`
 	// AvatarUpdatedAt is set when an avatar exists; the client uses it as a cache-busting version.

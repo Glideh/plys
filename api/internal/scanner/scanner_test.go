@@ -154,15 +154,14 @@ func TestScanDoesNotFlagMissingWhenRootIsEmpty(t *testing.T) {
 	}
 }
 
-func TestScanMovieParts(t *testing.T) {
+func TestScanMovieFilesAreNotGroupedIntoParts(t *testing.T) {
 	pool := testdb.New(t, "test_scanner")
 	root := t.TempDir()
 	touch(t, root,
 		"[yggtorrent.com]Guerre et Paix.1966.DVD 1.MULTI.DVDRip.XVid-AC3/Guerre et Paix.avi",
 		"[yggtorrent.com]Guerre et Paix.1966.DVD 2.MULTI.DVDRip.XVid-AC3/Guerre et Paix.avi",
-		"Guerre.et.Paix.1966.1080p.BluRay.mkv",
-		"Loose.Change.Final.Cut.2007.VOSTFR.DVDRIP.avi/Partie 1.avi",
-		"Loose.Change.Final.Cut.2007.VOSTFR.DVDRIP.avi/Partie 2.avi",
+		"Harry.Potter.and.the.Deathly.Hallows.Part.1.2010.1080p.mkv",
+		"Harry.Potter.and.the.Deathly.Hallows.Part.2.2011.1080p.mkv",
 	)
 	id := newLibrary(t, pool, "movies", root)
 	s := New(pool, fakeProber{}, nil, 0)
@@ -171,28 +170,13 @@ func TestScanMovieParts(t *testing.T) {
 	if err := s.ScanLibrary(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	if st := status(s, id); st.Added != 2 {
-		t.Fatalf("parts must not count as added movies: %+v", st)
+	if c := counts(t, pool, id); c["movie"] != 3 || len(c) != 1 {
+		t.Fatalf("expected 3 movies and nothing below them, got %v", c)
 	}
-	if c := counts(t, pool, id); c["movie"] != 2 || c["part"] != 4 {
-		t.Fatalf("expected 2 movies with 2 parts each, got %v", c)
-	}
-
 	var direct int
 	err := pool.QueryRow(ctx, `SELECT count(*) FROM media_files f JOIN items i ON i.id = f.item_id WHERE i.kind = 'movie'`).Scan(&direct)
-	if err != nil || direct != 1 {
-		t.Fatalf("the single-file version must stay attached to the movie itself, got %d (%v)", direct, err)
-	}
-
-	// Parts whose files are purged disappear, and so does a movie left without files or parts.
-	if _, err := pool.Exec(ctx, `DELETE FROM media_files WHERE path LIKE '%Loose.Change%'`); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.cleanup(ctx, id); err != nil {
-		t.Fatal(err)
-	}
-	if c := counts(t, pool, id); c["movie"] != 1 || c["part"] != 2 {
-		t.Fatalf("orphan parts and movie must be removed, got %v", c)
+	if err != nil || direct != 4 {
+		t.Fatalf("every file must be attached to its movie, got %d (%v)", direct, err)
 	}
 }
 

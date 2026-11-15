@@ -101,12 +101,11 @@
     <string name="watched">Watched</string>
     <string name="season">Season %1$d</string>
     <string name="episode">Episode %1$d</string>
-    <string name="part">Part %1$d</string>
     <string name="pause">Pause</string>
     <string name="rewind">−30 s</string>
     <string name="forward">+30 s</string>
     <string name="ended">Playback finished.</string>
-    <string name="next_episode">Next episode / part</string>
+    <string name="next_episode">Next episode</string>
     <string name="unavailable">No playable version is available.</string>
     <string name="error_network">Cannot reach the server. Check its address and your connection.</string>
     <string name="error_credentials">Invalid username or password.</string>
@@ -139,7 +138,6 @@
     <string name="time_left">%1$s left</string>
     <string name="seasons">Seasons</string>
     <string name="episodes">Episodes</string>
-    <string name="parts">Parts</string>
     <string name="server_name">Server</string>
     <string name="up_next">Next episode</string>
     <string name="up_next_in">Starts in %1$d s</string>

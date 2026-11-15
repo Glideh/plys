@@ -112,7 +112,6 @@ export interface ChildItem {
   seasonNumber?: number
   episodeNumber?: number
   episodeNumberEnd?: number
-  partNumber?: number
   childCount?: number
   watched: boolean
   /** Resume point in seconds, 0 when none. */
@@ -164,7 +163,6 @@ export interface ItemDetail {
   seasonNumber?: number
   episodeNumber?: number
   episodeNumberEnd?: number
-  partNumber?: number
   ancestors: Ancestor[]
   versions: Version[]
   children: ChildItem[]
@@ -172,9 +170,9 @@ export interface ItemDetail {
   positionSeconds: number
   /** Set on top-level titles (movies, series, videos) the user added to their watchlist. */
   inWatchlist: boolean
-  /** What "play" starts on a series, season or multi-part movie. */
+  /** What "play" starts on a series or season. */
   playTarget: PlayTarget | null
-  /** Follows an episode or part in viewing order. */
+  /** Follows an episode in viewing order. */
   next: PlayTarget | null
   /** Other servers holding a version of this title; only set on local top-level titles. */
   sources: CardSource[]
@@ -188,7 +186,6 @@ export interface PlayTarget {
   title: string
   seasonNumber?: number
   episodeNumber?: number
-  partNumber?: number
   positionSeconds: number
   resume: boolean
   rewatch: boolean

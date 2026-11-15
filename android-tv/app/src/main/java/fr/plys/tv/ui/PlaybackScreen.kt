@@ -343,7 +343,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
 
 /** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */
 /** Films and videos show their year next to the title; episodes and parts already carry their context. */
-internal fun playerYear(item: ItemDetail): Int? = item.year?.takeIf { item.kind != "episode" && item.kind != "part" && it > 0 }
+internal fun playerYear(item: ItemDetail): Int? = item.year?.takeIf { item.kind != "episode" && it > 0 }
 
 /** The title logo shown over the paused video, or null while it plays, loads, has ended or failed. */
 internal fun pauseLogo(state: PlayerState): String? =

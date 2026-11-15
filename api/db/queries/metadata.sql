@@ -64,7 +64,7 @@ WHERE id = @id;
 UPDATE items SET thumb_path = $2, match_status = $3, metadata_updated_at = now() WHERE id = $1;
 
 -- name: SetChildrenMatchStatus :exec
--- Children with no metadata of their own (movie parts) follow their parent.
+-- Children with no metadata of their own follow their parent.
 UPDATE items SET match_status = $2 WHERE parent_id = $1 AND match_status = 'pending';
 
 -- name: ListChildren :many
@@ -90,7 +90,7 @@ ORDER BY created_at
 LIMIT 1;
 
 -- name: ListItemFilePaths :many
--- Files of the item and of its direct and nested children (parts, seasons, episodes).
+-- Files of the item and of its direct and nested children (seasons, episodes).
 SELECT f.path FROM media_files f
 WHERE f.missing_since IS NULL AND f.item_id IN (
     SELECT @item_id::uuid

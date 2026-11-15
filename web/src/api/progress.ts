@@ -9,7 +9,6 @@ export interface HomeItem {
   showTitle?: string
   seasonNumber?: number
   episodeNumber?: number
-  partNumber?: number
   posterUrl: string | null
   positionSeconds: number
   durationSeconds: number

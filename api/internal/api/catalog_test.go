@@ -119,10 +119,10 @@ func TestCatalogBrowsing(t *testing.T) {
 
 	war := do(t, e.h, http.MethodGet, "/api/v1/items/"+byTitle["Guerre et Paix"], admin, nil).body
 	if war["folder"] != filepath.Join(e.root, "films") {
-		t.Errorf("a movie split across folders must report their common folder, got %v", war["folder"])
+		t.Errorf("a movie spread across folders must report their common folder, got %v", war["folder"])
 	}
-	if parts := war["children"].([]any); len(parts) != 2 || parts[0].(map[string]any)["partNumber"].(float64) != 1 {
-		t.Errorf("Guerre et Paix must list its 2 parts: %v", war["children"])
+	if len(war["children"].([]any)) != 0 || len(war["versions"].([]any)) != 2 {
+		t.Errorf("Guerre et Paix files must be versions of the movie, not parts: %v", war)
 	}
 
 	show := do(t, e.h, http.MethodGet, "/api/v1/libraries/"+series+"/items", admin, nil).body["items"].([]any)[0].(map[string]any)

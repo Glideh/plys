@@ -254,10 +254,8 @@ func (s *Scanner) cleanup(ctx context.Context, id uuid.UUID) error {
 	if _, err := s.q.PurgeMissingFiles(ctx, store.PurgeMissingFilesParams{LibraryID: id, MissingSince: ptr(time.Now().Add(-missingGrace))}); err != nil {
 		return fmt.Errorf("purge missing files: %w", err)
 	}
-	for range 2 {
-		if _, err := s.q.DeleteOrphanLeaves(ctx, id); err != nil {
-			return fmt.Errorf("delete orphan items: %w", err)
-		}
+	if _, err := s.q.DeleteOrphanLeaves(ctx, id); err != nil {
+		return fmt.Errorf("delete orphan items: %w", err)
 	}
 	for range 2 {
 		if _, err := s.q.DeleteEmptyContainers(ctx, id); err != nil {
@@ -323,19 +321,17 @@ func (s *Scanner) processFile(ctx context.Context, lib store.Library, f foundFil
 	if itemID == nil {
 		s.update(lib.ID, func(st *Status) { st.Unmatched++ })
 	}
-	version := ParseFileVersion(f.path)
+	edition := optString(ParseEdition(f.path))
 	if unchanged {
 		if itemID != nil {
-			err = s.q.LinkFileItem(ctx, store.LinkFileItemParams{
-				ID: prev.ID, ItemID: itemID, VersionKey: version.Key, PartNumber: optInt(version.Part), Edition: optString(version.Edition),
-			})
+			err = s.q.LinkFileItem(ctx, store.LinkFileItemParams{ID: prev.ID, ItemID: itemID, Edition: edition})
 		}
 		return prev.ID, err
 	}
 
 	params := store.UpsertProbedFileParams{
 		LibraryID: lib.ID, ItemID: itemID, Path: f.path, Size: f.size, Mtime: f.mtime, Streams: []byte("[]"),
-		VersionKey: version.Key, PartNumber: optInt(version.Part), Edition: optString(version.Edition),
+		Edition: edition,
 	}
 	res, probeErr := s.prober.Probe(ctx, f.path)
 	if probeErr != nil {
@@ -376,16 +372,6 @@ func (s *Scanner) resolveItem(ctx context.Context, lib store.Library, rel string
 			Kind: "movie", MatchKey: fmt.Sprintf("%s|%d", MatchKey(info.Title), info.Year),
 			Title: info.Title, SortTitle: SortTitle(info.Title), Year: optInt(info.Year),
 		})
-		if err != nil {
-			return nil, err
-		}
-		// Parts are listed under the movie like episodes, each with its own progress.
-		if part := ParseFileVersion(rel).Part; part > 0 {
-			id, err = upsert(store.UpsertItemParams{
-				ParentID: &id, Kind: "part", MatchKey: fmt.Sprintf("p%d", part),
-				SortTitle: fmt.Sprintf("%04d", part), PartNumber: ptr(int32(part)),
-			})
-		}
 		return &id, err
 
 	case "series":

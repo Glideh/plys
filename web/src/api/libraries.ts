@@ -2,7 +2,7 @@ import { api } from './client'
 
 export const libraryKinds = ['movies', 'series', 'other'] as const
 export type LibraryKind = (typeof libraryKinds)[number]
-export type ItemKind = 'movie' | 'part' | 'series' | 'season' | 'episode' | 'video'
+export type ItemKind = 'movie' | 'series' | 'season' | 'episode' | 'video'
 
 export interface Library {
   id: string

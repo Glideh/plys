@@ -11,7 +11,6 @@ function label(it: HomeItem): string {
     const code = `S${String(it.seasonNumber ?? 0).padStart(2, '0')}E${String(it.episodeNumber ?? 0).padStart(2, '0')}`
     return [code, it.title].filter(Boolean).join(' · ')
   }
-  if (it.kind === 'part') return t('catalog.part', { n: it.partNumber })
   return ''
 }
 

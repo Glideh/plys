@@ -73,7 +73,7 @@ unwatched AS (
     WHERE f.missing_since IS NULL AND x.library_id = @library_id AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
 ),
--- Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
+-- Last time the user played anything of an entry (itself or an episode), for the "watched" sort.
 last_seen AS (
     SELECT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id, max(pr.updated_at)::timestamptz AS at
     FROM playback_progress pr
@@ -144,7 +144,7 @@ unwatched AS (
     WHERE f.missing_since IS NULL AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
 ),
--- Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
+-- Last time the user played anything of an entry (itself or an episode), for the "watched" sort.
 last_seen AS (
     SELECT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id, max(pr.updated_at)::timestamptz AS at
     FROM playback_progress pr
@@ -215,7 +215,7 @@ ORDER BY i.id;
 
 -- name: ListChildItems :many
 SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minutes, i.rating,
-       i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end, i.part_number,
+       i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end,
        (SELECT count(*) FROM items c WHERE c.parent_id = i.id)::int AS child_count,
        COALESCE(p.watched, false) AS watched,
        COALESCE(p.position_seconds, 0)::float8 AS position_seconds,
@@ -234,7 +234,7 @@ FROM media_files f
 WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL;
 
 -- name: ListItemTreeFilePaths :many
--- Paths of the files held by an item and everything below it (seasons, episodes, parts).
+-- Paths of the files held by an item and everything below it (seasons, episodes).
 -- Only exposed to local admins (see itemFolder in internal/api/catalog.go).
 WITH RECURSIVE tree AS (
     SELECT root.id FROM items root WHERE root.id = @item_id

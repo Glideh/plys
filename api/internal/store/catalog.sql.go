@@ -167,7 +167,7 @@ func (q *Queries) ListCatalogFilterOptions(ctx context.Context, arg ListCatalogF
 
 const listChildItems = `-- name: ListChildItems :many
 SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minutes, i.rating,
-       i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end, i.part_number,
+       i.poster_path, i.thumb_path, i.season_number, i.episode_number, i.episode_number_end,
        (SELECT count(*) FROM items c WHERE c.parent_id = i.id)::int AS child_count,
        COALESCE(p.watched, false) AS watched,
        COALESCE(p.position_seconds, 0)::float8 AS position_seconds,
@@ -200,7 +200,6 @@ type ListChildItemsRow struct {
 	SeasonNumber     *int32
 	EpisodeNumber    *int32
 	EpisodeNumberEnd *int32
-	PartNumber       *int32
 	ChildCount       int32
 	Watched          bool
 	PositionSeconds  float64
@@ -230,7 +229,6 @@ func (q *Queries) ListChildItems(ctx context.Context, arg ListChildItemsParams) 
 			&i.SeasonNumber,
 			&i.EpisodeNumber,
 			&i.EpisodeNumberEnd,
-			&i.PartNumber,
 			&i.ChildCount,
 			&i.Watched,
 			&i.PositionSeconds,
@@ -308,7 +306,7 @@ JOIN tree t ON t.id = f.item_id
 WHERE f.missing_since IS NULL
 `
 
-// Paths of the files held by an item and everything below it (seasons, episodes, parts).
+// Paths of the files held by an item and everything below it (seasons, episodes).
 // Only exposed to local admins (see itemFolder in internal/api/catalog.go).
 func (q *Queries) ListItemTreeFilePaths(ctx context.Context, itemID uuid.UUID) ([]string, error) {
 	rows, err := q.db.Query(ctx, listItemTreeFilePaths, itemID)
@@ -435,7 +433,7 @@ type ListKindItemsRow struct {
 }
 
 // Top-level entries of every library of one kind readable by the caller, optionally narrowed to one library.
-// Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
+// Last time the user played anything of an entry (itself or an episode), for the "watched" sort.
 func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([]ListKindItemsRow, error) {
 	rows, err := q.db.Query(ctx, listKindItems,
 		arg.UserID,
@@ -597,7 +595,7 @@ type ListLibraryItemsRow struct {
 // Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
 // Technical filters (resolution, audio) narrow the files: an entry matches when one of its files does.
 // Episodes still to watch per series, for the badge of the grid.
-// Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
+// Last time the user played anything of an entry (itself or an episode), for the "watched" sort.
 func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsParams) ([]ListLibraryItemsRow, error) {
 	rows, err := q.db.Query(ctx, listLibraryItems,
 		arg.UserID,

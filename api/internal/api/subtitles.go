@@ -101,18 +101,6 @@ func (s *Server) subtitleQuery(ctx context.Context, it store.Item, path, languag
 		if matched(it) {
 			q.TMDBID = int(*it.TmdbID)
 		}
-	case "part":
-		if it.ParentID == nil {
-			break
-		}
-		movie, err := s.q.GetItem(ctx, *it.ParentID)
-		if err != nil {
-			return q, err
-		}
-		q.Text = movie.Title
-		if matched(movie) {
-			q.TMDBID = int(*movie.TmdbID)
-		}
 	case "episode":
 		season := it.SeasonNumber
 		parent := it.ParentID

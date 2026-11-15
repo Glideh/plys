@@ -283,7 +283,6 @@ type childDTO struct {
 	SeasonNumber     *int32     `json:"seasonNumber,omitempty"`
 	EpisodeNumber    *int32     `json:"episodeNumber,omitempty"`
 	EpisodeNumberEnd *int32     `json:"episodeNumberEnd,omitempty"`
-	PartNumber       *int32     `json:"partNumber,omitempty"`
 	ChildCount       int32      `json:"childCount,omitempty"`
 	Watched          bool       `json:"watched"`
 	// PositionSeconds is the resume point, 0 when none.
@@ -324,7 +323,6 @@ type itemDetailDTO struct {
 	SeasonNumber     *int32        `json:"seasonNumber,omitempty"`
 	EpisodeNumber    *int32        `json:"episodeNumber,omitempty"`
 	EpisodeNumberEnd *int32        `json:"episodeNumberEnd,omitempty"`
-	PartNumber       *int32        `json:"partNumber,omitempty"`
 	Ancestors        []ancestorDTO `json:"ancestors"`
 	Versions         []versionDTO  `json:"versions"`
 	Children         []childDTO    `json:"children"`
@@ -332,9 +330,9 @@ type itemDetailDTO struct {
 	Watched bool `json:"watched"`
 	// PositionSeconds is the resume point of a playable item, 0 when none.
 	PositionSeconds float64 `json:"positionSeconds"`
-	// PlayTarget is what "play" starts on a series, season or multi-part movie.
+	// PlayTarget is what "play" starts on a series or season.
 	PlayTarget *playTargetDTO `json:"playTarget"`
-	// Next follows an episode or part in viewing order.
+	// Next follows an episode in viewing order.
 	Next *playTargetDTO `json:"next"`
 	// InWatchlist is set when the caller added this top-level title to their watchlist.
 	InWatchlist bool `json:"inWatchlist"`
@@ -378,7 +376,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		PosterURL: imageURL(it.PosterPath, "w500"), BackdropURL: imageURL(it.BackdropPath, "w1280"),
 		ThumbURL: imageURL(it.ThumbPath, "w500"), TMDBID: it.TmdbID, MatchStatus: it.MatchStatus,
 		SeasonNumber: it.SeasonNumber, EpisodeNumber: it.EpisodeNumber, EpisodeNumberEnd: it.EpisodeNumberEnd,
-		PartNumber: it.PartNumber, Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
+		Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
 	}
 	labels := personLabels(it.FilterLabels)
 	if dto.Cast, err = castFromJSON(it.CastMembers, labels["actors"]); err != nil {
@@ -389,7 +387,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	// Seasons, episodes and parts show the logo of their series or movie.
+	// Seasons and episodes show the logo of their series.
 	var logoPath *string
 	if dto.Ancestors, logoPath, err = s.ancestors(r, it); err != nil {
 		httpx.InternalError(w, r, err)
@@ -466,7 +464,7 @@ func (s *Server) children(r *http.Request, id uuid.UUID) ([]childDTO, error) {
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Overview: c.Overview, Year: c.Year, ReleaseDate: c.ReleaseDate,
 			RuntimeMinutes: c.RuntimeMinutes, Rating: c.Rating, PosterURL: imageURL(c.PosterPath, "w342"),
 			ThumbURL: imageURL(c.ThumbPath, "w300"), SeasonNumber: c.SeasonNumber, EpisodeNumber: c.EpisodeNumber,
-			EpisodeNumberEnd: c.EpisodeNumberEnd, PartNumber: c.PartNumber, ChildCount: c.ChildCount,
+			EpisodeNumberEnd: c.EpisodeNumberEnd, ChildCount: c.ChildCount,
 			Watched:         c.Watched || (c.Kind == "season" && c.UnwatchedCount == 0),
 			PositionSeconds: resumePoint(c.Watched, c.PositionSeconds), UnwatchedCount: c.UnwatchedCount,
 		})

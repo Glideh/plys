@@ -36,7 +36,7 @@ func (q *Queries) GetProgress(ctx context.Context, arg GetProgressParams) (GetPr
 }
 
 const listContinueWatching = `-- name: ListContinueWatching :many
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        COALESCE(gp.title, par.title, '')::text AS show_title, COALESCE(gp.poster_path, par.poster_path, i.poster_path) AS poster_path,
        i.thumb_path, p.position_seconds, p.duration_seconds, p.updated_at
 FROM playback_progress p
@@ -45,7 +45,7 @@ JOIN libraries l ON l.id = i.library_id
 LEFT JOIN items par ON par.id = i.parent_id
 LEFT JOIN items gp ON gp.id = par.parent_id
 WHERE p.user_id = $1 AND NOT p.watched AND p.position_seconds >= $2::float8
-  AND i.kind IN ('movie', 'episode', 'part', 'video')
+  AND i.kind IN ('movie', 'episode', 'video')
   AND ($3::bool OR NOT l.restricted
        OR EXISTS (SELECT 1 FROM library_access a WHERE a.library_id = l.id AND a.user_id = $1))
   AND EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id AND f.missing_since IS NULL AND f.probe_error IS NULL)
@@ -66,7 +66,6 @@ type ListContinueWatchingRow struct {
 	Title           string
 	SeasonNumber    *int32
 	EpisodeNumber   *int32
-	PartNumber      *int32
 	ShowTitle       string
 	PosterPath      *string
 	ThumbPath       *string
@@ -95,7 +94,6 @@ func (q *Queries) ListContinueWatching(ctx context.Context, arg ListContinueWatc
 			&i.Title,
 			&i.SeasonNumber,
 			&i.EpisodeNumber,
-			&i.PartNumber,
 			&i.ShowTitle,
 			&i.PosterPath,
 			&i.ThumbPath,
@@ -137,7 +135,7 @@ upcoming AS (
     WHERE NOT e.watched AND e.sno * 100000 + e.eno > seen.furthest
     ORDER BY e.series_id, e.sno, e.eno
 )
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        s.title AS show_title, s.poster_path AS poster_path, i.thumb_path,
        0::float8 AS position_seconds, 0::float8 AS duration_seconds, n.last_at::timestamptz AS updated_at
 FROM upcoming n
@@ -161,7 +159,6 @@ type ListNextUpRow struct {
 	Title           string
 	SeasonNumber    *int32
 	EpisodeNumber   *int32
-	PartNumber      *int32
 	ShowTitle       string
 	PosterPath      *string
 	ThumbPath       *string
@@ -192,7 +189,6 @@ func (q *Queries) ListNextUp(ctx context.Context, arg ListNextUpParams) ([]ListN
 			&i.Title,
 			&i.SeasonNumber,
 			&i.EpisodeNumber,
-			&i.PartNumber,
 			&i.ShowTitle,
 			&i.PosterPath,
 			&i.ThumbPath,
@@ -211,15 +207,15 @@ func (q *Queries) ListNextUp(ctx context.Context, arg ListNextUpParams) ([]ListN
 }
 
 const listPlayableUnder = `-- name: ListPlayableUnder :many
-SELECT i.id, i.kind, i.title, i.season_number, i.episode_number, i.part_number,
+SELECT i.id, i.kind, i.title, i.season_number, i.episode_number,
        COALESCE(p.watched, false) AS watched, COALESCE(p.position_seconds, 0)::float8 AS position_seconds,
        p.updated_at AS progress_at
 FROM items i
 LEFT JOIN playback_progress p ON p.item_id = i.id AND p.user_id = $1
-WHERE i.kind IN ('movie', 'episode', 'part', 'video')
+WHERE i.kind IN ('movie', 'episode', 'video')
   AND (i.id = $2 OR i.parent_id = $2 OR i.parent_id IN (SELECT c.id FROM items c WHERE c.parent_id = $2))
   AND EXISTS (SELECT 1 FROM media_files f WHERE f.item_id = i.id AND f.missing_since IS NULL AND f.probe_error IS NULL)
-ORDER BY COALESCE(i.season_number, 0) = 0, i.season_number, i.episode_number, i.part_number, i.sort_title, i.id
+ORDER BY COALESCE(i.season_number, 0) = 0, i.season_number, i.episode_number, i.sort_title, i.id
 `
 
 type ListPlayableUnderParams struct {
@@ -233,7 +229,6 @@ type ListPlayableUnderRow struct {
 	Title           string
 	SeasonNumber    *int32
 	EpisodeNumber   *int32
-	PartNumber      *int32
 	Watched         bool
 	PositionSeconds float64
 	ProgressAt      *time.Time
@@ -255,7 +250,6 @@ func (q *Queries) ListPlayableUnder(ctx context.Context, arg ListPlayableUnderPa
 			&i.Title,
 			&i.SeasonNumber,
 			&i.EpisodeNumber,
-			&i.PartNumber,
 			&i.Watched,
 			&i.PositionSeconds,
 			&i.ProgressAt,

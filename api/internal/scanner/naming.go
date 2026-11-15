@@ -44,8 +44,6 @@ var (
 	spacesRe       = regexp.MustCompile(`\s+`)
 	leadingArticle = regexp.MustCompile(`(?i)^(?:the|a|an|le|la|les|un|une|des)\s+|^l'`)
 
-	// "DVDRip" is not a part: a number must follow the keyword.
-	partRe    = regexp.MustCompile(`(?i)(?:^|[\s._\-\[(])(?:cd|dvd|disc|disk|part|pt|partie)[\s._-]?(\d{1,2})(?:\D|$)`)
 	editionRe = regexp.MustCompile(`(?i)[\s._\-(\[](director'?s[\s._-]cut|extended(?:[\s._-](?:cut|edition))?|final[\s._-]cut|theatrical(?:[\s._-]cut)?|unrated|uncut|imax|remastered|special[\s._-]edition|ultimate[\s._-]edition|criterion)(?:[\s._\-)\]]|$)`)
 )
 
@@ -94,9 +92,6 @@ func parseMovieName(name string) MovieInfo {
 	s := stripPrefixes(name)
 	limit := len(s)
 	if loc := tagRe.FindStringIndex(s); loc != nil && loc[0] > 0 {
-		limit = loc[0] + 1
-	}
-	if loc := partRe.FindStringIndex(s[:limit]); loc != nil && loc[0] > 0 {
 		limit = loc[0] + 1
 	}
 	if title, year, end := splitTrailingYear(s[:limit]); year != 0 {
@@ -282,25 +277,10 @@ func atoi(s string) int {
 	return n
 }
 
-// FileVersion tells apart parts of one version, played in sequence, from alternative versions of an item.
-type FileVersion struct {
-	// Key is shared by all parts of the same version.
-	Key     string
-	Part    int
-	Edition string
-}
-
-// ParseFileVersion reads the part number from the file name or its folder ("CD1", "DVD 2", "Partie 1")
-// and the edition from what follows the title, so a title such as "Loose Change Final Cut" is not an edition.
-func ParseFileVersion(path string) FileVersion {
+// ParseEdition reads the edition from what follows the title in the file name or its folder,
+// so a title such as "Loose Change Final Cut" is not an edition.
+func ParseEdition(path string) string {
 	dir, base := filepath.Dir(path), stem(filepath.Base(path))
-	v := FileVersion{Key: strings.ToLower(partRe.ReplaceAllString(dir, " ") + "/" + partRe.ReplaceAllString(base, " "))}
-	for _, s := range []string{base, filepath.Base(dir)} {
-		if m := partRe.FindStringSubmatch(s); m != nil {
-			v.Part = atoi(m[1])
-			break
-		}
-	}
 	for _, s := range []string{base, filepath.Base(dir)} {
 		after := s
 		if loc := yearRe.FindStringIndex(s); loc != nil {
@@ -311,9 +291,8 @@ func ParseFileVersion(path string) FileVersion {
 			continue
 		}
 		if m := editionRe.FindStringSubmatch(after); m != nil {
-			v.Edition = editionLabels[strings.ToLower(strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(m[1]))]
-			break
+			return editionLabels[strings.ToLower(strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(m[1]))]
 		}
 	}
-	return v
+	return ""
 }

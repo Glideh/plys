@@ -24,7 +24,7 @@ const (
 	homeRailSize    = 20
 )
 
-var playableKinds = []string{"movie", "episode", "part", "video"}
+var playableKinds = []string{"movie", "episode", "video"}
 
 // accessibleItem loads an item the caller may see, answering 404 otherwise.
 func (s *Server) accessibleItem(w http.ResponseWriter, r *http.Request) (store.Item, bool) {
@@ -67,7 +67,7 @@ func (s *Server) putProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !slices.Contains(playableKinds, it.Kind) {
-		httpx.Error(w, http.StatusBadRequest, "validation", "only movies, episodes, parts and videos have a progress")
+		httpx.Error(w, http.StatusBadRequest, "validation", "only movies, episodes and videos have a progress")
 		return
 	}
 	var req progressRequest
@@ -140,7 +140,6 @@ type playTargetDTO struct {
 	Title           string    `json:"title"`
 	SeasonNumber    *int32    `json:"seasonNumber,omitempty"`
 	EpisodeNumber   *int32    `json:"episodeNumber,omitempty"`
-	PartNumber      *int32    `json:"partNumber,omitempty"`
 	PositionSeconds float64   `json:"positionSeconds"`
 	// Resume is set when the target was started; Rewatch when everything under the node was already watched.
 	Resume  bool `json:"resume"`
@@ -150,11 +149,11 @@ type playTargetDTO struct {
 func targetOf(row store.ListPlayableUnderRow) playTargetDTO {
 	return playTargetDTO{
 		ID: row.ID, Kind: row.Kind, Title: row.Title, SeasonNumber: row.SeasonNumber,
-		EpisodeNumber: row.EpisodeNumber, PartNumber: row.PartNumber,
+		EpisodeNumber: row.EpisodeNumber,
 	}
 }
 
-// chooseTarget picks what a "play" on a series, season or multi-part movie starts: the item in progress,
+// chooseTarget picks what a "play" on a series or season starts: the item in progress,
 // else the first unwatched one after the furthest watched, else the first unwatched, else the first again.
 func chooseTarget(rows []store.ListPlayableUnderRow) *playTargetDTO {
 	if len(rows) == 0 {
@@ -224,7 +223,7 @@ func (s *Server) withProgress(r *http.Request, it store.Item, dto *itemDetailDTO
 			return err
 		}
 		dto.Watched, dto.PositionSeconds = pr.Watched, resumePoint(pr.Watched, pr.PositionSeconds)
-		if it.Kind == "episode" || it.Kind == "part" {
+		if it.Kind == "episode" {
 			root := it.ID
 			if len(dto.Ancestors) > 0 {
 				root = dto.Ancestors[0].ID
@@ -253,7 +252,6 @@ type homeItemDTO struct {
 	ShowTitle       string    `json:"showTitle,omitempty"`
 	SeasonNumber    *int32    `json:"seasonNumber,omitempty"`
 	EpisodeNumber   *int32    `json:"episodeNumber,omitempty"`
-	PartNumber      *int32    `json:"partNumber,omitempty"`
 	PosterURL       *string   `json:"posterUrl"`
 	PositionSeconds float64   `json:"positionSeconds"`
 	DurationSeconds float64   `json:"durationSeconds"`
@@ -285,7 +283,7 @@ func (s *Server) localContinueWatching(ctx context.Context, userID uuid.UUID, is
 		}
 		items = append(items, homeItemDTO{
 			ID: row.ID, Kind: row.Kind, Title: row.Title, ShowTitle: row.ShowTitle, SeasonNumber: row.SeasonNumber,
-			EpisodeNumber: row.EpisodeNumber, PartNumber: row.PartNumber, PosterURL: poster,
+			EpisodeNumber: row.EpisodeNumber, PosterURL: poster,
 			PositionSeconds: row.PositionSeconds, DurationSeconds: ptrValue(row.DurationSeconds), UpdatedAt: row.UpdatedAt,
 		})
 	}
@@ -317,7 +315,7 @@ func (s *Server) localNextUp(ctx context.Context, userID uuid.UUID, isAdmin bool
 		}
 		items = append(items, homeItemDTO{
 			ID: row.ID, Kind: row.Kind, Title: row.Title, ShowTitle: row.ShowTitle, SeasonNumber: row.SeasonNumber,
-			EpisodeNumber: row.EpisodeNumber, PartNumber: row.PartNumber, PosterURL: poster, UpdatedAt: row.UpdatedAt,
+			EpisodeNumber: row.EpisodeNumber, PosterURL: poster, UpdatedAt: row.UpdatedAt,
 		})
 	}
 	return items, nil

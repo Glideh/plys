@@ -145,10 +145,9 @@ const poster = computed(() => (item.value?.kind === 'episode' || item.value?.kin
 
 const displayTitle = computed(() => (item.value ? itemTitle(item.value) : ''))
 
-function itemTitle(it: Pick<ItemDetail, 'kind' | 'title' | 'seasonNumber' | 'episodeNumber' | 'partNumber'>): string {
+function itemTitle(it: Pick<ItemDetail, 'kind' | 'title' | 'seasonNumber' | 'episodeNumber'>): string {
   if (it.kind === 'season') return it.seasonNumber === 0 ? t('catalog.specials') : it.title || t('catalog.season', { n: it.seasonNumber })
   if (it.kind === 'episode') return it.title || t('catalog.episode', { n: it.episodeNumber })
-  if (it.kind === 'part') return t('catalog.part', { n: it.partNumber })
   return it.title
 }
 
@@ -168,14 +167,7 @@ const metaLine = computed(() => {
 })
 
 const childrenTitle = computed(() => {
-  switch (item.value?.kind) {
-    case 'series':
-      return t('catalog.seasons')
-    case 'season':
-      return t('catalog.episodes')
-    default:
-      return t('catalog.parts')
-  }
+  return item.value?.kind === 'series' ? t('catalog.seasons') : t('catalog.episodes')
 })
 
 function childTitle(c: ChildItem): string {
@@ -209,13 +201,12 @@ function play(fromStart = false) {
   })
 }
 
-function targetLabel(tg: { kind: string; seasonNumber?: number; episodeNumber?: number; partNumber?: number }): string {
-  if (tg.kind === 'part') return t('catalog.part', { n: tg.partNumber })
+function targetLabel(tg: { kind: string; seasonNumber?: number; episodeNumber?: number }): string {
   if (tg.kind === 'episode') return `S${String(tg.seasonNumber ?? 0).padStart(2, '0')}E${String(tg.episodeNumber ?? 0).padStart(2, '0')}`
   return ''
 }
 
-/** Series, seasons and multi-part movies play the item chosen by the server. */
+/** Series and seasons play the item chosen by the server. */
 function playTarget() {
   const tg = item.value?.playTarget
   if (!tg) return
@@ -320,7 +311,7 @@ async function onMatched(merged: boolean) {
             <nav v-if="item.ancestors.length" class="mb-2 flex flex-wrap gap-1 text-sm text-slate-400" aria-label="breadcrumb">
               <template v-for="(a, i) in item.ancestors" :key="a.id">
                 <RouterLink :to="{ name: 'item', params: { id: a.id }, query: serverQuery(server) }" class="hover:text-white">
-                  {{ a.kind === 'season' ? itemTitle({ ...a, episodeNumber: undefined, partNumber: undefined }) : a.title }}
+                  {{ a.kind === 'season' ? itemTitle({ ...a, episodeNumber: undefined }) : a.title }}
                 </RouterLink>
                 <span v-if="i < item.ancestors.length - 1" aria-hidden="true">›</span>
               </template>

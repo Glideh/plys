@@ -105,7 +105,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, part_number, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -125,7 +125,6 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.EpisodeNumberEnd,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.PartNumber,
 		&i.TmdbID,
 		&i.ImdbID,
 		&i.OriginalTitle,
@@ -249,7 +248,7 @@ type ListItemFilePathsParams struct {
 	MaxPaths int32
 }
 
-// Files of the item and of its direct and nested children (parts, seasons, episodes).
+// Files of the item and of its direct and nested children (seasons, episodes).
 func (q *Queries) ListItemFilePaths(ctx context.Context, arg ListItemFilePathsParams) ([]string, error) {
 	rows, err := q.db.Query(ctx, listItemFilePaths, arg.ItemID, arg.MaxPaths)
 	if err != nil {
@@ -426,7 +425,7 @@ type SetChildrenMatchStatusParams struct {
 	MatchStatus string
 }
 
-// Children with no metadata of their own (movie parts) follow their parent.
+// Children with no metadata of their own follow their parent.
 func (q *Queries) SetChildrenMatchStatus(ctx context.Context, arg SetChildrenMatchStatusParams) error {
 	_, err := q.db.Exec(ctx, setChildrenMatchStatus, arg.ParentID, arg.MatchStatus)
 	return err

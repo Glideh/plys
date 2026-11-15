@@ -56,14 +56,13 @@ const title = computed(() => {
     const code = `S${String(it.seasonNumber ?? 0).padStart(2, '0')}E${String(it.episodeNumber ?? 0).padStart(2, '0')}`
     return [it.ancestors[0]?.title, code, it.title].filter(Boolean).join(' · ')
   }
-  if (it.kind === 'part') return [it.ancestors[0]?.title, t('catalog.part', { n: it.partNumber })].filter(Boolean).join(' · ')
   return it.title
 })
 
-/** Films and videos show their year next to the title; episodes and parts already carry their context. */
+/** Films and videos show their year next to the title; episodes already carry their context. */
 const titleYear = computed(() => {
   const it = item.value
-  return it && it.kind !== 'episode' && it.kind !== 'part' && it.year ? String(it.year) : null
+  return it && it.kind !== 'episode' && it.year ? String(it.year) : null
 })
 
 // --- logo while paused -----------------------------------------------------------------------------
@@ -155,7 +154,6 @@ function toggleAutoplay() {
 const nextLabel = computed(() => {
   const n = item.value?.next
   if (!n) return ''
-  if (n.kind === 'part') return t('catalog.part', { n: n.partNumber })
   const code = `S${String(n.seasonNumber ?? 0).padStart(2, '0')}E${String(n.episodeNumber ?? 0).padStart(2, '0')}`
   return [code, n.title].filter(Boolean).join(' · ')
 })

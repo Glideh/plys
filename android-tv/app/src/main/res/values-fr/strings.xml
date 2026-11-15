@@ -101,12 +101,11 @@
     <string name="watched">Vu</string>
     <string name="season">Saison %1$d</string>
     <string name="episode">Épisode %1$d</string>
-    <string name="part">Partie %1$d</string>
     <string name="pause">Pause</string>
     <string name="rewind">−30 s</string>
     <string name="forward">+30 s</string>
     <string name="ended">Lecture terminée.</string>
-    <string name="next_episode">Épisode / partie suivante</string>
+    <string name="next_episode">Épisode suivant</string>
     <string name="unavailable">Aucune version lisible disponible.</string>
     <string name="error_network">Serveur inaccessible. Vérifiez son adresse et votre connexion.</string>
     <string name="error_credentials">Identifiant ou mot de passe incorrect.</string>
@@ -139,7 +138,6 @@
     <string name="time_left">%1$s restantes</string>
     <string name="seasons">Saisons</string>
     <string name="episodes">Épisodes</string>
-    <string name="parts">Parties</string>
     <string name="server_name">Serveur</string>
     <string name="up_next">Épisode suivant</string>
     <string name="up_next_in">Démarre dans %1$d s</string>

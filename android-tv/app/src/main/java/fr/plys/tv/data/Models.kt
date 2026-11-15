@@ -10,7 +10,7 @@ data class User(
     val id: String,
     val username: String,
     val locale: String,
-    /** Starts the next episode or part when one ends; shared with the web player. */
+    /** Starts the next episode when one ends; shared with the web player. */
     val autoplayNext: Boolean = false,
 )
 
@@ -235,7 +235,6 @@ data class ChildItem(
     val thumbUrl: String? = null,
     val seasonNumber: Int? = null,
     val episodeNumber: Int? = null,
-    val partNumber: Int? = null,
     val watched: Boolean = false,
     val overview: String? = null,
     val runtimeMinutes: Int? = null,
@@ -276,10 +275,10 @@ data class ItemDetail(
     val rating: Double? = null,
     val genres: List<String> = emptyList(),
     val backdropUrl: String? = null,
-    /** Title logo shown while paused; episodes and parts carry their series' or movie's. Absent from older servers. */
+    /** Title logo shown while paused; episodes carry their series'. Absent from older servers. */
     val logoUrl: String? = null,
     val thumbUrl: String? = null,
-    /** Series then season for an episode; movie for a part. */
+    /** Series then season for an episode. */
     val ancestors: List<Ancestor> = emptyList(),
     /** Set on top-level titles the user added to their watchlist; absent from servers older than the watchlist. */
     val inWatchlist: Boolean = false,
