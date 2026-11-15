@@ -43,7 +43,7 @@ export default {
     remaining: 'reste {time}',
     emptyNextUp: 'Aucun épisode à suivre.',
   },
-  nav: { admin: 'Administration', profile: 'Mon profil' },
+  nav: { admin: 'Administration', profile: 'Mon profil', search: 'Rechercher', closeSearch: 'Fermer la recherche' },
   profile: {
     title: 'Mon profil',
     subtitle: 'Réglages de votre compte.',

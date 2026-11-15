@@ -45,7 +45,7 @@ export default {
     remaining: '{time} left',
     emptyNextUp: 'No episodes to watch next.',
   },
-  nav: { admin: 'Administration', profile: 'Profile' },
+  nav: { admin: 'Administration', profile: 'Profile', search: 'Search', closeSearch: 'Close search' },
   profile: {
     title: 'My profile',
     subtitle: 'Settings for your account.',

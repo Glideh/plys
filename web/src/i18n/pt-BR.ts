@@ -45,7 +45,7 @@ export default {
     remaining: 'Faltam {time}',
     emptyNextUp: 'Nenhum episódio para assistir em seguida.',
   },
-  nav: { admin: 'Administração', profile: 'Perfil' },
+  nav: { admin: 'Administração', profile: 'Perfil', search: 'Pesquisar', closeSearch: 'Fechar a pesquisa' },
   profile: {
     title: 'Meu perfil',
     subtitle: 'Configurações da sua conta.',
