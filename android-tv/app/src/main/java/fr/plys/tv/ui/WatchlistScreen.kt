@@ -41,7 +41,7 @@ fun WatchlistScreen(screen: Screen.Watchlist, model: CatalogViewModel) {
                 PosterTile(title = item.title, image = item.posterUrl, api = model.api, source = item.source,
                     modifier = Modifier.focusInitially(index == 0), landscape = item.kind == "video",
                     subtitle = listOfNotNull(item.year?.toString(), item.source.serverName.takeIf { item.source.serverUrl != null && it.isNotBlank() })
-                        .joinToString(" · ")) { model.openWatchlistItem(item) }
+                        .joinToString(" · "), onPlay = { model.playWatchlistItem(item) }) { model.openWatchlistItem(item) }
             }
         }
     }

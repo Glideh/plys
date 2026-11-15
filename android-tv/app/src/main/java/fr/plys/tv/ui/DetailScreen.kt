@@ -83,7 +83,8 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
         if (it.hasFocus) scope.launch { androidx.compose.runtime.withFrameNanos { }; list.animateScrollToItem(0) }
     }
     val canPlay = item.playableVersion != null || item.playTarget != null
-    Box(Modifier.fillMaxSize()) {
+    // The play key plays the title wherever the focus is on the page, except on a season or episode tile, which plays that one.
+    Box(Modifier.fillMaxSize().onPlayKey(if (canPlay) ({ model.play(item) }) else null)) {
         Backdrop(item.backdropUrl ?: item.thumbUrl, model, screen)
         CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalScroll) {
             LazyColumn(state = list, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -218,6 +219,7 @@ private fun ChildrenRow(item: ItemDetail, model: CatalogViewModel, source: Serve
                 if (child.kind == "season") PosterTile(
                     title = childLabel(child), image = child.posterUrl, api = model.api, source = source,
                     modifier = modifier.width(132.dp), watched = child.watched, unwatched = child.unwatchedCount,
+                    onPlay = { model.playItem(child.id, source) },
                 ) { model.openItem(child.id, source) }
                 else {
                     val runtime = child.runtimeMinutes?.takeIf { it > 0 }
@@ -234,6 +236,7 @@ private fun ChildrenRow(item: ItemDetail, model: CatalogViewModel, source: Serve
                             child.overview?.takeIf { it.isNotBlank() },
                         ).joinToString(" · "),
                         progress = runtime?.let { (child.positionSeconds / (it * 60.0)).toFloat() }?.takeIf { child.positionSeconds > 0 },
+                        onPlay = { model.playItem(child.id, source) },
                     ) { model.openItem(child.id, source) }
                 }
             }

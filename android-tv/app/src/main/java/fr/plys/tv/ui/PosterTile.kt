@@ -46,18 +46,19 @@ private const val FOCUSED_SCALE = 1.08f
 /**
  * A poster (2:3) or a thumbnail (16:9) with its title, mirroring the web's `PosterCard`: rounded artwork, a
  * watched check or the count of episodes left, and a resume bar. Focus lifts the tile and rings it with the accent.
+ * [onPlay], when set, runs on the remote's play key while the tile has the focus.
  */
 @Composable
 fun PosterTile(
     title: String, image: String?, api: PlysApi, modifier: Modifier = Modifier,
     subtitle: String? = null, source: ServerRef? = null, landscape: Boolean = false,
     progress: Float? = null, watched: Boolean = false, unwatched: Int? = null, label: String? = null,
-    onClick: () -> Unit,
+    onPlay: (() -> Unit)? = null, onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(if (focused) FOCUSED_SCALE else 1f, label = "posterFocus")
     val shape = Plys.Card
-    Column(modifier.fillMaxWidth().onFocusChanged { focused = it.hasFocus }.clickable(
+    Column(modifier.fillMaxWidth().onFocusChanged { focused = it.hasFocus }.onPlayKey(onPlay).clickable(
         interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick,
     )) {
         Box(Modifier.fillMaxWidth().aspectRatio(if (landscape) 16f / 9f else 2f / 3f)

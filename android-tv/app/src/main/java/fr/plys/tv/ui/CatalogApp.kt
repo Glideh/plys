@@ -205,11 +205,11 @@ private fun Login(model: CatalogViewModel, state: CatalogState) {
 }
 
 @Composable
-fun MediaCard(item: ItemCard, api: PlysApi, modifier: Modifier, onClick: () -> Unit) {
+fun MediaCard(item: ItemCard, api: PlysApi, modifier: Modifier, onPlay: (() -> Unit)? = null, onClick: () -> Unit) {
     PosterTile(title = item.title, image = item.posterUrl, api = api, modifier = modifier,
         subtitle = listOfNotNull(item.year?.toString(), item.rating?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
             item.sources.firstOrNull()?.serverName?.takeIf { it.isNotBlank() }).joinToString(" · "),
-        landscape = item.kind == "video", watched = item.watched, onClick = onClick)
+        landscape = item.kind == "video", watched = item.watched, onPlay = onPlay, onClick = onClick)
 }
 
 @Composable

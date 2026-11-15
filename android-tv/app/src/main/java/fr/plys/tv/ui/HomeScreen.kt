@@ -128,7 +128,7 @@ fun HomeScreen(
                     RailTitle(recentLabel(kind))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
                         items(cards, key = { it.id }) { card ->
-                            MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp)) { model.openCard(card) }
+                            MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp), onPlay = { model.playCard(card) }) { model.openCard(card) }
                         }
                     }
                 }
@@ -170,7 +170,7 @@ private fun SearchRow(group: SearchGroup, model: CatalogViewModel, requestInitia
         LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding, verticalAlignment = Alignment.CenterVertically) {
             items(group.items, key = { it.id }) { card ->
                 MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp)
-                    .focusInitially(requestInitial && card == group.items.first())) { model.openCard(card) }
+                    .focusInitially(requestInitial && card == group.items.first()), onPlay = { model.playCard(card) }) { model.openCard(card) }
             }
             if (group.total > group.items.size) item("all") {
                 PlysButton(onClick = { model.openSearchKind(kind) }) { Text(stringResource(R.string.see_all)) }
@@ -230,6 +230,7 @@ private fun HomeRail(title: Int, entries: List<HomeItem>, model: CatalogViewMode
                         item.source.serverName.takeIf { it.isNotBlank() },
                     ).joinToString(" · "),
                     progress = if (item.durationSeconds > 0) (item.positionSeconds / item.durationSeconds).toFloat() else null,
+                    onPlay = { model.playItem(item.id, item.source) },
                 ) { model.openItem(item.id, item.source) }
             }
         }

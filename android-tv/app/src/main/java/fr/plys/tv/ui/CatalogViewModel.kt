@@ -259,6 +259,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun openWatchlistItem(item: WatchlistItem) = openItem(item.source.itemId.ifBlank { item.id }, item.source)
 
+    fun playWatchlistItem(item: WatchlistItem) = playItem(item.source.itemId.ifBlank { item.id }, item.source)
+
     fun logout() = perform {
         countsJob?.cancel()
         clearSearch()
@@ -302,9 +304,35 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun openItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
         val item = api.item(id, source)
         val copies = copies(item, source, sources)
-        // A copy that cannot play is not shown first when another server's can.
-        val shown = copies.takeIf { item.playableVersion == null }?.firstOrNull { it.item.playableVersion != null } ?: TitleCopy(source, item)
+        val shown = shownCopy(item, source, copies)
         navigate(Screen.Detail(shown.item, shown.source, sources, target = playTarget(shown.item, shown.source), copies = copies))
+    }
+
+    /** A copy that cannot play is not shown first when another server's can. */
+    private fun shownCopy(item: ItemDetail, source: ServerRef?, copies: List<TitleCopy>): TitleCopy =
+        copies.takeIf { item.playableVersion == null }?.firstOrNull { it.item.playableVersion != null } ?: TitleCopy(source, item)
+
+    /** The remote's play key on a card: plays what its detail page would, without opening it. */
+    fun playCard(card: ItemCard) {
+        val source = card.sources.firstOrNull()
+        playItem(source?.itemId?.takeIf { it.isNotBlank() } ?: card.id, source, card.sources)
+    }
+
+    /**
+     * Plays a title straight away, as its detail page's play button would with the default tracks: a film or an
+     * episode from where it was left, a series or a season from its next episode.
+     */
+    fun playItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
+        val item = api.item(id, source)
+        val shown = shownCopy(item, source, copies(item, source, sources))
+        val playable = playTarget(shown.item, shown.source) ?: shown.item
+        if (playable.playableVersion == null) throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
+        mutableState.value = mutableState.value.copy(
+            playback = playable,
+            playbackPosition = shown.item.playTarget?.positionSeconds ?: playable.positionSeconds,
+            playbackSource = shown.source,
+            playbackSelection = PlaybackSelection().normalized(playable),
+        )
     }
 
     /** The items each server holds for a playable title, the given one first; servers that fail to answer are left out. */
@@ -401,6 +429,13 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         val screen = mutableState.value.screen
         if (screen is Screen.Detail) perform {
             mutableState.value = mutableState.value.copy(screen = refreshed(screen))
+        }
+        // Played from the home with the play key: the resume and next-up rows follow what was just watched.
+        if (screen is Screen.Home) viewModelScope.launch {
+            try {
+                val data = api.home()
+                if (mutableState.value.screen is Screen.Home) mutableState.value = mutableState.value.copy(screen = Screen.Home(data))
+            } catch (_: ClientException) {}
         }
     }
 

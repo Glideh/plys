@@ -66,6 +66,7 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
                 val card = items[index]
                 if (card != null) MediaCard(card, model.api,
                     Modifier.focusInitially(card.id == focusId).onFocusChanged { if (it.hasFocus) model.rememberFocus(card.id, index) },
+                    onPlay = { model.playCard(card) },
                 ) { model.openCard(card) }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
