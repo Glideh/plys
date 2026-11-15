@@ -440,7 +440,7 @@ async function onMatched(merged: boolean) {
             <li v-for="c in item.children" :key="c.id" class="relative">
               <RouterLink :to="{ name: 'item', params: { id: c.id }, query: serverQuery(server) }" class="group flex gap-4 p-4 pr-14 transition hover:bg-white/[0.03]">
                 <div class="relative aspect-video w-40 shrink-0 overflow-hidden rounded-lg bg-surface-800 sm:w-56">
-                  <img v-if="c.thumbUrl" :src="c.thumbUrl" alt="" loading="lazy" class="size-full object-cover transition duration-500 group-hover:scale-105" />
+                  <img v-if="c.thumbUrl" :src="c.thumbUrl" alt="" loading="lazy" class="size-full object-cover" />
                   <div v-if="childProgress(c)" class="absolute inset-x-0 bottom-0 h-1.5 bg-black/60">
                     <div class="h-full bg-accent-400" :style="{ width: Math.min(childProgress(c)!, 1) * 100 + '%' }" />
                   </div>

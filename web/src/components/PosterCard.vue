@@ -28,7 +28,7 @@ const initial = computed(() => props.title.trim().charAt(0).toUpperCase() || '?'
   <RouterLink :to="to" class="group block focus-visible:outline-none">
     <div
       :class="landscape ? 'aspect-video' : 'aspect-[2/3]'"
-      class="relative overflow-hidden rounded-xl bg-surface-800 shadow-lg shadow-black/30 ring-1 ring-white/5 transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-black/50 group-hover:ring-accent-500/60 group-focus-visible:ring-2 group-focus-visible:ring-accent-400"
+      class="relative overflow-hidden rounded-xl bg-surface-800 shadow-lg shadow-black/30 ring-1 ring-white/5 transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:shadow-black/50 group-hover:ring-2 group-hover:ring-accent-500/80 group-focus-visible:ring-2 group-focus-visible:ring-accent-400"
     >
       <img
         v-if="imageUrl"
@@ -36,7 +36,7 @@ const initial = computed(() => props.title.trim().charAt(0).toUpperCase() || '?'
         :alt="title"
         loading="lazy"
         decoding="async"
-        class="size-full object-cover transition duration-500 group-hover:scale-105"
+        class="size-full object-cover"
       />
       <div
         v-else
