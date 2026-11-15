@@ -23,6 +23,17 @@ type ExternalSubtitle struct {
 	CreatedAt       time.Time
 }
 
+type Invitation struct {
+	ID             uuid.UUID
+	TokenHash      []byte
+	PinHash        []byte
+	Locale         string
+	CreatedBy      *uuid.UUID
+	FailedAttempts int32
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+}
+
 type Item struct {
 	ID                uuid.UUID
 	LibraryID         uuid.UUID

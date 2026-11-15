@@ -54,8 +54,10 @@ func (l *fixedWindowLimiter) allow(key string) bool {
 const (
 	loginIPLimit   = 20
 	loginUserLimit = 5
-	loginWindow    = time.Minute
-	loginMaxBlock  = 15 * time.Minute
+	// Lookups and acceptances of invitations; a wrong PIN is also counted on the invitation itself.
+	invitationIPLimit = 10
+	loginWindow       = time.Minute
+	loginMaxBlock     = 15 * time.Minute
 )
 
 // backoffLimiter allows limit attempts per key within each window. A key over its limit is blocked for one window,

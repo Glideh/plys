@@ -60,6 +60,16 @@ export const useAuthStore = defineStore('auth', () => {
     applySession(session)
   }
 
+  /** Creates the account of an invitation and signs it in. */
+  async function acceptInvitation(body: { token: string; pin: string; username: string; password: string; locale: Locale }) {
+    const session = await api<Session>('/invitations/accept', {
+      method: 'POST',
+      body: { ...body, deviceName: DEVICE_NAME, tokenDelivery: 'cookie' },
+      auth: false,
+    })
+    applySession(session)
+  }
+
   async function logout() {
     await api('/auth/logout', { method: 'POST', auth: false }).catch(() => undefined)
     clear()
@@ -81,5 +91,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = await api<User>('/me/avatar', { method: 'DELETE' })
   }
 
-  return { user, needsSetup, isAdmin, init, setupAdmin, login, logout, updatePreferences, setAvatar, removeAvatar }
+  return { user, needsSetup, isAdmin, init, setupAdmin, login, acceptInvitation, logout, updatePreferences, setAvatar, removeAvatar }
 })

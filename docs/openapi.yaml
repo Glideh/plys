@@ -313,6 +313,149 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /invitations:
+    get:
+      operationId: listInvitations
+      summary: List pending invitations (admin)
+      description: Expired invitations are purged and never listed.
+      responses:
+        "200":
+          description: Pending invitations, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Invitation" }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createInvitation
+      summary: Invite someone to create their own account (admin)
+      description: >
+        Returns the invitation link and its 4-digit PIN once; only their hashes are stored. The link is the server
+        public URL followed by `/invite#<token>`: the token sits in the fragment, so browsers never send it to a
+        server. The invitation expires after 7 days and creates a `user` account.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: { $ref: "#/components/schemas/Locale" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Invitation"
+                  - type: object
+                    required: [url, pin]
+                    properties:
+                      url: { type: string, format: uri }
+                      pin: { type: string, pattern: "^[0-9]{4}$" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The server public URL is not set (`public_url_required`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /invitations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: deleteInvitation
+      summary: Revoke a pending invitation (admin)
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /invitations/lookup:
+    post:
+      operationId: lookupInvitation
+      summary: Check an invitation link before its form is filled in
+      description: >
+        The token is sent in the body so that it stays out of access logs. Shares the per-address limit of
+        `acceptInvitation` (10 per minute, doubling blocks up to 15 minutes).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: The invitation is usable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [locale, expiresAt, serverName]
+                properties:
+                  locale: { $ref: "#/components/schemas/Locale" }
+                  expiresAt: { type: string, format: date-time }
+                  serverName: { type: string }
+        "404":
+          description: Invalid, expired or already used (`invitation_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /invitations/accept:
+    post:
+      operationId: acceptInvitation
+      summary: Create the invited account and open a session
+      description: >
+        Single use: the invitation is consumed by the account creation. A wrong PIN counts against the invitation,
+        which is revoked after 5 of them. Requests are also limited per client address (`rate_limited`, with
+        `Retry-After`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Credentials"
+                - $ref: "#/components/schemas/SessionOptions"
+                - type: object
+                  required: [token, pin]
+                  properties:
+                    token: { type: string }
+                    pin: { type: string, pattern: "^[0-9]{4}$" }
+                    locale: { $ref: "#/components/schemas/Locale" }
+      responses:
+        "201": { $ref: "#/components/responses/Session" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403":
+          description: Wrong PIN (`invalid_pin`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Invalid, expired, used or revoked after too many wrong PINs (`invitation_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Username already exists (`username_taken`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
   /libraries:
     get:
       operationId: listLibraries
@@ -1511,6 +1654,14 @@ components:
         autoplayNext: { type: boolean, default: false }
         avatarUpdatedAt: { type: string, format: date-time, description: Present only when the user has an avatar; used as cache-buster }
         createdAt: { type: string, format: date-time }
+    Invitation:
+      type: object
+      required: [id, locale, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        locale: { $ref: "#/components/schemas/Locale" }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
     Session:
       type: object
       required: [accessToken, tokenType, expiresAt, user]

@@ -3,11 +3,14 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@/api/client'
 import AliasDialog from '@/components/AliasDialog.vue'
+import { invitationsApi, type Invitation } from '@/api/invitations'
+import { settingsApi } from '@/api/settings'
 import { usersApi, type Role } from '@/api/users'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseDialog from '@/components/BaseDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import InviteDialog from '@/components/InviteDialog.vue'
 import TextField from '@/components/TextField.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
@@ -19,6 +22,9 @@ const auth = useAuthStore()
 const errorMessage = useErrorMessage()
 
 const users = ref<User[]>([])
+const invitations = ref<Invitation[]>([])
+// Invitation links point at the public URL, so the button needs one.
+const canInvite = ref(false)
 const loading = ref(true)
 const error = ref('')
 const notice = ref('')
@@ -34,9 +40,10 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const page = await usersApi.listPage()
+    const [page, pending] = await Promise.all([usersApi.listPage(), invitationsApi.list()])
     users.value = page.items
     syncing.value = page.syncing
+    invitations.value = pending
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -132,6 +139,37 @@ async function saveAlias(alias: string | null) {
   await load()
 }
 
+const inviteOpen = ref(false)
+
+async function loadInvitations() {
+  try {
+    invitations.value = await invitationsApi.list()
+  } catch (err) {
+    error.value = errorMessage(err)
+  }
+}
+
+const revokeOpen = ref(false)
+const revoking = ref<Invitation | null>(null)
+
+function askRevoke(invitation: Invitation) {
+  revoking.value = invitation
+  revokeOpen.value = true
+}
+
+async function revoke() {
+  await invitationsApi.remove(revoking.value!.id)
+  await loadInvitations()
+}
+
+async function loadCanInvite() {
+  try {
+    canInvite.value = (await settingsApi.get()).publicUrl !== ''
+  } catch {
+    canInvite.value = false
+  }
+}
+
 const deleteOpen = ref(false)
 const deleting = ref<User | null>(null)
 
@@ -145,7 +183,10 @@ async function remove() {
   await load()
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadCanInvite()
+})
 onUnmounted(() => clearTimeout(syncTimer))
 </script>
 
@@ -156,7 +197,10 @@ onUnmounted(() => clearTimeout(syncTimer))
         <h2 class="text-lg font-semibold">{{ t('admin.users') }}</h2>
         <span v-if="loading || syncing" role="status" class="text-xs text-slate-500">{{ t('users.syncing') }}</span>
       </div>
-      <BaseButton variant="primary" @click="openCreate">+ {{ t('users.new') }}</BaseButton>
+      <div class="flex gap-2">
+        <BaseButton v-if="canInvite" @click="inviteOpen = true">{{ t('invitations.invite') }}</BaseButton>
+        <BaseButton variant="primary" @click="openCreate">+ {{ t('users.new') }}</BaseButton>
+      </div>
     </div>
 
     <ErrorAlert v-if="error" class="mb-4" :message="error" />
@@ -214,6 +258,24 @@ onUnmounted(() => clearTimeout(syncTimer))
               </div>
             </td>
           </tr>
+          <tr v-for="invitation in invitations" :key="invitation.id" data-testid="pending-invitation">
+            <td class="px-5 py-3">
+              <div class="flex items-center gap-3">
+                <span class="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-white/20 text-slate-500" aria-hidden="true">?</span>
+                <span class="font-medium text-slate-400 italic">{{ t('invitations.pending') }}</span>
+                <span class="text-xs text-slate-500">{{ t('invitations.expires', { date: d(new Date(invitation.expiresAt), 'long') }) }}</span>
+              </div>
+            </td>
+            <td class="px-5 py-3 text-slate-500">{{ t('users.roles.user') }}</td>
+            <td class="hidden px-5 py-3 text-slate-400 sm:table-cell">{{ d(new Date(invitation.createdAt)) }}</td>
+            <td class="px-5 py-3">
+              <div class="flex justify-end gap-2">
+                <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askRevoke(invitation)">
+                  {{ t('common.delete') }}
+                </BaseButton>
+              </div>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -257,6 +319,16 @@ onUnmounted(() => clearTimeout(syncTimer))
     </BaseDialog>
 
     <AliasDialog v-model:open="aliasOpen" :name="aliasUser?.username ?? ''" :alias="aliasUser?.alias ?? null" :save="saveAlias" />
+
+    <InviteDialog v-model:open="inviteOpen" @created="loadInvitations" />
+
+    <ConfirmDialog
+      v-model:open="revokeOpen"
+      :title="t('invitations.revokeTitle')"
+      :message="t('invitations.revokeConfirm')"
+      :confirm-label="t('common.delete')"
+      :action="revoke"
+    />
 
     <ConfirmDialog
       v-model:open="deleteOpen"

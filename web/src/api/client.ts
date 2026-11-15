@@ -29,6 +29,9 @@ export type ApiErrorCode =
   | 'subtitles_invalid'
   | 'rate_limited'
   | 'peer_not_paired'
+  | 'public_url_required'
+  | 'invitation_invalid'
+  | 'invalid_pin'
   | 'internal'
   | 'network'
 

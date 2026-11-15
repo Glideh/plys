@@ -56,6 +56,8 @@ type Server struct {
 	handshakes *fixedWindowLimiter
 	loginIPs   *backoffLimiter
 	loginUsers *backoffLimiter
+	// Public invitation endpoints, counted per client address.
+	invitationIPs *backoffLimiter
 	// Recent peer answers, so that paging through an aggregated listing does not ask every peer again.
 	peerCatalogs *peerCache[[]sourcedCard]
 	peerFilters  *peerCache[catalogOptionsResponse]
@@ -67,14 +69,15 @@ func New(d Deps) *Server {
 		d.HTTPClient = newPeerHTTPClient()
 	}
 	return &Server{
-		Deps:         d,
-		q:            store.New(d.Pool),
-		handshakes:   newFixedWindowLimiter(handshakeLimit, handshakeWindow),
-		loginIPs:     newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
-		loginUsers:   newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
-		peerCatalogs: newPeerCache[[]sourcedCard](peerCatalogCacheTTL, d.PeerCacheTTL, peerCatalogCacheSize),
-		peerFilters:  newPeerCache[catalogOptionsResponse](peerFilterCacheTTL, d.PeerCacheTTL, peerFilterCacheSize),
-		peerHomes:    newPeerCache[homeResponse](peerHomeCacheTTL, d.PeerCacheTTL, peerHomeCacheSize),
+		Deps:          d,
+		q:             store.New(d.Pool),
+		handshakes:    newFixedWindowLimiter(handshakeLimit, handshakeWindow),
+		loginIPs:      newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
+		loginUsers:    newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
+		invitationIPs: newBackoffLimiter(invitationIPLimit, loginWindow, loginMaxBlock),
+		peerCatalogs:  newPeerCache[[]sourcedCard](peerCatalogCacheTTL, d.PeerCacheTTL, peerCatalogCacheSize),
+		peerFilters:   newPeerCache[catalogOptionsResponse](peerFilterCacheTTL, d.PeerCacheTTL, peerFilterCacheSize),
+		peerHomes:     newPeerCache[homeResponse](peerHomeCacheTTL, d.PeerCacheTTL, peerHomeCacheSize),
 	}
 }
 
@@ -99,6 +102,10 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/login", s.login)
 		r.Post("/auth/refresh", s.refresh)
 		r.Post("/auth/logout", s.logout)
+
+		// The token travels in the body, never in the path, so that it stays out of access logs.
+		r.Post("/invitations/lookup", s.lookupInvitation)
+		r.Post("/invitations/accept", s.acceptInvitation)
 
 		// Public so that <img> tags work without a bearer token; only referenced images are served.
 		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
@@ -167,6 +174,9 @@ func (s *Server) Routes() http.Handler {
 				r.Patch("/users/{id}", s.updateUser)
 				r.Delete("/users/{id}", s.deleteUser)
 				r.Put("/users/{id}/alias", s.setUserAlias)
+				r.Get("/invitations", s.listInvitations)
+				r.Post("/invitations", s.createInvitation)
+				r.Delete("/invitations/{id}", s.deleteInvitation)
 
 				r.Post("/libraries", s.createLibrary)
 				r.Patch("/libraries/{id}", s.updateLibrary)
