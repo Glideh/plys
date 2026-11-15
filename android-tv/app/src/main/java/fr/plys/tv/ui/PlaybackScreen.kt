@@ -102,6 +102,9 @@ private const val SUBTITLE_BOTTOM_MARGIN = 0.06f
 /** Seconds moved by one left or right press while the controls are hidden. */
 private const val DPAD_SEEK_SECONDS = 10.0
 
+/** Seconds moved by one previous or next press, accumulated like the left and right presses. */
+private const val SKIP_SEEK_SECONDS = 60.0
+
 /** Seconds before the next episode starts by itself at the end of one. */
 private const val AUTO_NEXT_SECONDS = 10
 
@@ -157,7 +160,8 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
         while (countdown > 0) { delay(1000); countdown-- }
         model.next()
     }
-    // Left and right presses made while the controls are hidden, applied together once the presses stop.
+    // Left and right presses made while the controls are hidden, and previous and next presses, applied together
+    // once the presses stop.
     var pendingSeek by remember { mutableDoubleStateOf(0.0) }
     var seekPresses by remember { mutableIntStateOf(0) }
     val rootFocus = remember { FocusRequester() }
@@ -198,6 +202,12 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                     KeyEvent.KEYCODE_MEDIA_PLAY -> { model.setPaused(false); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_REWIND -> { model.seek(-30.0); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { model.seek(30.0); showControls = true; true }
+                    // Previous and next move by a minute, whether the controls are shown or not: they move no focus.
+                    KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_NEXT -> {
+                        pendingSeek += if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) -SKIP_SEEK_SECONDS else SKIP_SEEK_SECONDS
+                        seekPresses++
+                        true
+                    }
                     // Hidden controls: left and right move through the video instead of opening the controls.
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         if (visible) false else {
