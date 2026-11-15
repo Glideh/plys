@@ -1,7 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from docs/brand/*.svg (issue #60): a fleur-de-lis with a play sign in its central petal. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="96dp" android:height="96dp" android:viewportWidth="96" android:viewportHeight="96">
     <path android:fillColor="#10141B" android:pathData="M0,0h96v96h-96z" />
-    <!-- The web logo: a play sign in a rounded accent square. -->
-    <path android:fillColor="#5EB3DA" android:pathData="M30,14h36a16,16 0,0 1,16 16v36a16,16 0,0 1,-16 16h-36a16,16 0,0 1,-16 -16v-36a16,16 0,0 1,16 -16z" />
-    <path android:fillColor="#10141B" android:pathData="M38,32L64,48L38,64z" />
+    <path android:fillColor="#5EB3DA" android:pathData="M29.64,14h36.72a15.64,15.64 0,0 1,15.64,15.64v36.72a15.64,15.64 0,0 1,-15.64,15.64h-36.72a15.64,15.64 0,0 1,-15.64,-15.64v-36.72a15.64,15.64 0,0 1,15.64,-15.64z" />
+    <group android:translateX="22.160" android:translateY="25.220" android:scaleX="0.5168" android:scaleY="0.5168">
+        <path android:fillColor="#10141B" android:pathData="M50 6C59 15 66 25 65 37C64 45 59 50 57 56H43C41 50 36 45 35 37C34 25 41 15 50 6Z" />
+        <path android:fillColor="#10141B" android:pathData="M55 56C58 41 69 29 82 29C92 29 97 38 94 46C92 51 86 52 84 48C83 46 84 44 86 44C89 43 89 37 83 37C74 37 67 46 66 56Z" />
+        <path android:fillColor="#10141B" android:pathData="M45 56C42 41 31 29 18 29C8 29 3 38 6 46C8 51 14 52 16 48C17 46 16 44 14 44C11 43 11 37 17 37C26 37 33 46 34 56Z" />
+        <path android:fillColor="#10141B" android:pathData="M33.5 57H66.5A3.5 3.5 0 0 1 66.5 64H33.5A3.5 3.5 0 0 1 33.5 57Z" />
+        <path android:fillColor="#10141B" android:pathData="M45 65H55L50 80Z" />
+        <path android:fillColor="#10141B" android:pathData="M58 65C66 65 74 69 78 80C71 76 64 73 57 71Z" />
+        <path android:fillColor="#10141B" android:pathData="M42 65C34 65 26 69 22 80C29 76 36 73 43 71Z" />
+        <path android:fillColor="#5EB3DA" android:pathData="M45.5 25.5V46.5L61 36Z" />
+    </group>
 </vector>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="6" x2="0" y2="80">
+      <stop offset="0" stop-color="#9adbfc"/><stop offset=".55" stop-color="#5eb3da"/><stop offset="1" stop-color="#3d94ba"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0 7)">
+    <g fill="#9adbfc" fill-opacity=".35" stroke="#5eb3da" stroke-opacity=".35" stroke-width="5" stroke-linejoin="round"><path d="M50 6C59 15 66 25 65 37C64 45 59 50 57 56H43C41 50 36 45 35 37C34 25 41 15 50 6Z"/><path d="M55 56C58 41 69 29 82 29C92 29 97 38 94 46C92 51 86 52 84 48C83 46 84 44 86 44C89 43 89 37 83 37C74 37 67 46 66 56Z"/><path d="M45 56C42 41 31 29 18 29C8 29 3 38 6 46C8 51 14 52 16 48C17 46 16 44 14 44C11 43 11 37 17 37C26 37 33 46 34 56Z"/><path d="M33.5 57H66.5A3.5 3.5 0 0 1 66.5 64H33.5A3.5 3.5 0 0 1 33.5 57Z"/><path d="M45 65H55L50 80Z"/><path d="M58 65C66 65 74 69 78 80C71 76 64 73 57 71Z"/><path d="M42 65C34 65 26 69 22 80C29 76 36 73 43 71Z"/></g>
+    <g fill="url(#g)" stroke="#10141b" stroke-width="1.6" stroke-linejoin="round"><path d="M50 6C59 15 66 25 65 37C64 45 59 50 57 56H43C41 50 36 45 35 37C34 25 41 15 50 6Z"/><path d="M55 56C58 41 69 29 82 29C92 29 97 38 94 46C92 51 86 52 84 48C83 46 84 44 86 44C89 43 89 37 83 37C74 37 67 46 66 56Z"/><path d="M45 56C42 41 31 29 18 29C8 29 3 38 6 46C8 51 14 52 16 48C17 46 16 44 14 44C11 43 11 37 17 37C26 37 33 46 34 56Z"/><path d="M33.5 57H66.5A3.5 3.5 0 0 1 66.5 64H33.5A3.5 3.5 0 0 1 33.5 57Z"/><path d="M45 65H55L50 80Z"/><path d="M58 65C66 65 74 69 78 80C71 76 64 73 57 71Z"/><path d="M42 65C34 65 26 69 22 80C29 76 36 73 43 71Z"/></g>
+    <g fill="none" stroke="#10141b" stroke-opacity=".55" stroke-width=".9" stroke-linecap="round"><path d="M50 11C56 18 61 27 60.5 37C60 44 57 49 55.5 53"/><path d="M59 54C61 43 70 33 82 33"/><path d="M50 11C44 18 39 27 39.5 37C40 44 43 49 44.5 53"/><path d="M41 54C39 43 30 33 18 33"/></g>
+    <path fill="#10141b" d="M45.5 25.5V46.5L61 36Z"/>
+    <g fill="#10141b"><circle cx="50" cy="60.5" r="1.6"/><circle cx="38" cy="60.5" r="1.2"/><circle cx="62" cy="60.5" r="1.2"/></g>
+  </g>
+</svg>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import BrandMark from '@/components/BrandMark.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { libraryKinds } from '@/api/libraries'
 import { serverApi } from '@/api/server'
@@ -44,7 +45,7 @@ onUnmounted(() => {
     <header class="sticky top-0 z-30 border-b border-white/5 bg-surface-950/80 backdrop-blur">
       <nav class="mx-auto flex h-16 max-w-screen-2xl items-center gap-8 px-4 sm:px-8">
         <RouterLink :to="{ name: 'home' }" class="flex items-center gap-2.5">
-          <span class="grid size-8 place-items-center rounded-lg bg-accent-500 text-sm font-black text-surface-950">▶</span>
+          <BrandMark class="size-8 rounded-lg" />
           <span class="text-lg font-bold tracking-tight">{{ t('app.name') }}</span>
         </RouterLink>
 

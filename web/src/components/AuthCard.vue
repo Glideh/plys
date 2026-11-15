@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import BrandMark from '@/components/BrandMark.vue'
+
 defineProps<{ title: string; subtitle: string }>()
 </script>
 
@@ -10,9 +12,7 @@ defineProps<{ title: string; subtitle: string }>()
     />
     <div class="relative w-full max-w-md">
       <div class="mb-8 flex items-center justify-center gap-3">
-        <span class="grid size-11 place-items-center rounded-xl bg-accent-500 text-xl font-black text-surface-950 shadow-lg shadow-accent-500/30">
-          ▶
-        </span>
+        <BrandMark class="size-11 rounded-xl shadow-lg shadow-accent-500/30" />
         <span class="text-2xl font-bold tracking-tight">{{ $t('app.name') }}</span>
       </div>
       <section class="rounded-2xl border border-white/5 bg-surface-900/80 p-8 shadow-2xl shadow-black/50 backdrop-blur">
