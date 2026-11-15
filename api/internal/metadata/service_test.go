@@ -183,13 +183,13 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 3 {
+	if item.VoteCount == nil || *item.VoteCount != 5000 || len(item.KeywordIds) != 1 || item.KeywordIds[0] != 123 || item.OriginalLanguage == nil || *item.OriginalLanguage != "en" || len(item.Countries) != 1 || item.Countries[0] != "GB" || item.EnrichmentVersion != 4 {
 		t.Fatalf("missing enrichment: %+v", item)
 	}
 	if item.LogoPath == nil || *item.LogoPath != "/alien-fr.png" {
 		t.Fatalf("logo in the metadata language expected: %v", item.LogoPath)
 	}
-	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 2, match_status = 'manual', keyword_ids = '{}', director_members = '[]', logo_path = NULL WHERE id = $1`, itemID); err != nil {
+	if _, err := env.pool.Exec(context.Background(), `UPDATE items SET enrichment_version = 3, match_status = 'manual', keyword_ids = '{}', director_members = '[]', logo_path = NULL WHERE id = $1`, itemID); err != nil {
 		t.Fatal(err)
 	}
 	env.svc.BackfillFilters(context.Background())
@@ -197,10 +197,10 @@ func TestFilterMetadataBackfillPreservesManualMatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if item.EnrichmentVersion != 3 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
+	if item.EnrichmentVersion != 4 || item.MatchStatus != "manual" || item.TmdbID == nil || *item.TmdbID != 348 || len(item.KeywordIds) != 1 {
 		t.Fatalf("backfill: %+v", item)
 	}
-	// Titles enriched before logos existed get one on the next pass.
+	// Titles enriched before logos (or SVG logos) were kept get one on the next pass.
 	if item.LogoPath == nil || *item.LogoPath != "/alien-fr.png" {
 		t.Fatalf("logo not backfilled: %v", item.LogoPath)
 	}
@@ -383,10 +383,12 @@ func TestBestLogo(t *testing.T) {
 		{FilePath: "/en-high.png", Language: lang("en"), VoteAverage: 6},
 		{FilePath: "/de.png", Language: lang("de"), VoteAverage: 10},
 		{FilePath: "/fr.svg", Language: lang("fr"), VoteAverage: 10},
+		{FilePath: "/es.jpg", Language: lang("es"), VoteAverage: 10},
 	}
 	cases := []struct{ lang, want string }{
-		{"fr-FR", "/en-high.png"}, // the French logo is an SVG: English comes next
+		{"fr-FR", "/fr.png"}, // an SVG logo is served as the PNG TMDB renders from it
 		{"de-DE", "/de.png"},
+		{"es-ES", "/en-high.png"}, // neither PNG nor SVG: English comes next
 		{"en-US", "/en-high.png"},
 		{"ja-JP", "/en-high.png"},
 	}

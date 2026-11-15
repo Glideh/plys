@@ -275,7 +275,7 @@ SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = $1 AND i.kind IN ('movie', 'series', 'video')
   AND (
     i.match_status = 'pending'
-    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3)
+    OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 4)
     OR (i.match_status IN ('matched', 'manual') AND i.metadata_language IS DISTINCT FROM $2::text)
     OR (i.kind = 'series' AND EXISTS (
         SELECT 1 FROM items s
@@ -331,7 +331,7 @@ func (q *Queries) ListItemsToMatch(ctx context.Context, arg ListItemsToMatchPara
 const listLibrariesForFilterEnrichment = `-- name: ListLibrariesForFilterEnrichment :many
 SELECT l.id, l.name, l.kind, l.created_at, l.updated_at, l.last_scanned_at, l.restricted, l.metadata_language FROM libraries l WHERE EXISTS (
     SELECT 1 FROM items i WHERE i.library_id = l.id AND i.kind IN ('movie', 'series')
-      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 3
+      AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 4
 )
 `
 
@@ -465,7 +465,7 @@ const updateItemFilters = `-- name: UpdateItemFilters :exec
 UPDATE items SET genre_ids = $1::integer[], actor_ids = $2::integer[],
   creator_ids = $3::integer[], keyword_ids = $4::integer[],
   original_language = $5, countries = $6::text[], vote_count = $7,
-  filter_labels = $8::jsonb, enrichment_version = 3
+  filter_labels = $8::jsonb, enrichment_version = 4
 WHERE id = $9
 `
 

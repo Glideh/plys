@@ -357,12 +357,6 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
       <span class="size-14 animate-spin rounded-full border-4 border-white/20 border-t-accent-400" role="status" />
     </div>
 
-    <Transition enter-from-class="opacity-0" leave-to-class="opacity-0" enter-active-class="transition-opacity duration-500" leave-active-class="transition-opacity duration-200">
-      <div v-if="showLogo" class="pointer-events-none absolute inset-0 grid place-items-center bg-black/35 p-8">
-        <img :src="logoUrl!" :alt="title" class="max-h-[28vh] max-w-[min(60vw,48rem)] object-contain drop-shadow-[0_4px_24px_rgba(0,0,0,0.6)]" @error="logoFailed = true" />
-      </div>
-    </Transition>
-
     <div v-if="ended && !failure" class="absolute inset-0 grid place-items-center bg-black/70 p-6">
       <div class="max-w-md text-center">
         <p class="text-sm tracking-wide text-slate-400 uppercase">{{ t('player.next') }}</p>
@@ -540,6 +534,17 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
         </div>
       </footer>
     </div>
+
+    <!-- Top-left, under the header, so that the paused picture stays visible. -->
+    <Transition enter-from-class="opacity-0" leave-to-class="opacity-0" enter-active-class="transition-opacity duration-500" leave-active-class="transition-opacity duration-200">
+      <img
+        v-if="showLogo"
+        :src="logoUrl!"
+        :alt="title"
+        class="pointer-events-none absolute top-20 left-4 max-h-[18vh] max-w-[min(40vw,28rem)] object-contain object-left drop-shadow-[0_2px_12px_rgba(0,0,0,0.7)] sm:left-6"
+        @error="logoFailed = true"
+      />
+    </Transition>
 
     <SubtitleSearchDialog
       v-if="subtitleSearchOpen && version"

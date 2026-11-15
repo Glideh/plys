@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -331,7 +332,8 @@ func imageLanguages(lang string) string {
 }
 
 // BestLogo picks the logo to show: in the metadata language, else in English, else without text, and the best
-// rated one among those. Only PNG files are kept: the image cache serves raster pictures, not SVG.
+// rated one among those. TMDB renders an SVG logo as a PNG of any size when its extension is swapped, so SVG logos
+// are returned as that PNG: the image cache and the clients then only deal with raster pictures.
 func BestLogo(logos []Image, lang string) string {
 	code, _, _ := strings.Cut(strings.ToLower(lang), "-")
 	rank := func(l Image) int {
@@ -347,13 +349,17 @@ func BestLogo(logos []Image, lang string) string {
 	}
 	best, bestRank := Image{}, 4
 	for _, l := range logos {
-		if !strings.HasSuffix(strings.ToLower(l.FilePath), ".png") || !strings.HasPrefix(l.FilePath, "/") {
+		ext := strings.ToLower(path.Ext(l.FilePath))
+		if (ext != ".png" && ext != ".svg") || !strings.HasPrefix(l.FilePath, "/") {
 			continue
 		}
 		r := rank(l)
 		if r < bestRank || (r == bestRank && (l.VoteAverage > best.VoteAverage || (l.VoteAverage == best.VoteAverage && l.Width > best.Width))) {
 			best, bestRank = l, r
 		}
+	}
+	if strings.EqualFold(path.Ext(best.FilePath), ".svg") {
+		return strings.TrimSuffix(best.FilePath, path.Ext(best.FilePath)) + ".png"
 	}
 	return best.FilePath
 }

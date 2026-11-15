@@ -237,11 +237,6 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             },
             modifier = Modifier.fillMaxSize(),
         )
-        val logo = pauseLogo(state)
-        if (logo != null) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-            AsyncImage(model = api.posterUrl(logo, source), contentDescription = detailTitle(state.item),
-                modifier = Modifier.fillMaxWidth(0.45f).fillMaxHeight(0.3f), contentScale = ContentScale.Fit)
-        }
         if (seekPresses > 0) {
             val target = (state.position + pendingSeek).coerceIn(0.0, state.duration.takeIf { it > 0 } ?: Double.MAX_VALUE)
             val sign = if (pendingSeek < 0) "−" else "+"
@@ -268,6 +263,12 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                     append(detailTitle(state.item))
                     if (year != null) withStyle(SpanStyle(color = Plys.Muted)) { append("  $year") }
                 }, style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                // Under the title rather than over the middle of the picture, which stays visible while paused.
+                pauseLogo(state)?.let { logo ->
+                    AsyncImage(model = api.posterUrl(logo, source), contentDescription = detailTitle(state.item),
+                        modifier = Modifier.padding(top = 16.dp).fillMaxWidth(0.3f).height(110.dp),
+                        alignment = Alignment.TopStart, contentScale = ContentScale.Fit)
+                }
             }
         }
         if (visible) Column(
