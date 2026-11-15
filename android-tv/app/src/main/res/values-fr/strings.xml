@@ -6,7 +6,6 @@
     <string name="subtitles">Sous-titres</string>
     <string name="no_subtitles">Sans sous-titres</string>
     <string name="cast">Acteurs</string>
-    <string name="no_filter">Sans filtre</string>
     <string name="error_home_unavailable">Ce serveur ne fournit pas l’API de l’accueil. Vérifiez son adresse et mettez à jour le serveur Plys. Les catalogues restent accessibles.</string>
     <string name="title_count_pending">Titres : —</string>
     <plurals name="title_count">
@@ -37,6 +36,7 @@
     <string name="filters_count">Filtres (%1$d)</string>
     <string name="remove_filter">Retirer %1$s</string>
     <string name="reset">Réinitialiser</string>
+    <string name="reset_filter">Réinitialiser %1$s</string>
     <string name="cancel">Annuler</string>
     <string name="apply">Appliquer</string>
     <string name="filter_genres">Genres inclus</string>

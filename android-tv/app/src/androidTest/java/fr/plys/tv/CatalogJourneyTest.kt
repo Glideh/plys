@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.height
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -393,7 +394,7 @@ class CatalogJourneyTest {
             val dialogInput = hasSetTextAction() and hasAnyAncestor(isDialog())
             rule.onAllNodes(dialogInput).assertCountEquals(0)
             val filterList = rule.onNode(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
-            val numericLabel = "${text(R.string.filter_from)} : ${text(R.string.no_filter)}"
+            val numericLabel = text(R.string.filter_from)
             filterList.performScrollToNode(hasText(numericLabel))
             rule.onNodeWithText(numericLabel).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             rule.onAllNodes(dialogInput).assertCountEquals(0)
@@ -401,18 +402,21 @@ class CatalogJourneyTest {
             rule.onNode(dialogInput).performTextReplacement("2000")
             rule.onNode(dialogInput).performImeAction()
             rule.onAllNodes(dialogInput).assertCountEquals(0)
-            val genreLabel = "${text(R.string.filter_genres)} : ${text(R.string.no_filter)}"
+            val genreLabel = text(R.string.filter_genres)
             filterList.performScrollToNode(hasText(genreLabel))
             screenshot("filters")
             rule.onNodeWithText(genreLabel).activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }
-            rule.onAllNodes(dialogInput).assertCountEquals(0)
+            // The picker's search field is passed over without opening the keyboard.
+            rule.onAllNodes(dialogInput and isFocused()).assertCountEquals(0)
             screenshot("filter-options")
             rule.onNodeWithText("Science-fiction").activate()
             rule.onNodeWithText("${text(R.string.filter_genres)} : Science-fiction").activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Drama").fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText("Drama").activate()
-            rule.onNodeWithText("${text(R.string.filter_genres)} : Drama").activate()
+            // The reset icon beside a criterion clears it alone.
+            rule.onNodeWithContentDescription(rule.activity.getString(R.string.reset_filter, text(R.string.filter_genres))).activate()
+            rule.onNodeWithText(genreLabel).activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText("Science-fiction").activate()
             rule.onAllNodesWithText(text(R.string.apply)).onLast().activate()

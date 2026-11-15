@@ -6,7 +6,6 @@
     <string name="subtitles">Legendas</string>
     <string name="no_subtitles">Desativadas</string>
     <string name="cast">Elenco</string>
-    <string name="no_filter">Nenhum filtro</string>
     <string name="error_home_unavailable">Este servidor não oferece a API da tela inicial. Verifique o endereço e atualize o Plys Server. Os catálogos continuam disponíveis.</string>
     <string name="title_count_pending">Títulos: —</string>
     <plurals name="title_count">
@@ -37,6 +36,7 @@
     <string name="filters_count">Filtros (%1$d)</string>
     <string name="remove_filter">Remover %1$s</string>
     <string name="reset">Redefinir</string>
+    <string name="reset_filter">Redefinir %1$s</string>
     <string name="cancel">Cancelar</string>
     <string name="apply">Aplicar</string>
     <string name="filter_genres">Gêneros incluídos</string>

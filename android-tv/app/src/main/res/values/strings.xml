@@ -6,7 +6,6 @@
     <string name="subtitles">Subtitles</string>
     <string name="no_subtitles">Off</string>
     <string name="cast">Cast</string>
-    <string name="no_filter">No filter</string>
     <string name="error_home_unavailable">This server does not provide the home screen API. Check its address and update Plys Server. Catalogs remain available.</string>
     <string name="title_count_pending">Titles: —</string>
     <plurals name="title_count">
@@ -37,6 +36,7 @@
     <string name="filters_count">Filters (%1$d)</string>
     <string name="remove_filter">Remove %1$s</string>
     <string name="reset">Reset</string>
+    <string name="reset_filter">Reset %1$s</string>
     <string name="cancel">Cancel</string>
     <string name="apply">Apply</string>
     <string name="filter_genres">Included genres</string>

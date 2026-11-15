@@ -23,13 +23,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import fr.plys.tv.ui.PlysButton as Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -306,32 +307,27 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     var choosing by remember { mutableStateOf<String?>(null) }
     var editingNumber by remember { mutableStateOf<String?>(null) }
     var invalid by remember { mutableStateOf(false) }
-    Dialog(onDismissRequest = dismiss) {
+    // The platform default width is narrower than the 760 dp asked for and squeezed the actions.
+    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.advanced_filters), style = MaterialTheme.typography.titleLarge)
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
                     items(categories) { category ->
-                        Button(onClick = { picker = category }, modifier = Modifier.fillMaxWidth()) {
-                            val selected = filterSelection(draft, category).firstOrNull()
-                            val value = selected?.let { api.filterOptionLabel(if (category == "excludeGenres") "genres" else category, it) } ?: stringResource(R.string.no_filter)
-                            Text("${filterLabel(category, query.kind)} : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                        val value = filterSelection(draft, category).firstOrNull()
+                            ?.let { api.filterOptionLabel(if (category == "excludeGenres") "genres" else category, it) }
+                        FilterRow(filterLabel(category, query.kind), value, { picker = category }) { draft = withFilterSelection(draft, category, emptyList()) }
                     }
                     items(choices) { key ->
-                        Button(onClick = { choosing = key }, modifier = Modifier.fillMaxWidth()) {
-                            val value = choiceValue(draft, key)?.let { choiceLabel(key, it) } ?: stringResource(R.string.no_filter)
-                            Text("${filterLabel(key, query.kind)} : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
+                        FilterRow(filterLabel(key, query.kind), choiceValue(draft, key)?.let { choiceLabel(key, it) }, { choosing = key }) { draft = withChoice(draft, key, null) }
                     }
                     items(numberGroups.filter { query.kind == CatalogKind.MOVIES || it.title != R.string.filter_group_runtime }) { group ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(stringResource(group.title), style = MaterialTheme.typography.titleSmall, color = Plys.TextStrong)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 group.fields.forEach { (key, label) ->
-                                    Button(onClick = { editingNumber = key }, modifier = Modifier.weight(1f)) {
-                                        Text("${stringResource(label)} : ${numeric[key]?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_filter)}",
-                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    FilterRow(stringResource(label), numeric[key]?.takeIf { it.isNotBlank() }, { editingNumber = key }, Modifier.weight(1f)) {
+                                        numeric = numeric + (key to ""); invalid = false
                                     }
                                 }
                             }
@@ -339,10 +335,12 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                     }
                 }
                 if (invalid) Text(stringResource(R.string.invalid_filters), color = MaterialTheme.colorScheme.error)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Reset stands apart on the left, Apply is the primary action on the right; none is ever squeezed.
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Action(R.string.reset) { draft = CatalogFilters(); numeric = numericFilterValues(draft); invalid = false }
+                    androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                     Action(R.string.cancel, onClick = dismiss)
-                    Action(R.string.apply) {
+                    Action(R.string.apply, primary = true) {
                         val valuesValid = numeric.all { (key, value) -> value.isBlank() || if (key == "ratingMin") value.toDoubleOrNull() != null else value.toIntOrNull() != null }
                         val result = draft.copy(yearMin = numeric["yearMin"]?.toIntOrNull(), yearMax = numeric["yearMax"]?.toIntOrNull(),
                             ratingMin = numeric["ratingMin"]?.toDoubleOrNull(), votesMin = numeric["votesMin"]?.toIntOrNull(),
@@ -356,7 +354,6 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     }
     choosing?.let { key ->
         ChoiceDialog(filterLabel(key, query.kind), { choosing = null }) {
-            item { Choice(stringResource(R.string.no_filter), choiceValue(draft, key) == null) { draft = withChoice(draft, key, null); choosing = null } }
             items(if (key == "resolution") CatalogFilters.RESOLUTIONS else CatalogFilters.AUDIO_FORMATS) { value ->
                 Choice(choiceLabel(key, value), choiceValue(draft, key) == value) { draft = withChoice(draft, key, value); choosing = null }
             }
@@ -370,6 +367,28 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
             dismiss = { editingNumber = null },
             apply = { numeric = numeric + (key to it); invalid = false; editingNumber = null },
         )
+    }
+}
+
+/**
+ * One criterion of the filters dialog: the button opens its editor and shows the current value; once a value is set,
+ * a reset icon beside it clears that criterion alone. Resetting gives the focus back to the criterion, since the icon
+ * goes away.
+ */
+@Composable
+private fun FilterRow(label: String, value: String?, open: () -> Unit, modifier: Modifier = Modifier, reset: () -> Unit) {
+    val criterion = remember { FocusRequester() }
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Button(onClick = open, modifier = Modifier.weight(1f).focusRequester(criterion)) {
+            Text(if (value == null) label else "$label : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (value != null) Button(onClick = { criterion.requestFocus(); reset() },
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+            Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.reset_filter, label), modifier = Modifier.size(20.dp),
+                tint = androidx.tv.material3.LocalContentColor.current)
+        }
+        // Keeps set and unset criteria the same width, so the column does not jag.
+        else androidx.compose.foundation.layout.Spacer(Modifier.size(44.dp))
     }
 }
 
@@ -414,7 +433,6 @@ private fun withoutBound(filters: CatalogFilters, key: String): CatalogFilters =
 private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: CatalogFilters, api: PlysApi, dismiss: () -> Unit, apply: (List<String>) -> Unit) {
     var search by remember { mutableStateOf("") }
     val selected = remember { filterSelection(draft, category).take(1) }
-    var editingSearch by remember { mutableStateOf(false) }
     var options by remember { mutableStateOf(emptyList<FilterOption>()) }
     var error by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -439,22 +457,14 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
         Surface(color = Plys.Surface900, shape = Plys.Large, border = androidx.compose.foundation.BorderStroke(1.dp, Plys.Hairline)) {
             Column(Modifier.widthIn(max = 700.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(filterLabel(category, query.kind), style = MaterialTheme.typography.titleLarge)
-                Button(onClick = { editingSearch = true }, modifier = Modifier.fillMaxWidth().focusInitially()) {
-                    Text(if (search.isBlank()) stringResource(R.string.search) else search, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                // With a current value, its entry takes the focus instead.
+                SearchField(search, { search = it }, stringResource(R.string.search), Modifier.fillMaxWidth().focusInitially(selected.isEmpty()))
                 if (loading) Text(stringResource(R.string.loading))
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
-                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        Button(onClick = { apply(emptyList()) }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.no_filter)) }
-                    }
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
                     if (!loading && options.isEmpty()) item { Text(stringResource(R.string.empty)) }
                     items(options, key = { it.id }) { option ->
-                        Button(onClick = { apply(listOf(option.id)) },
-                            enabled = option.id !in excluded, modifier = Modifier.fillMaxWidth()) {
-                            RadioButton(selected = option.id in selected, onClick = null)
-                            Text(option.label, modifier = Modifier.weight(1f))
-                        }
+                        Choice(option.label, option.id in selected, enabled = option.id !in excluded) { apply(listOf(option.id)) }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -463,9 +473,6 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
             }
         }
     }
-    if (editingSearch) FilterInputDialog(stringResource(R.string.search), search, KeyboardType.Text,
-        dismiss = { editingSearch = false }, apply = { search = it; editingSearch = false },
-    )
 }
 
 /** Maps the device language to a filter locale the server understands. */
