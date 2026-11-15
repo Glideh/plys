@@ -116,6 +116,15 @@ watch(
 const selectClass =
   'w-full max-w-md truncate rounded-lg border border-white/10 bg-surface-800/80 px-3 py-1.5 text-sm text-slate-100 focus:border-accent-500 focus:outline-none'
 
+// Once one row shows a selector, plain-text rows get the same box (transparent border,
+// same padding) so every row has the same height and the values line up.
+const hasSelector = computed(
+  () => choices.value.length > 1 || (version.value?.audio.length ?? 0) > 1 || (version.value?.subtitles.length ?? 0) > 0,
+)
+const readonlyClass = computed(() =>
+  hasSelector.value ? 'block max-w-md truncate border border-transparent px-3 py-1.5' : undefined,
+)
+
 function versionLabel(c: VersionChoice): string {
   return [multiServer.value ? c.server.serverName : null, c.version.label, formatBytes(c.version.size, locale.value)].filter(Boolean).join(' · ')
 }
@@ -393,14 +402,14 @@ async function onMatched(merged: boolean) {
                 <select v-if="choices.length > 1" v-model="versionId" aria-labelledby="item-version" :class="selectClass">
                   <option v-for="c in choices" :key="c.version.id" :value="c.version.id">{{ versionLabel(c) }}</option>
                 </select>
-                <template v-else-if="selected">{{ versionLabel(selected) }}</template>
+                <span v-else-if="selected" :class="readonlyClass">{{ versionLabel(selected) }}</span>
               </dd>
               <dt id="item-audio" class="text-slate-500">{{ t('catalog.audio') }}</dt>
               <dd class="min-w-0 text-slate-300">
                 <select v-if="version.audio.length > 1" v-model="audioIndex" aria-labelledby="item-audio" :class="selectClass">
                   <option v-for="a in version.audio" :key="a.index" :value="a.index">{{ trackLabel(a) }}</option>
                 </select>
-                <template v-else>{{ version.audio[0] ? trackLabel(version.audio[0]) : t('catalog.none') }}</template>
+                <span v-else :class="readonlyClass">{{ version.audio[0] ? trackLabel(version.audio[0]) : t('catalog.none') }}</span>
               </dd>
               <dt id="item-subtitles" class="text-slate-500">{{ t('catalog.subtitles') }}</dt>
               <dd class="min-w-0 text-slate-300">
@@ -408,7 +417,7 @@ async function onMatched(merged: boolean) {
                   <option :value="null">{{ t('catalog.none') }}</option>
                   <option v-for="s in version.subtitles" :key="s.index" :value="s.index">{{ subtitleLabel(s) }}</option>
                 </select>
-                <template v-else>{{ t('catalog.none') }}</template>
+                <span v-else :class="readonlyClass">{{ t('catalog.none') }}</span>
               </dd>
               <template v-if="version.error">
                 <dt class="text-amber-400">{{ t('catalog.unreadable') }}</dt>
