@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Heart, Info, RotateCcw } from '@lucide/vue'
+import { Check, Heart, Info, RotateCcw } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Track, type Version } from '@/api/catalog'
 import { personCatalogRoute } from '@/api/catalogFilters'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
@@ -231,6 +231,7 @@ const primaryLabel = computed(() => {
 })
 
 const togglingWatched = ref(false)
+const watchedLabel = computed(() => (item.value?.watched ? t('catalog.markUnwatched') : t('catalog.markWatched')))
 
 async function toggleWatched(id: string, watched: boolean) {
   togglingWatched.value = true
@@ -352,8 +353,17 @@ async function onMatched(merged: boolean) {
               <BaseButton v-else-if="item.playTarget" variant="primary" class="px-6 py-2.5 text-base" @click="playTarget">
                 ▶ {{ primaryLabel }}
               </BaseButton>
-              <BaseButton v-if="choices.length || item.playTarget" :loading="togglingWatched" @click="toggleWatched(item.id, item.watched)">
-                {{ item.watched ? t('catalog.markUnwatched') : t('catalog.markWatched') }}
+              <BaseButton
+                v-if="choices.length || item.playTarget"
+                class="!px-2.5"
+                :class="item.watched ? '!text-accent-300 hover:!text-accent-400' : ''"
+                :loading="togglingWatched"
+                :aria-pressed="item.watched"
+                :aria-label="watchedLabel"
+                :title="watchedLabel"
+                @click="toggleWatched(item.id, item.watched)"
+              >
+                <Check v-if="!togglingWatched" class="size-5" :stroke-width="2.5" aria-hidden="true" />
               </BaseButton>
               <BaseButton
                 v-if="item.ancestors.length === 0"

@@ -97,8 +97,8 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                             item.overview?.takeIf { it.isNotBlank() }?.let { Synopsis(it) { synopsis = true } }
                             // One line whatever the actions: once a title is started the play button turns into "Resume at…"
                             // and a restart button joins it, which squeezed the last buttons until their labels wrapped and
-                            // the header grew. The restart and watchlist buttons are icons, like on the web, and the row
-                            // scrolls sideways (following the focus) if a long translation still runs out of room.
+                            // the header grew. Apart from play, the actions (restart, watched, watchlist, next episode) are
+                            // icons, like on the web, and the row scrolls sideways (following the focus) if it still runs out of room.
                             Row(Modifier.padding(top = 8.dp).outdent(FocusGutter).horizontalScroll(rememberScrollState()).padding(horizontal = FocusGutter),
                                 horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (canPlay) {
@@ -111,9 +111,9 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                                     }
                                     if (position > 0 && item.playableVersion != null) Action(R.string.restart, iconOnly = true) { model.play(item, restart = true) }
                                 } else if (item.children.isEmpty()) Text(stringResource(R.string.unavailable), color = Plys.Warning)
-                                if (canPlay || item.kind == "episode") Action(if (item.watched) R.string.mark_unwatched else R.string.mark_watched) { model.toggleWatched() }
+                                if (canPlay || item.kind == "episode") Action(if (item.watched) R.string.mark_unwatched else R.string.mark_watched, iconOnly = true) { model.toggleWatched() }
                                 if (item.canWatchlist) Action(if (item.inWatchlist) R.string.remove_from_watchlist else R.string.add_to_watchlist, iconOnly = true) { model.toggleWatchlist() }
-                                item.next?.let { next -> Action(R.string.next_episode) { model.openItem(next.id, source) } }
+                                item.next?.let { next -> Action(R.string.next_episode, iconOnly = true) { model.openItem(next.id, source) } }
                             }
                         }
                     }

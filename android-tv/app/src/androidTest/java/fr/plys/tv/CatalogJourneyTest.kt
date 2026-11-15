@@ -251,7 +251,7 @@ class CatalogJourneyTest {
             val play = rule.onNodeWithText(resume).getUnclippedBoundsInRoot()
             assertEquals(freshPlay.top, play.top)
             assertEquals(freshPlay.height, play.height)
-            for (action in listOf(rule.onNodeWithContentDescription(text(R.string.restart)), rule.onNodeWithText(text(R.string.mark_watched)),
+            for (action in listOf(rule.onNodeWithContentDescription(text(R.string.restart)), rule.onNodeWithContentDescription(text(R.string.mark_watched)),
                 rule.onNodeWithContentDescription(text(R.string.add_to_watchlist)))) {
                 val bounds = action.assertIsDisplayed().getUnclippedBoundsInRoot()
                 assertTrue(bounds.top >= play.top && bounds.bottom <= play.bottom)
