@@ -57,6 +57,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import fr.plys.tv.R
+import fr.plys.tv.data.Ancestor
 import fr.plys.tv.data.ChildItem
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.ServerRef
@@ -93,7 +94,7 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                             Modifier.width(172.dp).height(if (item.posterUrl == null && item.thumbUrl != null) 97.dp else 258.dp)
                                 .shadow(20.dp, Plys.Card).clip(Plys.Card).border(1.dp, Plys.Hairline, Plys.Card), source)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Header(item, screen)
+                            Header(item, screen) { model.openItem(it.id, source) }
                             item.overview?.takeIf { it.isNotBlank() }?.let { Synopsis(it) { synopsis = true } }
                             // One line whatever the actions: once a title is started the play button turns into "Resume at…"
                             // and a restart button joins it, which squeezed the last buttons until their labels wrapped and
@@ -149,12 +150,8 @@ private fun Backdrop(path: String?, model: CatalogViewModel, screen: Screen.Deta
 }
 
 @Composable
-private fun Header(item: ItemDetail, screen: Screen.Detail) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val breadcrumb = item.ancestors.joinToString(" › ") { ancestor ->
-        if (ancestor.kind == "season" && ancestor.seasonNumber != null) context.getString(R.string.season, ancestor.seasonNumber) else ancestor.title
-    }
-    if (breadcrumb.isNotBlank()) Text(breadcrumb, style = MaterialTheme.typography.titleSmall, color = Plys.Accent300, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun Header(item: ItemDetail, screen: Screen.Detail, openAncestor: (Ancestor) -> Unit) {
+    if (item.ancestors.isNotEmpty()) Breadcrumb(item.ancestors, openAncestor)
     Text(detailTitle(item), style = MaterialTheme.typography.displaySmall, color = Plys.TextStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
     item.originalTitle?.takeIf { it.isNotBlank() && it != item.title }?.let {
         Text(it, style = MaterialTheme.typography.bodyMedium, color = Plys.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -178,6 +175,23 @@ private fun Header(item: ItemDetail, screen: Screen.Detail) {
         Text(it, style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = Plys.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     VersionSummary(screen.playable, screen.selection)
+}
+
+/**
+ * The series and season above an episode, or the series above a season, like the web's breadcrumb: each one is a
+ * button, reached by pressing up from the actions, that opens that level (back returns here).
+ */
+@Composable
+private fun Breadcrumb(ancestors: List<Ancestor>, open: (Ancestor) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        ancestors.forEachIndexed { index, ancestor ->
+            if (index > 0) Text("›", style = MaterialTheme.typography.titleSmall, color = Plys.Muted)
+            val label = if (ancestor.kind == "season" && ancestor.seasonNumber != null) stringResource(R.string.season, ancestor.seasonNumber) else ancestor.title
+            Button(onClick = { open(ancestor) }, modifier = Modifier.weight(1f, fill = false), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                Text(label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
 }
 
 /** "Play", "Resume at 12:04" or, on a series, the episode that will play. */
