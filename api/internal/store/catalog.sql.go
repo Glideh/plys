@@ -357,9 +357,18 @@ unwatched AS (
     LEFT JOIN playback_progress pr ON pr.item_id = x.id AND pr.user_id = $1
     WHERE f.missing_since IS NULL AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
+),
+last_seen AS (
+    SELECT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id, max(pr.updated_at)::timestamptz AS at
+    FROM playback_progress pr
+    JOIN items x ON x.id = pr.item_id
+    JOIN libs ON libs.id = x.library_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE pr.user_id = $1
+    GROUP BY 1
 )
 SELECT i.id, i.kind, i.title, i.sort_title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
-       i.tmdb_id, i.created_at,
+       i.tmdb_id, i.created_at, ls.at AS watched_on,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
        COALESCE(u.n, 0)::int AS unwatched_count,
        COALESCE(pw.watched, false) AS watched,
@@ -368,6 +377,7 @@ FROM items i
 JOIN libs ON libs.id = i.library_id
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
+LEFT JOIN last_seen ls ON ls.root_id = i.id
 WHERE i.parent_id IS NULL
   AND ($2::text = '' OR search_fold(i.title) ILIKE search_fold($2) OR search_fold(i.original_title) ILIKE search_fold($2))
   AND (($3::jsonb->>'yearMin') IS NULL OR i.year >= ($3::jsonb->>'yearMin')::integer)
@@ -388,6 +398,7 @@ ORDER BY
     CASE WHEN $4::text = 'year' THEN i.year END DESC NULLS LAST,
     CASE WHEN $4::text = 'added' THEN i.created_at END DESC,
     CASE WHEN $4::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $4::text = 'watched' THEN ls.at END DESC NULLS LAST,
     i.sort_title, i.id
 LIMIT $6 OFFSET $5
 `
@@ -416,6 +427,7 @@ type ListKindItemsRow struct {
 	MatchStatus    string
 	TmdbID         *int32
 	CreatedAt      time.Time
+	WatchedOn      *time.Time
 	EpisodeCount   int32
 	UnwatchedCount int32
 	Watched        bool
@@ -423,6 +435,7 @@ type ListKindItemsRow struct {
 }
 
 // Top-level entries of every library of one kind readable by the caller, optionally narrowed to one library.
+// Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
 func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([]ListKindItemsRow, error) {
 	rows, err := q.db.Query(ctx, listKindItems,
 		arg.UserID,
@@ -454,6 +467,7 @@ func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([
 			&i.MatchStatus,
 			&i.TmdbID,
 			&i.CreatedAt,
+			&i.WatchedOn,
 			&i.EpisodeCount,
 			&i.UnwatchedCount,
 			&i.Watched,
@@ -511,6 +525,14 @@ unwatched AS (
     LEFT JOIN playback_progress pr ON pr.item_id = x.id AND pr.user_id = $1
     WHERE f.missing_since IS NULL AND x.library_id = $2 AND pr.watched IS NOT TRUE
     GROUP BY sn.parent_id
+),
+last_seen AS (
+    SELECT COALESCE(p.parent_id, x.parent_id, x.id) AS root_id, max(pr.updated_at)::timestamptz AS at
+    FROM playback_progress pr
+    JOIN items x ON x.id = pr.item_id
+    LEFT JOIN items p ON p.id = x.parent_id
+    WHERE pr.user_id = $1 AND x.library_id = $2
+    GROUP BY 1
 )
 SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
@@ -520,6 +542,7 @@ SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, i.rating, i.m
 FROM items i
 LEFT JOIN unwatched u ON u.series_id = i.id
 LEFT JOIN playback_progress pw ON pw.item_id = i.id AND pw.user_id = $1
+LEFT JOIN last_seen ls ON ls.root_id = i.id
 WHERE i.library_id = $2 AND i.parent_id IS NULL
   AND ($3::text = '' OR search_fold(i.title) ILIKE search_fold($3) OR search_fold(i.original_title) ILIKE search_fold($3))
   AND (($4::jsonb->>'yearMin') IS NULL OR i.year >= ($4::jsonb->>'yearMin')::integer)
@@ -540,6 +563,7 @@ ORDER BY
     CASE WHEN $5::text = 'year' THEN i.year END DESC NULLS LAST,
     CASE WHEN $5::text = 'added' THEN i.created_at END DESC,
     CASE WHEN $5::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $5::text = 'watched' THEN ls.at END DESC NULLS LAST,
     i.sort_title, i.id
 LIMIT $7 OFFSET $6
 `
@@ -573,6 +597,7 @@ type ListLibraryItemsRow struct {
 // Each file is mapped once to its top-level ancestor: a per-entry subquery over all files was quadratic.
 // Technical filters (resolution, audio) narrow the files: an entry matches when one of its files does.
 // Episodes still to watch per series, for the badge of the grid.
+// Last time the user played anything of an entry (itself, a part or an episode), for the "watched" sort.
 func (q *Queries) ListLibraryItems(ctx context.Context, arg ListLibraryItemsParams) ([]ListLibraryItemsRow, error) {
 	rows, err := q.db.Query(ctx, listLibraryItems,
 		arg.UserID,

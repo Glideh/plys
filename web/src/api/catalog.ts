@@ -2,7 +2,7 @@ import { api } from './client'
 import type { ItemKind, LibraryKind } from './libraries'
 import { serializeFilters, type CatalogFilters, type FilterCategory, type FilterOptionsPage } from './catalogFilters'
 
-export const itemSorts = ['title', 'year', 'added', 'rating'] as const
+export const itemSorts = ['title', 'year', 'added', 'rating', 'watched'] as const
 export type ItemSort = (typeof itemSorts)[number]
 export type MatchStatus = 'pending' | 'matched' | 'unmatched' | 'manual' | 'skipped'
 

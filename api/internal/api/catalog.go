@@ -27,7 +27,7 @@ const (
 	maxPageSize = 1000
 )
 
-var itemSorts = []string{"title", "year", "added", "rating"}
+var itemSorts = []string{"title", "year", "added", "rating", "watched"}
 
 func (s *Server) canAccessLibrary(r *http.Request, libraryID uuid.UUID) (bool, error) {
 	p, _ := auth.PrincipalFrom(r.Context())
@@ -193,7 +193,7 @@ func parseItemListParams(w http.ResponseWriter, r *http.Request, maxLimit int) (
 		p.sort = "title"
 	}
 	if !slices.Contains(itemSorts, p.sort) {
-		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating")
+		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating, watched")
 		return p, false
 	}
 	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxLimit)

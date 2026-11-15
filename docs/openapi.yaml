@@ -440,7 +440,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title, an episode or a part), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
@@ -469,7 +469,7 @@ paths:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: library, in: query, required: false, schema: { type: string, format: uuid }, description: Restrict to one library of this kind }
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title, an episode or a part), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
@@ -557,7 +557,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating], default: title } }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title, an episode or a part), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20000, default: 60 } }
       responses:
@@ -579,6 +579,7 @@ paths:
                             tmdbId: { type: [integer, "null"] }
                             sortTitle: { type: string }
                             addedAt: { type: string, format: date-time }
+                            watchedOn: { type: string, format: date-time, description: Last time the user played the title or one of its episodes or parts; absent when never played }
                   total: { type: integer }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }

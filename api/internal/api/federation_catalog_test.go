@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"testing"
 	"time"
 
@@ -155,5 +156,19 @@ func TestFederatedFilterOptionsFallBackToEnglishForOlderPeers(t *testing.T) {
 	}
 	if first, second := <-received, <-received; first != "pt-BR" || second != "en" {
 		t.Fatalf("locales sent to the peer: %s then %s", first, second)
+	}
+}
+
+func TestCompareCardsByWatchedPutsRecentFirstAndUnwatchedLast(t *testing.T) {
+	s := uuid.New()
+	older, recent := time.Now().Add(-time.Hour), time.Now()
+	a := sourced("movie", nil, "Alien", s)
+	b := sourced("movie", nil, "Brazil", s)
+	c := sourced("movie", nil, "Casablanca", s)
+	b.WatchedOn, c.WatchedOn = &older, &recent
+	cards := []sourcedCard{a, b, c}
+	slices.SortStableFunc(cards, func(x, y sourcedCard) int { return compareCards(x, y, "watched") })
+	if cards[0].Title != "Casablanca" || cards[1].Title != "Brazil" || cards[2].Title != "Alien" {
+		t.Fatalf("expected Casablanca, Brazil, Alien, got %s, %s, %s", cards[0].Title, cards[1].Title, cards[2].Title)
 	}
 }

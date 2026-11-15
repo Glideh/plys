@@ -108,7 +108,7 @@ export default {
   catalog: {
     search: 'Search…',
     sort: 'Sort by',
-    sorts: { title: 'Title', year: 'Year', added: 'Recently added', rating: 'Rating' },
+    sorts: { title: 'Title', year: 'Year', added: 'Recently added', rating: 'Rating', watched: 'Recently watched' },
     empty: 'No items for now.',
     noResults: 'No results.',
     count: '{n} item | {n} items',

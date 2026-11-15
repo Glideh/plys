@@ -106,7 +106,7 @@ export default {
   catalog: {
     search: 'Rechercher…',
     sort: 'Trier par',
-    sorts: { title: 'Titre', year: 'Année', added: 'Ajout récent', rating: 'Note' },
+    sorts: { title: 'Titre', year: 'Année', added: 'Ajout récent', rating: 'Note', watched: 'Vu récemment' },
     empty: 'Aucun élément pour l’instant.',
     noResults: 'Aucun résultat.',
     count: '{n} élément | {n} éléments',

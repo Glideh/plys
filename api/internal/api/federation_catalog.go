@@ -40,6 +40,8 @@ type federatedCard struct {
 	TMDBID    *int32    `json:"tmdbId"`
 	SortTitle string    `json:"sortTitle"`
 	AddedAt   time.Time `json:"addedAt"`
+	// WatchedOn is the last time the user played anything of the title; peers released before it leave it out.
+	WatchedOn *time.Time `json:"watchedOn,omitempty"`
 }
 
 // sourcedCard is a catalogue entry together with the server that holds it.
@@ -86,7 +88,7 @@ func (s *Server) kindCards(ctx context.Context, userID uuid.UUID, isAdmin bool, 
 				Rating: row.Rating, EpisodeCount: row.EpisodeCount, MatchStatus: row.MatchStatus,
 				Watched: row.Watched || (row.Kind == "series" && row.UnwatchedCount == 0), UnwatchedCount: row.UnwatchedCount,
 			},
-			TMDBID: row.TmdbID, SortTitle: row.SortTitle, AddedAt: row.CreatedAt,
+			TMDBID: row.TmdbID, SortTitle: row.SortTitle, AddedAt: row.CreatedAt, WatchedOn: row.WatchedOn,
 		})
 	}
 	return cards, total, nil
@@ -169,6 +171,11 @@ func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.U
 	token, err := s.federatedTokenFor(p.ID, userID)
 	if err != nil {
 		return nil, err
+	}
+	// The origin sorts the merged cards itself, so a sort that older peers refuse is asked by title instead:
+	// the peer still reports watchedOn when it knows it.
+	if sort == "watched" {
+		sort = "title"
 	}
 	fetch := func(ctx context.Context, offset, limit int) (peerCardPage, error) {
 		target := p.Url + "/api/v1/federation/catalog/kinds/" + url.PathEscape(kind) + "/items?" + url.Values{
@@ -259,6 +266,8 @@ func compareCards(a, b sourcedCard, sort string) int {
 		c = b.AddedAt.Compare(a.AddedAt)
 	case "rating":
 		c = compareDescNullsLast(a.Rating, b.Rating)
+	case "watched":
+		c = compareTimesDescNullsLast(a.WatchedOn, b.WatchedOn)
 	}
 	if c != 0 {
 		return c
@@ -280,6 +289,19 @@ func compareDescNullsLast[T cmp.Ordered](a, b *T) int {
 		return -1
 	}
 	return cmp.Compare(*b, *a)
+}
+
+// compareTimesDescNullsLast orders later times first and missing times last.
+func compareTimesDescNullsLast(a, b *time.Time) int {
+	switch {
+	case a == nil && b == nil:
+		return 0
+	case a == nil:
+		return 1
+	case b == nil:
+		return -1
+	}
+	return b.Compare(*a)
 }
 
 // groupCards merges the versions of one TMDB title into a card; the first card in sort order is the primary.

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -286,5 +287,61 @@ func TestItemLogoInheritedByEpisodes(t *testing.T) {
 	}
 	if known, err := e.srv.q.IsImagePathReferenced(context.Background(), "/show-logo.png"); err != nil || !known {
 		t.Errorf("logos must be referenced images: %v %v", known, err)
+	}
+}
+
+func TestCatalogSortByWatched(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+	writeFiles(t, e.root,
+		"films/Alien.1979.mkv",
+		"films/Blade.Runner.1982.mkv",
+		"films/Casablanca.1942.mkv",
+		"series/Show.S01E01.mkv",
+		"series/Other.S01E01.mkv",
+	)
+	films := e.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	series := e.createScannedLibrary(t, admin, "Séries", "series", "series", nil)
+
+	ids := func(library string) map[string]string {
+		out := map[string]string{}
+		for _, it := range do(t, e.h, http.MethodGet, "/api/v1/libraries/"+library+"/items", admin, nil).body["items"].([]any) {
+			m := it.(map[string]any)
+			out[m["title"].(string)] = m["id"].(string)
+		}
+		return out
+	}
+	titles := func(path string) []string {
+		r := do(t, e.h, http.MethodGet, path, admin, nil)
+		if r.status != http.StatusOK {
+			t.Fatalf("%s: %d %v", path, r.status, r.body)
+		}
+		out := []string{}
+		for _, it := range r.body["items"].([]any) {
+			out = append(out, it.(map[string]any)["title"].(string))
+		}
+		return out
+	}
+	movies := ids(films)
+	for _, title := range []string{"Casablanca", "Alien"} {
+		if r := do(t, e.h, http.MethodPost, "/api/v1/items/"+movies[title]+"/watched", admin, nil); r.status != http.StatusNoContent {
+			t.Fatalf("mark %s watched: %d", title, r.status)
+		}
+	}
+	want := []string{"Alien", "Casablanca", "Blade Runner"}
+	if got := titles("/api/v1/libraries/" + films + "/items?sort=watched"); !slices.Equal(got, want) {
+		t.Errorf("library sorted by watched: got %v, want %v", got, want)
+	}
+	if got := titles("/api/v1/kinds/movies/items?sort=watched"); !slices.Equal(got, want) {
+		t.Errorf("kind sorted by watched: got %v, want %v", got, want)
+	}
+
+	// A series counts as watched as soon as one of its episodes was played.
+	shows := ids(series)
+	if r := do(t, e.h, http.MethodPost, "/api/v1/items/"+shows["Show"]+"/watched", admin, nil); r.status != http.StatusNoContent {
+		t.Fatalf("mark Show watched: %d", r.status)
+	}
+	if got := titles("/api/v1/libraries/" + series + "/items?sort=watched"); !slices.Equal(got, []string{"Show", "Other"}) {
+		t.Errorf("series sorted by watched: got %v", got)
 	}
 }

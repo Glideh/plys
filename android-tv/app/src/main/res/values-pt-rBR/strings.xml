@@ -31,6 +31,7 @@
     <string name="sort_year">Ano</string>
     <string name="sort_added">Adicionados recentemente</string>
     <string name="sort_rating">Nota no TMDB</string>
+    <string name="sort_watched">Vistos recentemente</string>
     <string name="all_libraries">Todas as bibliotecas</string>
     <string name="advanced_filters">Filtros avançados</string>
     <string name="filters_count">Filtros (%1$d)</string>
