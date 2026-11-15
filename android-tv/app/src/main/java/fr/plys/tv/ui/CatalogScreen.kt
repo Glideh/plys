@@ -50,7 +50,10 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
     Column(Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
-            Text(pluralStringResource(R.plurals.title_count, screen.page.total, screen.page.total), style = MaterialTheme.typography.bodyLarge,
+            val total = screen.page.total
+            val position = scrollPosition(screen.focusedPosition, total)
+            Text(if (position != null) pluralStringResource(R.plurals.title_position, total, position, total)
+                else pluralStringResource(R.plurals.title_count, total, total), style = MaterialTheme.typography.bodyLarge,
                 color = Plys.Muted, modifier = Modifier.padding(bottom = 4.dp))
             if (screen.page.unavailableServers > 0) Text(partialResults(screen.page.unavailableServers, screen.page.unavailableServerNames),
                 style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
@@ -81,3 +84,7 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
         }
     }
 }
+
+/** 1-based position of the focused title shown beside the total ("42/9394 titles"), or null when nothing is focused yet. */
+internal fun scrollPosition(focusedPosition: Int?, total: Int): Int? =
+    focusedPosition?.takeIf { total > 0 && it >= 0 }?.let { (it + 1).coerceAtMost(total) }

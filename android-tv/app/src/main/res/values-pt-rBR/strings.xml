@@ -13,6 +13,10 @@
         <item quantity="one">%1$d título</item>
         <item quantity="other">%1$d títulos</item>
     </plurals>
+    <plurals name="title_position">
+        <item quantity="one">%1$d/%2$d título</item>
+        <item quantity="other">%1$d/%2$d títulos</item>
+    </plurals>
     <plurals name="library_count">
         <item quantity="one">%1$d biblioteca</item>
         <item quantity="other">%1$d bibliotecas</item>

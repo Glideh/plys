@@ -47,7 +47,8 @@ sealed interface Screen {
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
     data class Watchlist(val data: WatchlistResponse) : Screen
-    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0) : Screen
+    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0,
+        val focusedPosition: Int? = null) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
     // copies are the items every server holds for a playable title, the shown one included: their versions are
     // offered together, and picking one held by another server shows that server's copy.
@@ -140,7 +141,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 val position = savedState.get<Int>("focusedPosition") ?: stored.offset
                 val query = stored.copy(offset = position / 40 * 40)
                 val page = api.catalog(query)
-                navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset))
+                navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset,
+                    position.takeIf { savedState.get<String>("focusedItem") != null }))
                 preparePaging(query, page)
             }
         }
@@ -281,7 +283,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun changeQuery(query: CatalogQuery) = perform(replace = true) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return@perform
         val page = api.catalog(query)
-        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = page, focusedId = null, focusedIndex = 0))
+        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = page, focusedId = null, focusedIndex = 0, focusedPosition = null))
         preparePaging(query, page)
         savedState["catalogQuery"] = Json.encodeToString(query)
         savedState.remove<String>("focusedItem")
@@ -291,9 +293,10 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun rememberFocus(id: String, index: Int = 0) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return
         if (screen.focusedId == id) return
-        mutableState.value = mutableState.value.copy(screen = screen.copy(focusedId = id, focusedIndex = index))
+        val position = catalogPositions[id] ?: (screen.query.offset + index)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(focusedId = id, focusedIndex = index, focusedPosition = position))
         savedState["focusedItem"] = id
-        savedState["focusedPosition"] = catalogPositions[id] ?: screen.query.offset + index
+        savedState["focusedPosition"] = position
     }
 
     fun openCard(card: ItemCard) {
