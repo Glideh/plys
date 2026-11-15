@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.Tv
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,17 +83,28 @@ private fun recentLabel(kind: CatalogKind): Int = when (kind) {
 @Composable
 fun HomeScreen(
     data: HomeResponse, model: CatalogViewModel, libraries: List<Library>, catalogCounts: Map<CatalogKind, CatalogCount>,
-    recent: Map<CatalogKind, List<ItemCard>> = emptyMap(), search: SearchState = SearchState(),
+    recent: Map<CatalogKind, List<ItemCard>> = emptyMap(), search: SearchState = SearchState(), searchFocusRequested: Boolean = false,
 ) {
-    // Once the viewer has typed, rows that come and go with the results must not take the focus from the field.
-    var typed by remember { mutableStateOf(false) }
+    // Once the viewer has typed, or came for the search, rows that come and go must not take the focus from the field.
+    var typed by remember { mutableStateOf(searchFocusRequested) }
+    var editSearch by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    LaunchedEffect(searchFocusRequested) {
+        if (searchFocusRequested) {
+            typed = true
+            // The field is the first row: bring it back into view so it can take the focus.
+            listState.scrollToItem(0)
+            editSearch = true
+            model.searchFocusHandled()
+        }
+    }
     BackHandler(search.query.isNotEmpty()) { model.clearSearch() }
     val firstRail = data.continueWatching.ifEmpty { data.nextUp }
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)) {
         item("search") {
             Column(Modifier.padding(horizontal = FocusGutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SearchField(search.query, { typed = true; model.search(it) }, stringResource(R.string.search_everything),
-                    Modifier.fillMaxWidth(0.6f), height = 48.dp)
+                    Modifier.fillMaxWidth(0.6f), height = 48.dp, startEditing = editSearch) { editSearch = false }
                 if (search.term.isNotEmpty() && !search.active) Text(stringResource(R.string.search_hint, MIN_SEARCH_LENGTH),
                     style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
             }

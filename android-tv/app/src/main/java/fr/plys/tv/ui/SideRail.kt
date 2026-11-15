@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +51,15 @@ import fr.plys.tv.data.CatalogKind
 val RailWidth = 80.dp
 private val ExpandedRailWidth = 260.dp
 
-enum class Section { HOME, WATCHLIST, MOVIES, SERIES, OTHER, NONE }
+enum class Section { HOME, SEARCH, WATCHLIST, MOVIES, SERIES, OTHER, NONE }
+
+/** The rail entry of a screen: the home screen showing search results belongs to the search entry. */
+fun sectionOf(screen: Screen, search: SearchState): Section = when (screen) {
+    is Screen.Home -> if (search.query.isNotEmpty()) Section.SEARCH else Section.HOME
+    is Screen.Watchlist -> Section.WATCHLIST
+    is Screen.Catalog -> sectionOf(screen.query.kind)
+    else -> Section.NONE
+}
 
 fun sectionOf(kind: CatalogKind) = when (kind) {
     CatalogKind.MOVIES -> Section.MOVIES
@@ -67,7 +76,7 @@ fun sectionOf(kind: CatalogKind) = when (kind) {
 @Composable
 fun SideRail(
     current: Section, serverVersion: String, modifier: Modifier = Modifier,
-    home: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
+    home: () -> Unit, search: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (expanded) ExpandedRailWidth else RailWidth, label = "railWidth")
@@ -86,6 +95,7 @@ fun SideRail(
         ) {
             Brand(expanded, Modifier.padding(start = 8.dp, bottom = 24.dp))
             RailItem(Icons.Outlined.Home, R.string.home, current == Section.HOME, expanded, requesters.getValue(Section.HOME), home)
+            RailItem(Icons.Outlined.Search, R.string.search, current == Section.SEARCH, expanded, requesters.getValue(Section.SEARCH), search)
             RailItem(Icons.Outlined.FavoriteBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), watchlist)
             CatalogKind.entries.forEach { kind ->
                 val section = sectionOf(kind)

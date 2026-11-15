@@ -155,12 +155,22 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
  * Done, or moving away, ends it.
  */
 @Composable
-fun SearchField(value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, height: Dp = 40.dp) {
+fun SearchField(
+    value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, height: Dp = 40.dp,
+    startEditing: Boolean = false, onEditingStarted: () -> Unit = {},
+) {
     var focused by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     val box = remember { FocusRequester() }
     val field = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    // Selected from elsewhere, such as the search entry of the rail: as if OK had been pressed on the field.
+    LaunchedEffect(startEditing) {
+        if (startEditing) {
+            editing = true
+            onEditingStarted()
+        }
+    }
     LaunchedEffect(editing) {
         if (editing) {
             field.requestFocus()

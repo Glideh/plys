@@ -98,6 +98,8 @@ data class CatalogState(
     /** Latest additions of each kind, shown on the home screen. */
     val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
     val search: SearchState = SearchState(),
+    /** The search entry of the rail was selected: the home screen focuses its search field and opens the keyboard. */
+    val searchFocusRequested: Boolean = false,
     /** Version of the signed-in server, empty until it answered. */
     val serverVersion: String = "",
 )
@@ -236,6 +238,26 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     }
 
     fun clearSearch() = search("")
+
+    /**
+     * The search entry of the rail: the global search lives at the top of the home screen. From the home screen the
+     * current query is kept; from anywhere else the home screen opens with an empty search, as the home entry does.
+     */
+    fun openSearch() {
+        if (mutableState.value.screen is Screen.Home) {
+            mutableState.value = mutableState.value.copy(searchFocusRequested = true)
+            return
+        }
+        perform {
+            clearCatalogState(); clearSearch(); history.clear()
+            mutableState.value = mutableState.value.copy(searchFocusRequested = true)
+            loadHome()
+        }
+    }
+
+    fun searchFocusHandled() {
+        mutableState.value = mutableState.value.copy(searchFocusRequested = false)
+    }
 
     fun openKind(kind: CatalogKind) = openCatalog(CatalogQuery(kind))
 

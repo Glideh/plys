@@ -86,12 +86,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
         }
         return
     }
-    val section = when (val screen = state.screen) {
-        is Screen.Home -> Section.HOME
-        is Screen.Watchlist -> Section.WATCHLIST
-        is Screen.Catalog -> sectionOf(screen.query.kind)
-        else -> Section.NONE
-    }
+    val section = sectionOf(state.screen, state.search)
     Box(modifier) {
         // The detail page draws its backdrop under the rail; the other screens start after it.
         val detail = state.screen is Screen.Detail
@@ -106,7 +101,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
             }
             when (val screen = state.screen) {
                 Screen.Splash, Screen.Login -> Unit
-                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search) }
+                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search, state.searchFocusRequested) }
                 is Screen.Libraries -> key("libraries") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(stringResource(R.string.libraries), style = MaterialTheme.typography.headlineMedium)
@@ -124,7 +119,7 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
                 is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
             }
         }
-        SideRail(section, state.serverVersion, Modifier.align(Alignment.CenterStart), home = model::home, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
+        SideRail(section, state.serverVersion, Modifier.align(Alignment.CenterStart), home = model::home, search = model::openSearch, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
         if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
     }
 }
