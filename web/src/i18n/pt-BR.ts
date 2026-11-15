@@ -251,6 +251,13 @@ export default {
     empty: 'Nenhuma subpasta.',
     noRoots: 'Nenhuma pasta de mídia está montada no contêiner.',
   },
+  aliases: {
+    action: 'Apelido',
+    title: 'Apelido de "{name}"',
+    label: 'Apelido',
+    hint: 'Exibido no lugar de "{name}" em todos os aplicativos conectados a este servidor. Deixe vazio para exibir o nome original.',
+    original: 'originalmente {name}',
+  },
   users: {
     new: 'Novo usuário',
     role: 'Função',

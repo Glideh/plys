@@ -2,12 +2,14 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@/api/client'
+import AliasDialog from '@/components/AliasDialog.vue'
 import { usersApi, type Role } from '@/api/users'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseDialog from '@/components/BaseDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
 import TextField from '@/components/TextField.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { localeLabels, locales, type Locale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -116,6 +118,20 @@ async function savePassword() {
   }
 }
 
+const aliasOpen = ref(false)
+const aliasUser = ref<User | null>(null)
+
+function openAlias(user: User) {
+  aliasUser.value = user
+  aliasOpen.value = true
+}
+
+async function saveAlias(alias: string | null) {
+  const updated = await usersApi.setAlias(aliasUser.value!.id, alias)
+  if (updated.id === auth.user?.id) auth.user = updated
+  await load()
+}
+
 const deleteOpen = ref(false)
 const deleting = ref<User | null>(null)
 
@@ -164,10 +180,9 @@ onUnmounted(() => clearTimeout(syncTimer))
           <tr v-for="user in users" :key="user.id">
             <td class="px-5 py-3">
               <div class="flex items-center gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-full bg-surface-700 font-semibold uppercase">
-                  {{ user.username.charAt(0) }}
-                </span>
-                <span class="font-medium">{{ user.username }}</span>
+                <UserAvatar :user="user" class="size-8 shrink-0" />
+                <span class="font-medium">{{ user.displayName }}</span>
+                <span v-if="user.alias" class="text-xs text-slate-500">{{ t('aliases.original', { name: user.username }) }}</span>
                 <span v-if="user.id === auth.user?.id" class="text-xs text-slate-500">({{ t('users.you') }})</span>
                 <span v-if="user.remote" class="text-xs text-slate-500">{{ t('users.remoteFrom', { server: user.originServer }) }}</span>
               </div>
@@ -187,6 +202,7 @@ onUnmounted(() => clearTimeout(syncTimer))
             <td class="hidden px-5 py-3 text-slate-400 sm:table-cell">{{ d(new Date(user.createdAt)) }}</td>
             <td class="px-5 py-3">
               <div class="flex justify-end gap-2">
+                <BaseButton @click="openAlias(user)">{{ t('aliases.action') }}</BaseButton>
                 <BaseButton v-if="!user.remote" @click="openPassword(user)">{{ t('users.changePassword') }}</BaseButton>
                 <BaseButton
                   v-if="!user.remote && user.id !== auth.user?.id"
@@ -229,7 +245,7 @@ onUnmounted(() => clearTimeout(syncTimer))
       </template>
     </BaseDialog>
 
-    <BaseDialog v-model:open="passwordOpen" :title="`${t('users.changePassword')} · ${passwordUser?.username ?? ''}`">
+    <BaseDialog v-model:open="passwordOpen" :title="`${t('users.changePassword')} · ${passwordUser?.displayName ?? ''}`">
       <form id="password-form" class="space-y-5" @submit.prevent="savePassword">
         <TextField v-model="newPassword" :label="t('users.newPassword')" :hint="t('setup.passwordHint')" type="password" autocomplete="new-password" required :minlength="8" />
         <ErrorAlert v-if="passwordError" :message="passwordError" />
@@ -240,10 +256,12 @@ onUnmounted(() => clearTimeout(syncTimer))
       </template>
     </BaseDialog>
 
+    <AliasDialog v-model:open="aliasOpen" :name="aliasUser?.username ?? ''" :alias="aliasUser?.alias ?? null" :save="saveAlias" />
+
     <ConfirmDialog
       v-model:open="deleteOpen"
       :title="t('users.deleteTitle')"
-      :message="t('users.deleteConfirm', { name: deleting?.username ?? '' })"
+      :message="t('users.deleteConfirm', { name: deleting?.displayName ?? '' })"
       :confirm-label="t('common.delete')"
       :action="remove"
     />

@@ -146,7 +146,7 @@ func (s *Server) fetchPeerWatchlist(ctx context.Context, peer store.Peer, userID
 	}
 	for index := range response.Items {
 		item := &response.Items[index]
-		item.Source = cardSourceDTO{ServerID: peer.ID, ServerName: peer.Name, ServerURL: peer.Url, ItemID: item.ID}
+		item.Source = cardSourceDTO{ServerID: peer.ID, ServerName: peerDisplayName(peer), ServerURL: peer.Url, ItemID: item.ID}
 		if item.PosterURL != nil && strings.HasPrefix(*item.PosterURL, "/") {
 			absolute := peer.Url + *item.PosterURL
 			item.PosterURL = &absolute

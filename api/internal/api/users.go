@@ -34,7 +34,7 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	serverNames := make(map[uuid.UUID]string, len(peers))
 	for _, p := range peers {
-		serverNames[p.ID] = p.Name
+		serverNames[p.ID] = peerDisplayName(p)
 	}
 	out := make([]userDTO, 0, len(users))
 	for _, u := range users {
@@ -166,6 +166,39 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, toUserDTO(user))
+}
+
+type aliasRequest struct {
+	// Alias is the new label; null or an empty string removes it.
+	Alias *string `json:"alias"`
+}
+
+// setUserAlias names any user, remote ones included: the alias stays on this server.
+func (s *Server) setUserAlias(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "user")
+	if !ok {
+		return
+	}
+	var req aliasRequest
+	if !httpx.DecodeRequired(w, r, &req) {
+		return
+	}
+	alias, err := normalizeAlias(req.Alias)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
+		return
+	}
+	user, err := s.q.SetUserAlias(r.Context(), store.SetUserAliasParams{ID: id, Alias: alias})
+	if s.writeUserMutationError(w, r, err) {
+		return
+	}
+	dto := toUserDTO(user)
+	if user.OriginPeerID != nil {
+		if p, err := s.q.GetPeer(r.Context(), *user.OriginPeerID); err == nil {
+			dto.OriginServer = peerDisplayName(p)
+		}
+	}
+	httpx.JSON(w, http.StatusOK, dto)
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {

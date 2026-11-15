@@ -45,7 +45,7 @@ func (q *Queries) DeletePeer(ctx context.Context, id uuid.UUID) (int64, error) {
 }
 
 const getPeer = `-- name: GetPeer :one
-SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at FROM peers WHERE id = $1
+SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias FROM peers WHERE id = $1
 `
 
 func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
@@ -65,6 +65,7 @@ func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }
@@ -72,7 +73,7 @@ func (q *Queries) GetPeer(ctx context.Context, id uuid.UUID) (Peer, error) {
 const insertPeer = `-- name: InsertPeer :one
 INSERT INTO peers (id, url, name, public_key)
 VALUES ($1, $2, $3, $4)
-RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at
+RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
 `
 
 type InsertPeerParams struct {
@@ -104,12 +105,13 @@ func (q *Queries) InsertPeer(ctx context.Context, arg InsertPeerParams) (Peer, e
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }
 
 const listPeers = `-- name: ListPeers :many
-SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at FROM peers ORDER BY name, url
+SELECT id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias FROM peers ORDER BY lower(coalesce(alias, name)), url
 `
 
 func (q *Queries) ListPeers(ctx context.Context) ([]Peer, error) {
@@ -135,6 +137,7 @@ func (q *Queries) ListPeers(ctx context.Context) ([]Peer, error) {
 			&i.LastFailureAt,
 			&i.OfflineSince,
 			&i.LastSeenAt,
+			&i.Alias,
 		); err != nil {
 			return nil, err
 		}
@@ -163,7 +166,7 @@ UPDATE peers SET
   last_failure_at = $1,
   offline_since = CASE WHEN consecutive_failures + 1 >= $2::int THEN coalesce(offline_since, $1) ELSE offline_since END
 WHERE id = $3 AND (last_failure_at IS NULL OR last_failure_at < $4)
-RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at
+RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
 `
 
 type RecordPeerFailureParams struct {
@@ -196,6 +199,7 @@ func (q *Queries) RecordPeerFailure(ctx context.Context, arg RecordPeerFailurePa
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }
@@ -210,8 +214,39 @@ func (q *Queries) RecordPeerSuccess(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const setPeerAlias = `-- name: SetPeerAlias :one
+UPDATE peers SET alias = $1 WHERE id = $2 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
+`
+
+type SetPeerAliasParams struct {
+	Alias *string
+	ID    uuid.UUID
+}
+
+func (q *Queries) SetPeerAlias(ctx context.Context, arg SetPeerAliasParams) (Peer, error) {
+	row := q.db.QueryRow(ctx, setPeerAlias, arg.Alias, arg.ID)
+	var i Peer
+	err := row.Scan(
+		&i.ID,
+		&i.Url,
+		&i.Name,
+		&i.PublicKey,
+		&i.CreatedAt,
+		&i.UsersSyncAttemptedAt,
+		&i.Version,
+		&i.VersionCheckedAt,
+		&i.Paused,
+		&i.ConsecutiveFailures,
+		&i.LastFailureAt,
+		&i.OfflineSince,
+		&i.LastSeenAt,
+		&i.Alias,
+	)
+	return i, err
+}
+
 const setPeerPaused = `-- name: SetPeerPaused :one
-UPDATE peers SET paused = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at
+UPDATE peers SET paused = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
 `
 
 type SetPeerPausedParams struct {
@@ -236,12 +271,13 @@ func (q *Queries) SetPeerPaused(ctx context.Context, arg SetPeerPausedParams) (P
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }
 
 const updatePeerURL = `-- name: UpdatePeerURL :one
-UPDATE peers SET url = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at
+UPDATE peers SET url = $2 WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
 `
 
 type UpdatePeerURLParams struct {
@@ -266,12 +302,13 @@ func (q *Queries) UpdatePeerURL(ctx context.Context, arg UpdatePeerURLParams) (P
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }
 
 const updatePeerVersion = `-- name: UpdatePeerVersion :one
-UPDATE peers SET version = $2, version_checked_at = now() WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at
+UPDATE peers SET version = $2, version_checked_at = now() WHERE id = $1 RETURNING id, url, name, public_key, created_at, users_sync_attempted_at, version, version_checked_at, paused, consecutive_failures, last_failure_at, offline_since, last_seen_at, alias
 `
 
 type UpdatePeerVersionParams struct {
@@ -296,6 +333,7 @@ func (q *Queries) UpdatePeerVersion(ctx context.Context, arg UpdatePeerVersionPa
 		&i.LastFailureAt,
 		&i.OfflineSince,
 		&i.LastSeenAt,
+		&i.Alias,
 	)
 	return i, err
 }

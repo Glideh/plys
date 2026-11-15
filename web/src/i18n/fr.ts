@@ -250,6 +250,13 @@ export default {
     empty: 'Aucun sous-dossier.',
     noRoots: "Aucun dossier de médias n'est monté dans le conteneur.",
   },
+  aliases: {
+    action: 'Alias',
+    title: 'Alias de « {name} »',
+    label: 'Alias',
+    hint: 'Affiché à la place de « {name} » dans toutes les applications connectées à ce serveur. Laissez vide pour afficher le nom d\'origine.',
+    original: 'à l\'origine {name}',
+  },
   users: {
     new: 'Nouvel utilisateur',
     role: 'Rôle',

@@ -167,7 +167,7 @@ async function submit() {
             <li v-for="u in grantableUsers" :key="u.id">
               <label class="flex items-center gap-3 rounded-lg bg-surface-800 px-3.5 py-2 text-sm">
                 <input v-model="userIds" type="checkbox" :value="u.id" class="size-4 rounded accent-accent-500" />
-                {{ u.username }}
+                {{ u.displayName }}
               </label>
             </li>
           </ul>

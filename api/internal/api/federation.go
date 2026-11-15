@@ -88,6 +88,8 @@ type peerDTO struct {
 	ID               uuid.UUID  `json:"id"`
 	URL              string     `json:"url"`
 	Name             string     `json:"name"`
+	Alias            *string    `json:"alias"`
+	DisplayName      string     `json:"displayName"`
 	Version          *string    `json:"version"`
 	LocalVersion     string     `json:"localVersion"`
 	Status           string     `json:"status"`
@@ -112,7 +114,7 @@ func peerToDTO(p store.Peer) peerDTO {
 		status = "offline"
 	}
 	return peerDTO{
-		ID: p.ID, URL: p.Url, Name: p.Name, Version: p.Version, LocalVersion: Version, Status: status, VersionCheckedAt: p.VersionCheckedAt,
+		ID: p.ID, URL: p.Url, Name: p.Name, Alias: p.Alias, DisplayName: peerDisplayName(p), Version: p.Version, LocalVersion: Version, Status: status, VersionCheckedAt: p.VersionCheckedAt,
 		Paused: p.Paused, LastSeenAt: p.LastSeenAt, OfflineSince: p.OfflineSince,
 	}
 }
@@ -375,6 +377,36 @@ func (s *Server) pausePeer(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
+	httpx.JSON(w, http.StatusOK, peerToDTO(p))
+}
+
+// setPeerAlias names a paired server locally; the alias replaces its name in every client of this server.
+func (s *Server) setPeerAlias(w http.ResponseWriter, r *http.Request) {
+	id, ok := idParam(w, r, "peer")
+	if !ok {
+		return
+	}
+	var req aliasRequest
+	if !httpx.DecodeRequired(w, r, &req) {
+		return
+	}
+	alias, err := normalizeAlias(req.Alias)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", err.Error())
+		return
+	}
+	p, err := s.q.SetPeerAlias(r.Context(), store.SetPeerAliasParams{ID: id, Alias: alias})
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "peer not found")
+		return
+	}
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	// Cached catalog and home answers carry the server name.
+	s.peerCatalogs.forgetPeer(p.ID.String())
+	s.peerHomes.forgetPeer(p.ID.String())
 	httpx.JSON(w, http.StatusOK, peerToDTO(p))
 }
 

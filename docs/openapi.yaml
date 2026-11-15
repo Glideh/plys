@@ -290,6 +290,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /users/{id}/alias:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setUserAlias
+      summary: Set or clear the alias of a user (admin)
+      description: >
+        The alias is a local label, shown by the clients instead of the username (`displayName`). It also applies to
+        remote users of paired servers, survives their sync and is never sent to peers. Logins still use the username.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AliasRequest" }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /libraries:
     get:
       operationId: listLibraries
@@ -646,6 +669,29 @@ paths:
               required: [paused]
               properties:
                 paused: { type: boolean }
+      responses:
+        "200":
+          description: Updated server
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Peer" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/federation/peers/{id}/alias:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setPeerAlias
+      summary: Set or clear the alias of a paired server (admin)
+      description: >
+        The alias replaces the name the peer gave itself in every answer of this server: `displayName`, the
+        `serverName` of item sources, `unavailableServerNames` and the `originServer` of remote users.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AliasRequest" }
       responses:
         "200":
           description: Updated server
@@ -1375,11 +1421,13 @@ components:
                 label: { type: string }
     Peer:
       type: object
-      required: [id, url, name, version, localVersion, status, versionCheckedAt, paused, lastSeenAt, offlineSince]
+      required: [id, url, name, alias, displayName, version, localVersion, status, versionCheckedAt, paused, lastSeenAt, offlineSince]
       properties:
         id: { type: string, format: uuid }
         url: { type: string, format: uri }
-        name: { type: string }
+        name: { type: string, description: Name the peer gave itself }
+        alias: { type: [string, "null"], description: Local label set by an admin of this server }
+        displayName: { type: string, description: The alias, or the name without one }
         version: { type: [string, "null"] }
         localVersion: { type: string }
         status: { type: string, enum: [compatible, incompatible, unverified, offline, paused] }
@@ -1441,12 +1489,22 @@ components:
       type: object
       properties:
         refreshToken: { type: string }
+    AliasRequest:
+      type: object
+      required: [alias]
+      properties:
+        alias:
+          type: [string, "null"]
+          maxLength: 64
+          description: Trimmed; null or an empty string removes the alias.
     User:
       type: object
-      required: [id, username, role, locale, autoplayNext, createdAt]
+      required: [id, username, alias, displayName, role, locale, autoplayNext, createdAt]
       properties:
         id: { type: string, format: uuid }
-        username: { type: string }
+        username: { type: string, description: Login name }
+        alias: { type: [string, "null"], description: Label given by an admin }
+        displayName: { type: string, description: The alias, or the username without one; the name clients show }
         role: { $ref: "#/components/schemas/Role" }
         locale: { $ref: "#/components/schemas/Locale" }
         autoplayNext: { type: boolean, default: false }

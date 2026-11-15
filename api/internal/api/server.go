@@ -166,6 +166,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/users", s.createUser)
 				r.Patch("/users/{id}", s.updateUser)
 				r.Delete("/users/{id}", s.deleteUser)
+				r.Put("/users/{id}/alias", s.setUserAlias)
 
 				r.Post("/libraries", s.createLibrary)
 				r.Patch("/libraries/{id}", s.updateLibrary)
@@ -181,6 +182,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/admin/federation/peers/{id}/sync", s.syncPeer)
 				r.Patch("/admin/federation/peers/{id}", s.updatePeer)
 				r.Put("/admin/federation/peers/{id}/paused", s.pausePeer)
+				r.Put("/admin/federation/peers/{id}/alias", s.setPeerAlias)
 				r.Delete("/admin/federation/peers/{id}", s.deletePeer)
 				r.Patch("/admin/settings", s.updateSettings)
 				r.Get("/admin/system/transcoding", s.transcodingInfo)

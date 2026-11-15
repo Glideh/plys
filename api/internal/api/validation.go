@@ -29,8 +29,11 @@ const (
 type userDTO struct {
 	ID       uuid.UUID `json:"id"`
 	Username string    `json:"username"`
-	Role     string    `json:"role"`
-	Locale   string    `json:"locale"`
+	// Alias is the label an admin gave the user; DisplayName is the alias, or the username without one.
+	Alias       *string `json:"alias"`
+	DisplayName string  `json:"displayName"`
+	Role        string  `json:"role"`
+	Locale      string  `json:"locale"`
 	// Remote marks a user of a paired server: it is listed for library access but managed there.
 	Remote bool `json:"remote"`
 	// OriginServer names the paired server of a remote user.
@@ -43,7 +46,37 @@ type userDTO struct {
 }
 
 func toUserDTO(u store.User) userDTO {
-	return userDTO{ID: u.ID, Username: u.Username, Role: u.Role, Locale: u.Locale, Remote: u.OriginPeerID != nil, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt, AvatarUpdatedAt: u.AvatarUpdatedAt}
+	return userDTO{ID: u.ID, Username: u.Username, Alias: u.Alias, DisplayName: aliasOr(u.Alias, u.Username), Role: u.Role, Locale: u.Locale, Remote: u.OriginPeerID != nil, AutoplayNext: u.AutoplayNext, CreatedAt: u.CreatedAt, AvatarUpdatedAt: u.AvatarUpdatedAt}
+}
+
+const maxAliasLen = 64
+
+// aliasOr returns the alias when one is set, so that every client shows it before the original name.
+func aliasOr(alias *string, name string) string {
+	if alias != nil && *alias != "" {
+		return *alias
+	}
+	return name
+}
+
+// peerDisplayName is the name shown to users for a paired server.
+func peerDisplayName(p store.Peer) string {
+	return aliasOr(p.Alias, p.Name)
+}
+
+// normalizeAlias trims the alias; an empty one clears it.
+func normalizeAlias(alias *string) (*string, error) {
+	if alias == nil {
+		return nil, nil
+	}
+	a := strings.TrimSpace(*alias)
+	if a == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(a) > maxAliasLen || strings.ContainsFunc(a, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return nil, errors.New("alias must be at most 64 characters, without control characters")
+	}
+	return &a, nil
 }
 
 func validateUsername(s string) error {

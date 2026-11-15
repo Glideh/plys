@@ -166,7 +166,7 @@ onUnmounted(() => {
             @click="menuOpen = !menuOpen"
           >
             <UserAvatar :user="auth.user" class="size-8" />
-            <span class="hidden sm:inline">{{ auth.user?.username }}</span>
+            <span class="hidden sm:inline">{{ auth.user?.displayName }}</span>
           </button>
           <div
             v-if="menuOpen"

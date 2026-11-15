@@ -225,7 +225,7 @@ func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.U
 				c.PosterURL = &abs
 			}
 			out = append(out, sourcedCard{federatedCard: c, source: cardSourceDTO{
-				ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: c.ID,
+				ServerID: p.ID, ServerName: peerDisplayName(p), ServerURL: p.Url, ItemID: c.ID,
 			}})
 		}
 	}

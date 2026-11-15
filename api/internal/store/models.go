@@ -124,6 +124,7 @@ type Peer struct {
 	LastFailureAt        *time.Time
 	OfflineSince         *time.Time
 	LastSeenAt           *time.Time
+	Alias                *string
 }
 
 type PlaybackProgress struct {
@@ -164,6 +165,7 @@ type User struct {
 	AutoplayNext    bool
 	AvatarUpdatedAt *time.Time
 	OriginPeerID    *uuid.UUID
+	Alias           *string
 }
 
 type UserAvatar struct {

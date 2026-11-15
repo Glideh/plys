@@ -34,7 +34,7 @@ ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, updated_at = now()
 WHERE users.origin_peer_id = EXCLUDED.origin_peer_id;
 
 -- name: ListUsers :many
-SELECT * FROM users ORDER BY lower(username);
+SELECT * FROM users ORDER BY lower(coalesce(alias, username));
 
 -- name: UpdateUser :one
 UPDATE users
@@ -55,3 +55,6 @@ SET autoplay_next = coalesce(sqlc.narg('autoplay_next'), autoplay_next),
     updated_at    = now()
 WHERE id = @id
 RETURNING *;
+
+-- name: SetUserAlias :one
+UPDATE users SET alias = @alias, updated_at = now() WHERE id = @id RETURNING *;

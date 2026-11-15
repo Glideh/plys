@@ -108,7 +108,7 @@ func (s *Server) fetchPeerHome(ctx context.Context, peer store.Peer, userID uuid
 	for _, rail := range [][]sourcedHomeItem{response.ContinueWatching, response.NextUp} {
 		for index := range rail {
 			item := &rail[index]
-			item.Source = cardSourceDTO{ServerID: peer.ID, ServerName: peer.Name, ServerURL: peer.Url, ItemID: item.ID}
+			item.Source = cardSourceDTO{ServerID: peer.ID, ServerName: peerDisplayName(peer), ServerURL: peer.Url, ItemID: item.ID}
 			if item.PosterURL != nil && strings.HasPrefix(*item.PosterURL, "/") {
 				absolute := peer.Url + *item.PosterURL
 				item.PosterURL = &absolute

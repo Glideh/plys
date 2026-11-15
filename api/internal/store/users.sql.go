@@ -36,7 +36,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, password_hash, role, locale)
 VALUES ($1, $2, $3, $4)
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias
 `
 
 type CreateUserParams struct {
@@ -65,6 +65,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
 		&i.OriginPeerID,
+		&i.Alias,
 	)
 	return i, err
 }
@@ -79,7 +80,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users WHERE id = $1
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -96,12 +97,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
 		&i.OriginPeerID,
+		&i.Alias,
 	)
 	return i, err
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users WHERE lower(username) = lower($1) AND origin_peer_id IS NULL
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias FROM users WHERE lower(username) = lower($1) AND origin_peer_id IS NULL
 `
 
 // Shadow users of paired peers never log in here.
@@ -119,6 +121,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
 		&i.OriginPeerID,
+		&i.Alias,
 	)
 	return i, err
 }
@@ -178,7 +181,7 @@ func (q *Queries) ListRemoteUserIDs(ctx context.Context, originPeerID *uuid.UUID
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id FROM users ORDER BY lower(username)
+SELECT id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias FROM users ORDER BY lower(coalesce(alias, username))
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -201,6 +204,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.AutoplayNext,
 			&i.AvatarUpdatedAt,
 			&i.OriginPeerID,
+			&i.Alias,
 		); err != nil {
 			return nil, err
 		}
@@ -222,6 +226,34 @@ func (q *Queries) LockUsers(ctx context.Context) error {
 	return err
 }
 
+const setUserAlias = `-- name: SetUserAlias :one
+UPDATE users SET alias = $1, updated_at = now() WHERE id = $2 RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias
+`
+
+type SetUserAliasParams struct {
+	Alias *string
+	ID    uuid.UUID
+}
+
+func (q *Queries) SetUserAlias(ctx context.Context, arg SetUserAliasParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserAlias, arg.Alias, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.PasswordHash,
+		&i.Role,
+		&i.Locale,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AutoplayNext,
+		&i.AvatarUpdatedAt,
+		&i.OriginPeerID,
+		&i.Alias,
+	)
+	return i, err
+}
+
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
 SET role          = coalesce($1, role),
@@ -229,7 +261,7 @@ SET role          = coalesce($1, role),
     password_hash = coalesce($3, password_hash),
     updated_at    = now()
 WHERE id = $4
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias
 `
 
 type UpdateUserParams struct {
@@ -258,6 +290,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
 		&i.OriginPeerID,
+		&i.Alias,
 	)
 	return i, err
 }
@@ -268,7 +301,7 @@ SET autoplay_next = coalesce($1, autoplay_next),
     locale        = coalesce($2, locale),
     updated_at    = now()
 WHERE id = $3
-RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id
+RETURNING id, username, password_hash, role, locale, created_at, updated_at, autoplay_next, avatar_updated_at, origin_peer_id, alias
 `
 
 type UpdateUserPreferencesParams struct {
@@ -291,6 +324,7 @@ func (q *Queries) UpdateUserPreferences(ctx context.Context, arg UpdateUserPrefe
 		&i.AutoplayNext,
 		&i.AvatarUpdatedAt,
 		&i.OriginPeerID,
+		&i.Alias,
 	)
 	return i, err
 }

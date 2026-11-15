@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,18 @@ func (c *peerCache[T]) set(key string, value T) {
 		}
 	}
 	c.entries[key] = peerCacheEntry[T]{value: value, expires: now.Add(c.ttl)}
+}
+
+// forgetPeer drops the cached answers of one peer, for example when the name it is shown under changes.
+func (c *peerCache[T]) forgetPeer(id string) {
+	prefix := id + "\x00"
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k := range c.entries {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.entries, k)
+		}
+	}
 }
 
 // cachedPeerCall answers from the cache while it is fresh. Otherwise it calls the peer through callPeer, with the

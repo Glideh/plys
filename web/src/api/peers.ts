@@ -4,7 +4,12 @@ import { api } from './client'
 export interface Peer {
   id: string
   url: string
+  /** Name the server gave itself. */
   name: string
+  /** Label given by an admin of this server; shown instead of the name when set. */
+  alias: string | null
+  /** The alias, or the name without one. */
+  displayName: string
   version: string | null
   localVersion: string
   /** `offline` after two failed calls in a row; `paused` when an admin left the server out. */
@@ -27,6 +32,8 @@ export const peersApi = {
   /** A paused server is left out of every aggregated answer, without being reported as unavailable. */
   setPaused: (id: string, paused: boolean) =>
     api<Peer>(`/admin/federation/peers/${id}/paused`, { method: 'PUT', body: { paused } }),
+  setAlias: (id: string, alias: string | null) =>
+    api<Peer>(`/admin/federation/peers/${id}/alias`, { method: 'PUT', body: { alias } }),
   sync: (id: string) => api<{ users: number }>(`/admin/federation/peers/${id}/sync`, { method: 'POST' }),
   remove: (id: string) => api<void>(`/admin/federation/peers/${id}`, { method: 'DELETE' }),
 }

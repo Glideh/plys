@@ -1,5 +1,5 @@
 -- name: ListPeers :many
-SELECT * FROM peers ORDER BY name, url;
+SELECT * FROM peers ORDER BY lower(coalesce(alias, name)), url;
 
 -- name: GetPeer :one
 SELECT * FROM peers WHERE id = $1;
@@ -41,3 +41,6 @@ RETURNING *;
 -- name: RecordPeerSuccess :exec
 UPDATE peers SET consecutive_failures = 0, last_failure_at = NULL, offline_since = NULL, last_seen_at = now()
 WHERE id = $1;
+
+-- name: SetPeerAlias :one
+UPDATE peers SET alias = @alias WHERE id = @id RETURNING *;

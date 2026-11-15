@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { peersApi, type Peer } from '@/api/peers'
+import AliasDialog from '@/components/AliasDialog.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
@@ -64,7 +65,7 @@ async function add() {
   try {
     const peer = await peersApi.add(addCode.value.trim())
     addCode.value = ''
-    notice.value = t(peer.pairingPending ? 'servers.addedPending' : 'servers.added', { name: peer.name })
+    notice.value = t(peer.pairingPending ? 'servers.addedPending' : 'servers.added', { name: peer.displayName })
     await load()
   } catch (err) {
     addError.value = errorMessage(err)
@@ -95,7 +96,7 @@ async function togglePause(peer: Peer) {
   notice.value = ''
   try {
     const updated = await peersApi.setPaused(peer.id, !peer.paused)
-    notice.value = t(updated.paused ? 'servers.paused' : 'servers.resumed', { name: updated.name })
+    notice.value = t(updated.paused ? 'servers.paused' : 'servers.resumed', { name: updated.displayName })
     await load()
   } catch (err) {
     error.value = errorMessage(err)
@@ -126,13 +127,27 @@ async function saveEdit(peer: Peer) {
   try {
     const updated = await peersApi.update(peer.id, editUrl.value.trim())
     editingId.value = null
-    notice.value = t('servers.updated', { name: updated.name })
+    notice.value = t('servers.updated', { name: updated.displayName })
     await load()
   } catch (err) {
     editError.value = errorMessage(err)
   } finally {
     savingEdit.value = false
   }
+}
+
+const aliasOpen = ref(false)
+const aliasPeer = ref<Peer | null>(null)
+
+function openAlias(peer: Peer) {
+  aliasPeer.value = peer
+  aliasOpen.value = true
+  notice.value = ''
+}
+
+async function saveAlias(alias: string | null) {
+  await peersApi.setAlias(aliasPeer.value!.id, alias)
+  await load()
 }
 
 function askRemove(peer: Peer) {
@@ -200,7 +215,10 @@ onMounted(() => Promise.all([load(), loadPairingCode()]))
           </div>
           <div v-else class="flex flex-wrap items-center justify-between gap-4">
             <div class="min-w-0">
-              <p class="font-medium text-slate-100">{{ peer.name }}</p>
+              <p class="font-medium text-slate-100">
+                {{ peer.displayName }}
+                <span v-if="peer.alias" class="ml-1 text-xs font-normal text-slate-500">{{ t('aliases.original', { name: peer.name }) }}</span>
+              </p>
               <p class="truncate font-mono text-xs text-slate-500">{{ peer.url }}</p>
               <p class="mt-1 text-xs" :class="peer.status === 'compatible' ? 'text-emerald-400' : 'text-amber-400'">
                 {{ peer.version ?? t('servers.unknownVersion') }} · {{ t(`servers.status.${peer.status}`) }}
@@ -216,9 +234,10 @@ onMounted(() => Promise.all([load(), loadPairingCode()]))
                 {{ t('servers.lastSeen', { date: formatDate(peer.lastSeenAt) }) }}
               </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-wrap gap-2">
               <BaseButton :disabled="peer.status !== 'compatible' && peer.status !== 'offline'" :loading="syncingId === peer.id" @click="sync(peer)">{{ t('servers.sync') }}</BaseButton>
               <BaseButton :loading="pausingId === peer.id" @click="togglePause(peer)">{{ t(peer.paused ? 'servers.resume' : 'servers.pause') }}</BaseButton>
+              <BaseButton @click="openAlias(peer)">{{ t('aliases.action') }}</BaseButton>
               <BaseButton @click="startEdit(peer)">{{ t('servers.edit') }}</BaseButton>
               <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askRemove(peer)">{{ t('servers.remove') }}</BaseButton>
             </div>
@@ -240,10 +259,12 @@ onMounted(() => Promise.all([load(), loadPairingCode()]))
       <BaseButton type="submit" variant="primary" :loading="adding" :disabled="!addCode.trim()">{{ t('servers.add') }}</BaseButton>
     </form>
 
+    <AliasDialog v-model:open="aliasOpen" :name="aliasPeer?.name ?? ''" :alias="aliasPeer?.alias ?? null" :save="saveAlias" />
+
     <ConfirmDialog
       v-model:open="removeOpen"
       :title="t('servers.removeTitle')"
-      :message="t('servers.removeConfirm', { name: removing?.name ?? '' })"
+      :message="t('servers.removeConfirm', { name: removing?.displayName ?? '' })"
       :confirm-label="t('servers.remove')"
       :action="remove"
     />

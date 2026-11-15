@@ -251,6 +251,13 @@ export default {
     empty: 'No subfolders.',
     noRoots: 'No media folder is mounted in the container.',
   },
+  aliases: {
+    action: 'Alias',
+    title: 'Alias of "{name}"',
+    label: 'Alias',
+    hint: 'Shown instead of "{name}" in every app connected to this server. Leave empty to show the original name.',
+    original: 'originally {name}',
+  },
   users: {
     new: 'New user',
     role: 'Role',

@@ -9,5 +9,6 @@ export const usersApi = {
     api<User>('/users', { method: 'POST', body }),
   update: (id: string, body: { role?: Role; locale?: User['locale']; password?: string }) =>
     api<User>(`/users/${id}`, { method: 'PATCH', body }),
+  setAlias: (id: string, alias: string | null) => api<User>(`/users/${id}/alias`, { method: 'PUT', body: { alias } }),
   remove: (id: string) => api<void>(`/users/${id}`, { method: 'DELETE' }),
 }

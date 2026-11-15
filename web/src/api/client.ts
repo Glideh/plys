@@ -45,6 +45,10 @@ export class ApiError extends Error {
 export interface User {
   id: string
   username: string
+  /** Label given by an admin; shown instead of the username when set. */
+  alias: string | null
+  /** The alias, or the username without one: the name every view shows. */
+  displayName: string
   role: 'admin' | 'user'
   locale: Locale
   autoplayNext: boolean

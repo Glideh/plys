@@ -161,7 +161,7 @@ func fanOutPeers[T any](ctx context.Context, s *Server, what string, call func(c
 	unavailable := []string{}
 	for i, p := range active {
 		if errs[i] != nil {
-			unavailable = append(unavailable, p.Name)
+			unavailable = append(unavailable, peerDisplayName(p))
 			if !errors.Is(errs[i], errPeerSkipped) {
 				slog.Warn("federated "+what+" unavailable", "peer", p.ID, "err", errs[i])
 			}

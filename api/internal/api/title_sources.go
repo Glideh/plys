@@ -119,7 +119,7 @@ func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID
 	}
 	out := make([]cardSourceDTO, 0, len(page.Items))
 	for _, it := range page.Items {
-		out = append(out, cardSourceDTO{ServerID: p.ID, ServerName: p.Name, ServerURL: p.Url, ItemID: it.ID})
+		out = append(out, cardSourceDTO{ServerID: p.ID, ServerName: peerDisplayName(p), ServerURL: p.Url, ItemID: it.ID})
 	}
 	return out, nil
 }
