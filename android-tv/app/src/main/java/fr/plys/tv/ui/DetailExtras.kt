@@ -249,16 +249,16 @@ fun Choice(label: String, selected: Boolean, enabled: Boolean = true, onClick: (
     }
 }
 
-/** Cast, directors or creators, each in a disc with the name below; a person with a TMDB ID opens their titles. */
+/** Cast, directors or creators, each in a disc with the name below on one line; a person with a TMDB ID opens their titles. */
 @Composable
 fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: ServerRef?, open: (CastMember) -> Unit) {
     Column {
         RailTitle(title)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = RowFocusPadding) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = RowFocusPadding) {
             items(people) { person ->
                 var focused by remember { mutableStateOf(false) }
                 val interactions = remember { MutableInteractionSource() }
-                val action = Modifier.width(104.dp).onFocusChanged { focused = it.hasFocus }
+                val action = Modifier.width(128.dp).onFocusChanged { focused = it.hasFocus }
                 Column(if (person.id != null) action.clickable(interactionSource = interactions, indication = null, role = Role.Button) { open(person) }
                     else action.focusable(),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -272,7 +272,7 @@ fun PeopleRow(title: Int, people: List<CastMember>, api: PlysApi, source: Server
                         }
                     }
                     Text(person.name, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
                     if (person.character.isNotBlank()) Text(person.character, style = MaterialTheme.typography.bodySmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
