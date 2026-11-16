@@ -2,7 +2,6 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import BrandMark from '@/components/BrandMark.vue'
 import GlobalSearchResults from '@/components/GlobalSearchResults.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { libraryKinds } from '@/api/libraries'
@@ -100,6 +99,8 @@ onUnmounted(() => {
     <header class="sticky top-0 z-30 border-b border-white/5 bg-surface-950/80 backdrop-blur">
       <nav class="mx-auto flex h-16 max-w-screen-2xl items-center gap-4 px-4 sm:px-8 md:gap-8">
         <RouterLink :to="{ name: 'home' }" class="flex items-center gap-2.5">
+          <span class="grid size-8 place-items-center rounded-lg bg-accent-500 text-sm font-black text-surface-950">▶</span>
+          <span class="text-lg font-bold tracking-tight">{{ t('app.name') }}</span>
           <BrandMark class="size-8 rounded-lg" />
           <span class="text-lg font-bold tracking-tight" :class="{ 'hidden sm:inline': searchOpen && !onHome }">{{ t('app.name') }}</span>
         </RouterLink>

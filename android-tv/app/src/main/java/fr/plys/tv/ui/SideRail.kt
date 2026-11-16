@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,7 +36,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -112,11 +110,13 @@ fun SideRail(
     }
 }
 
-/** The web's logo: the fleur-de-lis with a play sign in an accent square, then the name. */
+/** The web's logo: a play sign in an accent square, then the name. */
 @Composable
 fun Brand(showName: Boolean = true, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Image(painterResource(R.drawable.brand_mark), contentDescription = null, modifier = Modifier.size(40.dp))
+        Box(Modifier.size(40.dp).background(Plys.Accent500, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+            Text("▶", color = Plys.Surface950, fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleMedium)
+        }
         AnimatedVisibility(showName, enter = fadeIn(), exit = fadeOut()) {
             // Never wrapped: while the rail unfolds or folds the name has almost no room, and wrapping it letter by
             // letter would make this row taller and push every rail entry down during the animation.
