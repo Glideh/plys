@@ -98,8 +98,8 @@ onUnmounted(() => {
   <div class="flex min-h-full flex-col">
     <header class="sticky top-0 z-30 border-b border-white/5 bg-surface-950/80 backdrop-blur">
       <nav class="mx-auto flex h-16 max-w-screen-2xl items-center gap-4 px-4 sm:px-8 md:gap-8">
-        <RouterLink :to="{ name: 'home' }" class="flex items-center gap-2.5">
-          <span class="grid size-8 place-items-center rounded-lg bg-accent-500 text-sm font-black text-surface-950">▶</span>
+        <RouterLink :to="{ name: 'home' }" :aria-label="t('app.name')" class="flex items-center gap-2.5">
+          <img src="/brand-mark.svg" alt="" class="size-8 object-contain" />
           <span class="text-lg font-bold tracking-tight" :class="{ 'hidden sm:inline': searchOpen && !onHome }">{{ t('app.name') }}</span>
         </RouterLink>
 
