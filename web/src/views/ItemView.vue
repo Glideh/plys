@@ -496,12 +496,12 @@ async function onMatched(merged: boolean) {
               <span v-else class="text-slate-200">{{ p.name }}</span>
             </template>
           </p>
-          <ul class="flex gap-4 overflow-x-auto pb-2">
+          <ul class="-mx-1 -mt-1 flex gap-4 overflow-x-auto px-1 pt-1 pb-2">
             <li v-for="c in item.cast" :key="c.name + c.character" class="w-28 shrink-0 text-center">
               <component
                 :is="c.id ? RouterLink : 'div'"
                 v-bind="c.id ? { to: personCatalogRoute(item.kind, 'actors', c.id), title: t('catalog.personTitles', { name: c.name }) } : {}"
-                class="group block rounded-lg"
+                class="group block rounded-lg outline-none"
               >
                 <div class="mx-auto size-24 overflow-hidden rounded-full bg-surface-800 ring-1 ring-white/10 transition group-hover:ring-2 group-hover:ring-accent-400 group-focus-visible:ring-2 group-focus-visible:ring-accent-400">
                   <img v-if="c.photoUrl" :src="c.photoUrl" :alt="c.name" loading="lazy" class="size-full object-cover" />

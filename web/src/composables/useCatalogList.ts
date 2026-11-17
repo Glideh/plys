@@ -105,28 +105,58 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest, signal: Abor
   let debounce: ReturnType<typeof setTimeout> | undefined
   let pendingSearch = false
 
+  /** Search, sort and filters as one comparable value. */
+  function stateKey(q: string, s: ItemSort, f: CatalogFilters): string {
+    return JSON.stringify([q, s, serializeFilters(f) ?? ''])
+  }
+  function routeState() {
+    const next = route.query
+    return {
+      q: typeof next.q === 'string' ? next.q : '',
+      sort: itemSorts.includes(next.sort as ItemSort) ? next.sort as ItemSort : 'title',
+      filters: parseFilters(next.filters),
+    }
+  }
+  // State the URL and the list were last brought to; edits differing from it are pending.
+  let appliedKey = stateKey(query.value, sort.value, filters.value)
+
   function applySearch() {
+    clearTimeout(debounce)
     pendingSearch = false
+    appliedKey = stateKey(query.value, sort.value, filters.value)
     router.replace({ query: { ...route.query, q: query.value || undefined, sort: sort.value === 'title' ? undefined : sort.value, filters: serializeFilters(filters.value) } })
     load(true)
   }
 
+  /** Follows the URL (back/forward, or a link to the list with its own search or filters) and reloads at once. */
+  function followRoute(): boolean {
+    const next = routeState()
+    const key = stateKey(next.q, next.sort, next.filters)
+    if (key === appliedKey) return false
+    clearTimeout(debounce)
+    pendingSearch = false
+    appliedKey = key
+    query.value = next.q
+    sort.value = next.sort
+    filters.value = next.filters
+    load(true)
+    return true
+  }
+
   watch([query, sort, () => serializeFilters(filters.value)], () => {
     clearTimeout(debounce)
+    // Already applied (state taken from the URL, or an edit undone before the debounce).
+    if (stateKey(query.value, sort.value, filters.value) === appliedKey) {
+      pendingSearch = false
+      return
+    }
     pendingSearch = true
     debounce = setTimeout(applySearch, SEARCH_DEBOUNCE_MS)
   })
 
-  watch(() => route.query, (next) => {
+  watch(() => route.query, () => {
     // A hidden (cached) list must not follow the query of the page shown in its place.
-    if (!active) return
-    const nextQuery = typeof next.q === 'string' ? next.q : ''
-    const nextSort = itemSorts.includes(next.sort as ItemSort) ? next.sort as ItemSort : 'title'
-    const nextFilters = parseFilters(next.filters)
-    if (nextQuery === query.value && nextSort === sort.value && serializeFilters(nextFilters) === serializeFilters(filters.value)) return
-    query.value = nextQuery
-    sort.value = nextSort
-    filters.value = nextFilters
+    if (active) followRoute()
   })
 
   const observer = new IntersectionObserver(
@@ -147,6 +177,8 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest, signal: Abor
   onActivated(() => {
     if (active) return // first mount
     active = true
+    // The route may bring new filters (e.g. an actor opened from an item page): they win over the cached list.
+    if (followRoute()) return
     if (pendingSearch) applySearch()
     else void refreshLoaded()
   })
