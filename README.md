@@ -1,3 +1,5 @@
+<p align="center"><img src="web/public/brand-mark.svg" alt="" width="128" /></p>
+
 # Plys
 
 Plys is a self-hosted media library for personal video collections.
