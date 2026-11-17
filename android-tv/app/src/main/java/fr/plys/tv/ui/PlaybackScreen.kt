@@ -24,11 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Audiotrack
-import androidx.compose.material.icons.outlined.Forward30
+import androidx.compose.material.icons.outlined.Forward10
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Replay30
+import androidx.compose.material.icons.outlined.Replay10
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -99,16 +99,16 @@ const val SUBTITLE_TEXT_SIZE_SP = 30f
 /** Space kept under subtitles while the controls are hidden, as a fraction of the screen height. */
 private const val SUBTITLE_BOTTOM_MARGIN = 0.06f
 
-/** Seconds moved by one left or right press while the controls are hidden. */
+/** Seconds moved by one left or right press while the controls are hidden, or by the rewind and forward buttons. */
 private const val DPAD_SEEK_SECONDS = 10.0
 
-/** Seconds moved by one previous or next press, accumulated like the left and right presses. */
+/** Seconds moved by one press of the remote's seek keys (rewind, fast forward, previous, next). */
 private const val SKIP_SEEK_SECONDS = 60.0
 
 /** Seconds before the next episode starts by itself at the end of one. */
 private const val AUTO_NEXT_SECONDS = 10
 
-/** Delay after the last left or right press before the accumulated seek is applied. */
+/** Delay after the last seek press before the accumulated seek is applied. */
 private const val DPAD_SEEK_DELAY_MS = 700L
 
 @Composable
@@ -160,10 +160,14 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
         while (countdown > 0) { delay(1000); countdown-- }
         model.next()
     }
-    // Left and right presses made while the controls are hidden, and previous and next presses, applied together
-    // once the presses stop.
+    // Every seek press (left and right while the controls are hidden, the remote's seek keys, the rewind and forward
+    // buttons) adds to one offset, applied once the presses stop: one server session is opened, not one per press.
     var pendingSeek by remember { mutableDoubleStateOf(0.0) }
     var seekPresses by remember { mutableIntStateOf(0) }
+    fun queueSeek(delta: Double) {
+        pendingSeek += delta
+        seekPresses++
+    }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     val visible = showControls || menu.isNotEmpty() || subtitleSearch != null || state.paused || state.loading || state.error != null || state.ended
@@ -200,19 +204,13 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { model.togglePause(); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_PAUSE -> { model.setPaused(true); showControls = true; true }
                     KeyEvent.KEYCODE_MEDIA_PLAY -> { model.setPaused(false); showControls = true; true }
-                    KeyEvent.KEYCODE_MEDIA_REWIND -> { model.seek(-30.0); showControls = true; true }
-                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { model.seek(30.0); showControls = true; true }
-                    // Previous and next move by a minute, whether the controls are shown or not: they move no focus.
-                    KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                        pendingSeek += if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_MEDIA_PREVIOUS) -SKIP_SEEK_SECONDS else SKIP_SEEK_SECONDS
-                        seekPresses++
-                        true
-                    }
+                    // The remote's seek keys move by a minute, whether the controls are shown or not: they move no focus.
+                    KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { queueSeek(-SKIP_SEEK_SECONDS); true }
+                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_NEXT -> { queueSeek(SKIP_SEEK_SECONDS); true }
                     // Hidden controls: left and right move through the video instead of opening the controls.
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         if (visible) false else {
-                            pendingSeek += if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -DPAD_SEEK_SECONDS else DPAD_SEEK_SECONDS
-                            seekPresses++
+                            queueSeek(if (event.nativeKeyEvent.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -DPAD_SEEK_SECONDS else DPAD_SEEK_SECONDS)
                             true
                         }
                     }
@@ -302,9 +300,9 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                     else -> IconAction(if (state.paused) Icons.Outlined.PlayArrow else Icons.Outlined.Pause, if (state.paused) R.string.play else R.string.pause,
                         Modifier.focusRequester(playFocus), primary = true, onClick = model::togglePause)
                 }
-                // Seeking while a seek loads moves from the position already requested.
-                IconAction(Icons.Outlined.Replay30, R.string.rewind) { model.seek(-30.0) }
-                IconAction(Icons.Outlined.Forward30, R.string.forward, enabled = !state.ended) { model.seek(30.0) }
+                // Presses add up like left and right; seeking while a seek loads moves from the position already requested.
+                IconAction(Icons.Outlined.Replay10, R.string.rewind) { queueSeek(-DPAD_SEEK_SECONDS) }
+                IconAction(Icons.Outlined.Forward10, R.string.forward, enabled = !state.ended) { queueSeek(DPAD_SEEK_SECONDS) }
                 if (version != null && version.audio.size > 1) IconAction(Icons.Outlined.Audiotrack, R.string.audio) { menu = "audio" }
                 if (version != null && (version.subtitles.isNotEmpty() || version.externalSubtitles.isNotEmpty() || state.item.subtitleSearch)) IconAction(Icons.Outlined.Subtitles, R.string.subtitles) { menu = "subtitles" }
                 if (state.item.next != null) IconAction(Icons.Outlined.SkipNext, R.string.next_episode) { model.next() }

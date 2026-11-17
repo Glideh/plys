@@ -102,8 +102,8 @@
     <string name="season">Temporada %1$d</string>
     <string name="episode">Episódio %1$d</string>
     <string name="pause">Pausar</string>
-    <string name="rewind">−30 s</string>
-    <string name="forward">+30 s</string>
+    <string name="rewind">−10 s</string>
+    <string name="forward">+10 s</string>
     <string name="ended">Reprodução concluída.</string>
     <string name="next_episode">Próximo episódio</string>
     <string name="unavailable">Nenhuma versão reproduzível está disponível.</string>
