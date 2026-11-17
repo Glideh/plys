@@ -193,6 +193,19 @@ class PlysApiTest {
         }
     }
 
+    @Test fun `title watchlist is read and removed on the user's server`() = runBlocking {
+        login()
+        json("""{"sources":[{"serverId":"peer","serverUrl":"https://peer.example.org","itemId":"copy"}],"inWatchlist":true}""")
+        assertTrue(api.titleInWatchlist("movie", 348))
+        assertEquals("/api/v1/kinds/movie/titles/348/sources", server.takeRequest().requestUrl?.encodedPath)
+        server.enqueue(MockResponse().setResponseCode(204))
+        api.removeTitleFromWatchlist("movie", 348)
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/v1/kinds/movie/titles/348/watchlist", request.requestUrl?.encodedPath)
+        assertEquals("Bearer access-1", request.getHeader("Authorization"))
+    }
+
     @Test fun `kind catalog encodes filters and normalizes local sources`() = runBlocking {
         login()
         json("""{"id":"origin"}""")

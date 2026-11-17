@@ -52,7 +52,28 @@ func (s *Server) peerTitleIDs(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, titleRefDTO{ID: row.ID})
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": items})
+	watchlisted, err := s.q.IsTitleInWatchlist(r.Context(), store.IsTitleInWatchlistParams{UserID: userID, ItemKind: kind, TmdbID: tmdbID})
+	if err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	httpx.JSON(w, http.StatusOK, peerTitleResponse{Items: items, InWatchlist: watchlisted})
+}
+
+// peerTitleResponse lists a peer's copies of a title for one of its users.
+type peerTitleResponse struct {
+	Items []titleRefDTO `json:"items"`
+	// InWatchlist tells whether the user added one of the copies to their watchlist; absent from older peers.
+	InWatchlist bool `json:"inWatchlist"`
+}
+
+// titleSourcesResult describes a title across this server and its paired servers, for one user.
+type titleSourcesResult struct {
+	Sources []cardSourceDTO
+	// InWatchlist is set when the user added any copy of the title to their watchlist, on any server.
+	InWatchlist bool
+	// PeersWatchlisting lists the paired servers on which the user added a copy.
+	PeersWatchlisting map[uuid.UUID]bool
 }
 
 // listTitleSources lists the servers holding a TMDB title, as the authenticated user sees them.
@@ -64,48 +85,61 @@ func (s *Server) listTitleSources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := auth.PrincipalFrom(r.Context())
-	sources, err := s.titleSources(r.Context(), p.UserID, p.Role == auth.RoleAdmin, kind, int32(tmdb))
+	title, err := s.titleSources(r.Context(), p.UserID, p.Role == auth.RoleAdmin, kind, int32(tmdb))
 	if err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"sources": sources})
+	httpx.JSON(w, http.StatusOK, map[string]any{"sources": title.Sources, "inWatchlist": title.InWatchlist})
 }
 
 // titleSources lists the servers holding the title of a top-level item, as the caller sees them; unreachable peers are skipped.
-func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin bool, kind string, tmdbID int32) ([]cardSourceDTO, error) {
+func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin bool, kind string, tmdbID int32) (titleSourcesResult, error) {
+	var out titleSourcesResult
 	name, err := s.Settings.ServerName(ctx)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
 	rows, err := s.q.ListVisibleTitlesByTMDB(ctx, store.ListVisibleTitlesByTMDBParams{
 		ItemKind: kind, TmdbID: &tmdbID, IsAdmin: isAdmin, UserID: userID,
 	})
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	out := make([]cardSourceDTO, 0, len(rows))
+	out.Sources = make([]cardSourceDTO, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, cardSourceDTO{ServerID: s.Identity.ID, ServerName: name, ItemID: row.ID})
+		out.Sources = append(out.Sources, cardSourceDTO{ServerID: s.Identity.ID, ServerName: name, ItemID: row.ID})
+	}
+	if out.InWatchlist, err = s.q.IsTitleInWatchlist(ctx, store.IsTitleInWatchlistParams{UserID: userID, ItemKind: kind, TmdbID: tmdbID}); err != nil {
+		return out, err
 	}
 
-	results, _, err := fanOutPeers(ctx, s, "title", func(ctx context.Context, p store.Peer) ([]cardSourceDTO, error) {
+	results, _, err := fanOutPeers(ctx, s, "title", func(ctx context.Context, p store.Peer) (peerTitle, error) {
 		return s.fetchPeerTitleSources(ctx, p, userID, kind, tmdbID)
 	})
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	for _, sources := range results {
-		out = append(out, sources...)
+	out.PeersWatchlisting = map[uuid.UUID]bool{}
+	for _, result := range results {
+		out.Sources = append(out.Sources, result.sources...)
+		if result.inWatchlist && len(result.sources) > 0 {
+			out.InWatchlist = true
+			out.PeersWatchlisting[result.sources[0].ServerID] = true
+		}
 	}
 	return out, nil
 }
 
+// peerTitle is what one paired server holds of a title for the user.
+type peerTitle struct {
+	sources     []cardSourceDTO
+	inWatchlist bool
+}
+
 // fetchPeerTitleSources asks one peer which of its items carry the same title, for the user.
-func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID uuid.UUID, kind string, tmdbID int32) ([]cardSourceDTO, error) {
-	var page struct {
-		Items []titleRefDTO `json:"items"`
-	}
+func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID uuid.UUID, kind string, tmdbID int32) (peerTitle, error) {
+	var page peerTitleResponse
 	err := s.callPeer(ctx, p, func(ctx context.Context) error {
 		token, err := s.federatedTokenFor(p.ID, userID)
 		if err != nil {
@@ -115,11 +149,11 @@ func (s *Server) fetchPeerTitleSources(ctx context.Context, p store.Peer, userID
 		return s.getPeerCatalog(ctx, target, token, &page)
 	})
 	if err != nil {
-		return nil, err
+		return peerTitle{}, err
 	}
-	out := make([]cardSourceDTO, 0, len(page.Items))
+	out := peerTitle{sources: make([]cardSourceDTO, 0, len(page.Items)), inWatchlist: page.InWatchlist}
 	for _, it := range page.Items {
-		out = append(out, cardSourceDTO{ServerID: p.ID, ServerName: peerDisplayName(p), ServerURL: p.Url, ItemID: it.ID})
+		out.sources = append(out.sources, cardSourceDTO{ServerID: p.ID, ServerName: peerDisplayName(p), ServerURL: p.Url, ItemID: it.ID})
 	}
 	return out, nil
 }

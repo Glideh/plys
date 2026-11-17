@@ -224,8 +224,9 @@ export const catalogApi = {
     if (selected.length) params.set('selected', selected.join(','))
     return api<FilterOptionsPage>(`/kinds/${kind}/filters?${params}`)
   },
+  /** The servers holding a title, and whether any copy of it is in the user's watchlist. */
   titleSources: (kind: ItemKind, tmdbId: number) =>
-    api<{ sources: CardSource[] }>(`/kinds/${kind}/titles/${tmdbId}/sources`).then((r) => r.sources),
+    api<{ sources: CardSource[]; inWatchlist: boolean }>(`/kinds/${kind}/titles/${tmdbId}/sources`),
   searchMatch: (id: string, query: string, year?: number) => {
     const qs = new URLSearchParams({ query })
     if (year) qs.set('year', String(year))

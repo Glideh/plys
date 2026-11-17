@@ -171,11 +171,142 @@ func TestFederatedUserWatchlist(t *testing.T) {
 	if d := do(t, env.h, http.MethodGet, "/api/v1/items/"+item, token, nil); d.body["inWatchlist"] != true {
 		t.Errorf("federated detail: %v", d.body["inWatchlist"])
 	}
+	setTMDB(t, env, library, 348)
+	var title peerTitleResponse
+	raw, _ := json.Marshal(do(t, env.h, http.MethodGet, "/api/v1/federation/catalog/titles/movie/348", token, nil).body)
+	if err := json.Unmarshal(raw, &title); err != nil || !title.InWatchlist || len(title.Items) != 1 {
+		t.Errorf("peer title: %s", raw)
+	}
 	r := do(t, env.h, http.MethodGet, "/api/v1/federation/watchlist", token, nil)
 	if r.status != http.StatusOK || len(r.body["items"].([]any)) != 1 || r.body["items"].([]any)[0].(map[string]any)["id"] != item {
 		t.Fatalf("peer watchlist: %d %v", r.status, r.body)
 	}
 	if got := watchlistIDs(env.get(t, admin, "/api/v1/me/watchlist")); len(got) != 0 {
 		t.Errorf("the shadow user's entry is not the admin's: %v", got)
+	}
+}
+
+// setTMDB gives the top-level items of a library a TMDB ID, as a metadata match would.
+func setTMDB(t *testing.T, e testEnv, library string, tmdbID int) {
+	t.Helper()
+	if _, err := e.srv.Pool.Exec(context.Background(), `UPDATE items SET tmdb_id = $2 WHERE library_id = $1 AND parent_id IS NULL`, library, tmdbID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWatchlistCoversEveryCopyOfATitle(t *testing.T) {
+	e := newTestEnv(t)
+	admin := setupAdmin(t, e.h).body["accessToken"].(string)
+	writeFiles(t, e.root, "films/Alien.1979.mkv", "uhd/Alien.1979.2160p.mkv")
+	films := e.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	uhd := e.createScannedLibrary(t, admin, "UHD", "movies", "uhd", nil)
+	setTMDB(t, e, films, 348)
+	setTMDB(t, e, uhd, 348)
+	first := e.get(t, admin, "/api/v1/libraries/"+films+"/items")["items"].([]any)[0].(map[string]any)["id"].(string)
+	second := e.get(t, admin, "/api/v1/libraries/"+uhd+"/items")["items"].([]any)[0].(map[string]any)["id"].(string)
+	listed := func(id string) any { return e.get(t, admin, "/api/v1/items/"+id)["inWatchlist"] }
+
+	if r := do(t, e.h, http.MethodPost, "/api/v1/items/"+first+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if listed(second) != true {
+		t.Errorf("the other copy of a listed title shows as listed")
+	}
+	if sources := e.get(t, admin, "/api/v1/kinds/movie/titles/348/sources"); sources["inWatchlist"] != true || len(sources["sources"].([]any)) != 2 {
+		t.Errorf("title sources: %v", sources)
+	}
+	if r := do(t, e.h, http.MethodPost, "/api/v1/items/"+second+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if got := watchlistIDs(e.get(t, admin, "/api/v1/me/watchlist")); len(got) != 1 || got[0] != second {
+		t.Errorf("a title is listed once, as its latest addition: %v", got)
+	}
+
+	// Removing one copy removes the title.
+	if r := do(t, e.h, http.MethodDelete, "/api/v1/items/"+second+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if listed(first) != false || listed(second) != false {
+		t.Errorf("both copies removed")
+	}
+	if r := do(t, e.h, http.MethodPost, "/api/v1/items/"+first+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if r := do(t, e.h, http.MethodDelete, "/api/v1/kinds/movie/titles/348/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if got := watchlistIDs(e.get(t, admin, "/api/v1/me/watchlist")); len(got) != 0 || listed(first) != false {
+		t.Errorf("title removal: %v", got)
+	}
+	if r := do(t, e.h, http.MethodDelete, "/api/v1/kinds/movie/titles/348/watchlist", "", nil); r.status != http.StatusUnauthorized {
+		t.Errorf("title removal needs authentication: %d", r.status)
+	}
+	if r := do(t, e.h, http.MethodDelete, "/api/v1/kinds/movie/titles/x/watchlist", admin, nil); r.status != http.StatusBadRequest {
+		t.Errorf("invalid TMDB ID: %d", r.status)
+	}
+}
+
+func TestWatchlistTitleAcrossPeers(t *testing.T) {
+	env, peer, admin := pairedEnv(t)
+	writeFiles(t, env.root, "films/Alien.1979.mkv")
+	library := env.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	setTMDB(t, env, library, 348)
+	localID := env.get(t, admin, "/api/v1/libraries/"+library+"/items")["items"].([]any)[0].(map[string]any)["id"].(string)
+
+	remoteID := uuid.New()
+	tmdb := int32(348)
+	remoteListed := true
+	var removed []string
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/federation/catalog/titles/movie/348":
+			_ = json.NewEncoder(w).Encode(peerTitleResponse{Items: []titleRefDTO{{ID: remoteID}}, InWatchlist: remoteListed})
+		case r.URL.Path == "/api/v1/federation/watchlist":
+			items := []watchlistItemDTO{}
+			if remoteListed {
+				items = append(items, watchlistItemDTO{ID: remoteID, Kind: "movie", Title: "Alien", TMDBID: &tmdb, AddedAt: time.Now().Add(-time.Hour)})
+			}
+			_ = json.NewEncoder(w).Encode(watchlistResponse{Items: items})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/items/"+remoteID.String()+"/watchlist":
+			removed = append(removed, r.Header.Get("Authorization"))
+			remoteListed = false
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			peer.handler.ServeHTTP(w, r)
+		}
+	}))
+	t.Cleanup(remote.Close)
+	env.srv.HTTPClient = remote.Client()
+	if _, err := env.srv.q.UpdatePeerURL(context.Background(), store.UpdatePeerURLParams{ID: peer.id, Url: remote.URL}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Added on the paired server, the title shows as listed on this server's copy too.
+	if d := env.get(t, admin, "/api/v1/items/"+localID); d["inWatchlist"] != true || len(d["sources"].([]any)) != 2 {
+		t.Fatalf("local copy of a title listed on a peer: %v %v", d["inWatchlist"], d["sources"])
+	}
+	if r := do(t, env.h, http.MethodPost, "/api/v1/items/"+localID+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if got := watchlistIDs(env.get(t, admin, "/api/v1/me/watchlist")); len(got) != 1 || got[0] != localID {
+		t.Fatalf("the title is listed once: %v", got)
+	}
+
+	// Removing it from this server's copy removes it on the peer as well.
+	if r := do(t, env.h, http.MethodDelete, "/api/v1/items/"+localID+"/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if len(removed) != 1 || removed[0] == "" {
+		t.Fatalf("peer removal: %v", removed)
+	}
+	if d := env.get(t, admin, "/api/v1/items/"+localID); d["inWatchlist"] != false {
+		t.Errorf("removed everywhere: %v", d["inWatchlist"])
+	}
+	if got := watchlistIDs(env.get(t, admin, "/api/v1/me/watchlist")); len(got) != 0 {
+		t.Errorf("empty watchlist: %v", got)
+	}
+	// Nothing is left on the peer: no call is made to it.
+	if r := do(t, env.h, http.MethodDelete, "/api/v1/kinds/movie/titles/348/watchlist", admin, nil); r.status != http.StatusNoContent || len(removed) != 1 {
+		t.Errorf("title removal: %d %v", r.status, removed)
 	}
 }

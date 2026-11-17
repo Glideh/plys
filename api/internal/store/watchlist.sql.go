@@ -13,6 +13,7 @@ import (
 )
 
 const addToWatchlist = `-- name: AddToWatchlist :exec
+
 INSERT INTO watchlist (user_id, item_id) VALUES ($1, $2)
 ON CONFLICT (user_id, item_id) DO NOTHING
 `
@@ -22,29 +23,63 @@ type AddToWatchlistParams struct {
 	ItemID uuid.UUID
 }
 
+// A title of the watchlist is the item that was added or any other top-level copy of the same title, that is the same
+// kind and TMDB ID, whichever library holds it.
 func (q *Queries) AddToWatchlist(ctx context.Context, arg AddToWatchlistParams) error {
 	_, err := q.db.Exec(ctx, addToWatchlist, arg.UserID, arg.ItemID)
 	return err
 }
 
 const isInWatchlist = `-- name: IsInWatchlist :one
-SELECT EXISTS (SELECT 1 FROM watchlist WHERE user_id = $1 AND item_id = $2)
+SELECT EXISTS (
+    SELECT 1
+    FROM watchlist w
+    JOIN items i ON i.id = w.item_id
+    JOIN items t ON t.id = $1
+    WHERE w.user_id = $2
+      AND (i.id = t.id
+           OR (t.tmdb_id IS NOT NULL AND i.parent_id IS NULL AND i.kind = t.kind AND i.tmdb_id = t.tmdb_id))
+)
 `
 
 type IsInWatchlistParams struct {
-	UserID uuid.UUID
 	ItemID uuid.UUID
+	UserID uuid.UUID
 }
 
+// Whether the item or another copy of its title is in the watchlist.
 func (q *Queries) IsInWatchlist(ctx context.Context, arg IsInWatchlistParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isInWatchlist, arg.UserID, arg.ItemID)
+	row := q.db.QueryRow(ctx, isInWatchlist, arg.ItemID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const isTitleInWatchlist = `-- name: IsTitleInWatchlist :one
+SELECT EXISTS (
+    SELECT 1
+    FROM watchlist w
+    JOIN items i ON i.id = w.item_id
+    WHERE w.user_id = $1 AND i.parent_id IS NULL AND i.kind = $2 AND i.tmdb_id = $3::int
+)
+`
+
+type IsTitleInWatchlistParams struct {
+	UserID   uuid.UUID
+	ItemKind string
+	TmdbID   int32
+}
+
+// Whether a copy of the title is in the watchlist.
+func (q *Queries) IsTitleInWatchlist(ctx context.Context, arg IsTitleInWatchlistParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isTitleInWatchlist, arg.UserID, arg.ItemKind, arg.TmdbID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
 const listWatchlist = `-- name: ListWatchlist :many
-SELECT i.id, i.kind, i.title, i.year, i.poster_path, i.thumb_path, w.added_at
+SELECT i.id, i.kind, i.title, i.year, i.tmdb_id, i.poster_path, i.thumb_path, w.added_at
 FROM watchlist w
 JOIN items i ON i.id = w.item_id
 JOIN libraries l ON l.id = i.library_id
@@ -66,6 +101,7 @@ type ListWatchlistRow struct {
 	Kind       string
 	Title      string
 	Year       *int32
+	TmdbID     *int32
 	PosterPath *string
 	ThumbPath  *string
 	AddedAt    time.Time
@@ -86,6 +122,7 @@ func (q *Queries) ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([
 			&i.Kind,
 			&i.Title,
 			&i.Year,
+			&i.TmdbID,
 			&i.PosterPath,
 			&i.ThumbPath,
 			&i.AddedAt,
@@ -101,7 +138,11 @@ func (q *Queries) ListWatchlist(ctx context.Context, arg ListWatchlistParams) ([
 }
 
 const removeFromWatchlist = `-- name: RemoveFromWatchlist :exec
-DELETE FROM watchlist WHERE user_id = $1 AND item_id = $2
+DELETE FROM watchlist w
+USING items t, items i
+WHERE w.user_id = $1 AND t.id = $2 AND i.id = w.item_id
+  AND (i.id = t.id
+       OR (t.tmdb_id IS NOT NULL AND i.parent_id IS NULL AND i.kind = t.kind AND i.tmdb_id = t.tmdb_id))
 `
 
 type RemoveFromWatchlistParams struct {
@@ -109,7 +150,27 @@ type RemoveFromWatchlistParams struct {
 	ItemID uuid.UUID
 }
 
+// Removes the item and every other copy of its title.
 func (q *Queries) RemoveFromWatchlist(ctx context.Context, arg RemoveFromWatchlistParams) error {
 	_, err := q.db.Exec(ctx, removeFromWatchlist, arg.UserID, arg.ItemID)
+	return err
+}
+
+const removeTitleFromWatchlist = `-- name: RemoveTitleFromWatchlist :exec
+DELETE FROM watchlist w
+USING items i
+WHERE w.user_id = $1 AND i.id = w.item_id
+  AND i.parent_id IS NULL AND i.kind = $2 AND i.tmdb_id = $3::int
+`
+
+type RemoveTitleFromWatchlistParams struct {
+	UserID   uuid.UUID
+	ItemKind string
+	TmdbID   int32
+}
+
+// Removes every copy of a title.
+func (q *Queries) RemoveTitleFromWatchlist(ctx context.Context, arg RemoveTitleFromWatchlistParams) error {
+	_, err := q.db.Exec(ctx, removeTitleFromWatchlist, arg.UserID, arg.ItemKind, arg.TmdbID)
 	return err
 }

@@ -81,6 +81,10 @@ data class WatchlistItem(
     val year: Int? = null, val posterUrl: String? = null,
 )
 
+/** The copies of a title, as the user's own server sees them. */
+@Serializable
+data class TitleSources(val sources: List<ServerRef> = emptyList(), val inWatchlist: Boolean = false)
+
 @Serializable
 data class WatchlistResponse(val items: List<WatchlistItem> = emptyList(), val unavailableServers: Int = 0, val unavailableServerNames: List<String> = emptyList())
 
@@ -280,8 +284,13 @@ data class ItemDetail(
     val thumbUrl: String? = null,
     /** Series then season for an episode. */
     val ancestors: List<Ancestor> = emptyList(),
-    /** Set on top-level titles the user added to their watchlist; absent from servers older than the watchlist. */
+    /**
+     * Set on top-level titles the user added to their watchlist, through this copy or another copy of the title;
+     * absent from servers older than the watchlist.
+     */
     val inWatchlist: Boolean = false,
+    /** Groups the copies of a title held by several libraries or servers. */
+    val tmdbId: Int? = null,
     /** Subtitles can be searched online for the versions of this item. */
     val subtitleSearch: Boolean = false,
 ) {

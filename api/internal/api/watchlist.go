@@ -3,11 +3,15 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"toto/api/internal/auth"
@@ -23,6 +27,7 @@ type watchlistItemDTO struct {
 	Kind      string        `json:"kind"`
 	Title     string        `json:"title"`
 	Year      *int32        `json:"year"`
+	TMDBID    *int32        `json:"tmdbId"`
 	PosterURL *string       `json:"posterUrl"`
 	AddedAt   time.Time     `json:"addedAt"`
 	Source    cardSourceDTO `json:"source"`
@@ -48,9 +53,14 @@ func (s *Server) setWatchlisted(listed bool) http.HandlerFunc {
 		}
 		p, _ := auth.PrincipalFrom(r.Context())
 		var err error
-		if listed {
+		switch {
+		case listed:
 			err = s.q.AddToWatchlist(r.Context(), store.AddToWatchlistParams{UserID: p.UserID, ItemID: it.ID})
-		} else {
+		case it.TmdbID != nil && !isFederatedRequest(r.Context()):
+			// A local user removes the title from every server, whichever copy was added.
+			err = s.removeTitleFromWatchlist(r.Context(), p.UserID, p.Role == auth.RoleAdmin, it.Kind, *it.TmdbID)
+		default:
+			// The copies of the title held by this server; a peer removes the others itself.
 			err = s.q.RemoveFromWatchlist(r.Context(), store.RemoveFromWatchlistParams{UserID: p.UserID, ItemID: it.ID})
 		}
 		if err != nil {
@@ -77,7 +87,7 @@ func (s *Server) localWatchlist(ctx context.Context, userID uuid.UUID, isAdmin b
 			poster = imageURL(row.ThumbPath, "w342")
 		}
 		items = append(items, watchlistItemDTO{
-			ID: row.ID, Kind: row.Kind, Title: row.Title, Year: row.Year, PosterURL: poster, AddedAt: row.AddedAt,
+			ID: row.ID, Kind: row.Kind, Title: row.Title, Year: row.Year, TMDBID: row.TmdbID, PosterURL: poster, AddedAt: row.AddedAt,
 			Source: cardSourceDTO{ServerID: s.Identity.ID, ServerName: name, ItemID: row.ID},
 		})
 	}
@@ -123,6 +133,7 @@ func (s *Server) watchlist(w http.ResponseWriter, r *http.Request) {
 		}
 		return strings.Compare(left.Source.ServerID.String()+left.ID.String(), right.Source.ServerID.String()+right.ID.String())
 	})
+	response.Items = uniqueTitles(response.Items)
 	httpx.JSON(w, http.StatusOK, response)
 }
 
@@ -153,4 +164,86 @@ func (s *Server) fetchPeerWatchlist(ctx context.Context, peer store.Peer, userID
 		}
 	}
 	return response.Items, nil
+}
+
+// uniqueTitles keeps the most recent entry of each title when several copies of it were added, on this server or on
+// paired ones; the items must be sorted most recent first.
+func uniqueTitles(items []watchlistItemDTO) []watchlistItemDTO {
+	seen := map[string]bool{}
+	out := items[:0]
+	for _, item := range items {
+		if item.TMDBID != nil {
+			key := item.Kind + ":" + strconv.Itoa(int(*item.TMDBID))
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// removeTitleFromWatchlist removes every copy of a title from the user's watchlist: on this server, and on each paired
+// server holding one. A peer that cannot be reached keeps its entry.
+func (s *Server) removeTitleFromWatchlist(ctx context.Context, userID uuid.UUID, isAdmin bool, kind string, tmdbID int32) error {
+	err := s.q.RemoveTitleFromWatchlist(ctx, store.RemoveTitleFromWatchlistParams{UserID: userID, ItemKind: kind, TmdbID: tmdbID})
+	if err != nil {
+		return err
+	}
+	title, err := s.titleSources(ctx, userID, isAdmin, kind, tmdbID)
+	if err != nil {
+		return err
+	}
+	_, _, err = fanOutPeers(ctx, s, "watchlist removal", func(ctx context.Context, peer store.Peer) (struct{}, error) {
+		// The peer removes every copy it holds: one of its items is enough.
+		for _, source := range title.Sources {
+			if source.ServerID == peer.ID && title.PeersWatchlisting[peer.ID] {
+				return struct{}{}, s.removePeerWatchlist(ctx, peer, userID, source.ItemID)
+			}
+		}
+		return struct{}{}, nil
+	})
+	return err
+}
+
+// removePeerWatchlist removes a title held by a paired server from the user's watchlist there.
+func (s *Server) removePeerWatchlist(ctx context.Context, peer store.Peer, userID, itemID uuid.UUID) error {
+	return s.callPeer(ctx, peer, func(ctx context.Context) error {
+		token, err := s.federatedTokenFor(peer.ID, userID)
+		if err != nil {
+			return err
+		}
+		target := peer.Url + "/api/v1/items/" + url.PathEscape(itemID.String()) + "/watchlist"
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, target, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := s.httpClient().Do(req)
+		if err != nil {
+			return fmt.Errorf("%w: %w: %v", errPeerUnreachable, errPeerDown, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+			return peerStatusError(resp.StatusCode)
+		}
+		return nil
+	})
+}
+
+// deleteTitleFromWatchlist removes a title from the caller's watchlist on every server, whichever copy was added.
+func (s *Server) deleteTitleFromWatchlist(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	tmdb, err := strconv.ParseInt(chi.URLParam(r, "tmdbId"), 10, 32)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "validation", "tmdbId must be an integer")
+		return
+	}
+	p, _ := auth.PrincipalFrom(r.Context())
+	if err := s.removeTitleFromWatchlist(r.Context(), p.UserID, p.Role == auth.RoleAdmin, kind, int32(tmdb)); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

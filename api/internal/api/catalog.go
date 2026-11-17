@@ -334,7 +334,7 @@ type itemDetailDTO struct {
 	PlayTarget *playTargetDTO `json:"playTarget"`
 	// Next follows an episode in viewing order.
 	Next *playTargetDTO `json:"next"`
-	// InWatchlist is set when the caller added this top-level title to their watchlist.
+	// InWatchlist is set when the caller added this top-level title, or another copy of it, to their watchlist.
 	InWatchlist bool `json:"inWatchlist"`
 	// Sources lists the servers holding this title; set on top-level items for local users only.
 	Sources []cardSourceDTO `json:"sources"`
@@ -427,10 +427,14 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 	}
 	if it.ParentID == nil && it.TmdbID != nil && !isFederatedRequest(ctx) {
 		p, _ := auth.PrincipalFrom(ctx)
-		if dto.Sources, err = s.titleSources(ctx, p.UserID, p.Role == auth.RoleAdmin, it.Kind, *it.TmdbID); err != nil {
+		title, err := s.titleSources(ctx, p.UserID, p.Role == auth.RoleAdmin, it.Kind, *it.TmdbID)
+		if err != nil {
 			httpx.InternalError(w, r, err)
 			return
 		}
+		dto.Sources = title.Sources
+		// The watchlist holds the title, whichever copy was added and whichever server holds it.
+		dto.InWatchlist = dto.InWatchlist || title.InWatchlist
 	}
 	httpx.JSON(w, http.StatusOK, dto)
 }

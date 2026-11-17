@@ -151,6 +151,17 @@ class PlysApi(
         Unit
     }
 
+    /** Whether any copy of a title is in the watchlist, on the user's server or a paired one. */
+    suspend fun titleInWatchlist(kind: String, tmdbId: Int): Boolean = locked {
+        decode<TitleSources>(request("kinds/$kind/titles/$tmdbId/sources")).inWatchlist
+    }
+
+    /** Removes a title from the watchlist on every server, whichever copy was added. */
+    suspend fun removeTitleFromWatchlist(kind: String, tmdbId: Int) = locked {
+        request("kinds/$kind/titles/$tmdbId/watchlist", "DELETE")
+        Unit
+    }
+
     suspend fun catalogCount(kind: CatalogKind): CatalogCount {
         val page = catalog(CatalogQuery(kind), limit = 1)
         return CatalogCount(page.total, page.unavailableServers > 0)

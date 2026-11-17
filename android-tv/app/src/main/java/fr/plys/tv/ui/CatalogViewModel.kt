@@ -330,7 +330,18 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         val item = api.item(id, source)
         val copies = copies(item, source, sources)
         val shown = shownCopy(item, source, copies)
-        navigate(Screen.Detail(shown.item, shown.source, sources, target = playTarget(shown.item, shown.source), copies = copies))
+        val shownItem = withTitleWatchlist(shown.item, shown.source)
+        navigate(Screen.Detail(shownItem, shown.source, sources, target = playTarget(shownItem, shown.source), copies = copies))
+    }
+
+    /**
+     * A paired server only knows the copies it holds: the user's own server tells whether the title is in the
+     * watchlist through any copy, on any server.
+     */
+    private suspend fun withTitleWatchlist(item: ItemDetail, source: ServerRef?): ItemDetail {
+        val tmdbId = item.tmdbId
+        if (item.inWatchlist || !item.canWatchlist || tmdbId == null || source?.serverUrl.isNullOrBlank()) return item
+        return try { item.copy(inWatchlist = api.titleInWatchlist(item.kind, tmdbId)) } catch (_: ClientException) { item }
     }
 
     /** A copy that cannot play is not shown first when another server's can. */
@@ -376,7 +387,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     /** Shows a series or season as another server holds it. */
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
-        val item = api.item(source.itemId, source)
+        val item = withTitleWatchlist(api.item(source.itemId, source), source)
         mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = PlaybackSelection(), target = playTarget(item, source)))
     }
 
@@ -386,7 +397,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         val copy = choice.copy
         val next = if (screen.target != null || screen.isShown(copy)) screen
             else screen.copy(
-                item = copy.item, source = copy.source,
+                // The watchlist holds the title, not one copy of it.
+                item = copy.item.copy(inWatchlist = screen.item.inWatchlist), source = copy.source,
                 // Keeps what was loaded for the copy left, so coming back to it shows its latest state.
                 copies = screen.copies.map { if (screen.isShown(it)) TitleCopy(screen.source, screen.item) else it },
             )
@@ -400,7 +412,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     }
 
     private suspend fun refreshed(screen: Screen.Detail): Screen.Detail {
-        val item = api.item(screen.item.id, screen.source)
+        val item = withTitleWatchlist(api.item(screen.item.id, screen.source), screen.source)
         val target = playTarget(item, screen.source)
         // Keep the chosen tracks while the same episode stays next; a new episode follows them by language.
         val selection = when {
@@ -426,7 +438,10 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun toggleWatchlist() = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
         val listed = !screen.item.inWatchlist
-        api.setWatchlisted(screen.item.id, listed, screen.source)
+        val tmdbId = screen.item.tmdbId
+        // Removing goes through the user's server, which removes every copy of the title, whichever server holds it.
+        if (!listed && tmdbId != null) api.removeTitleFromWatchlist(screen.item.kind, tmdbId)
+        else api.setWatchlisted(screen.item.id, listed, screen.source)
         mutableState.value = mutableState.value.copy(screen = screen.copy(item = screen.item.copy(inWatchlist = listed)))
     }
 

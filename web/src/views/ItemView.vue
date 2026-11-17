@@ -49,7 +49,15 @@ function refOf(source: CardSource): ServerRef {
 /** Lists the versions of the title across every server holding it, this server's first. */
 async function loadChoices(primary: ItemDetail): Promise<void> {
   let sources = primary.sources
-  if (server) sources = primary.tmdbId ? await catalogApi.titleSources(primary.kind, primary.tmdbId) : []
+  if (server && primary.tmdbId) {
+    // A paired server only knows its own copies: this server tells whether the title is listed on any of them.
+    const title = await catalogApi.titleSources(primary.kind, primary.tmdbId)
+    sources = title.sources
+    // Through the ref, so that the page updates.
+    if (title.inWatchlist && item.value?.id === primary.id) item.value.inWatchlist = true
+  } else if (server) {
+    sources = []
+  }
 
   const localId = localServerId.value ?? ''
   const primaryRef: ServerRef = server ?? {
@@ -248,13 +256,17 @@ async function toggleWatched(id: string, watched: boolean) {
 const togglingWatchlist = ref(false)
 const watchlistLabel = computed(() => t(item.value?.inWatchlist ? 'catalog.removeFromWatchlist' : 'catalog.addToWatchlist'))
 
-/** Adds or removes the title on the server it is read from, without reloading the page. */
+/**
+ * Adds the title on the server it is read from, or removes every copy of it from the watchlist, whichever server
+ * holds it, without reloading the page.
+ */
 async function toggleWatchlist() {
   const it = item.value
   if (!it) return
   togglingWatchlist.value = true
   try {
-    await watchlistApi.set(server, it.id, !it.inWatchlist)
+    if (it.inWatchlist && it.tmdbId) await watchlistApi.removeTitle(it.kind, it.tmdbId)
+    else await watchlistApi.set(server, it.id, !it.inWatchlist)
     it.inWatchlist = !it.inWatchlist
   } catch (err) {
     error.value = errorMessage(err)
