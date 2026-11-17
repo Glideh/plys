@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.Icon
@@ -383,23 +383,26 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
 
 /**
  * One criterion of the filters dialog: the button opens its editor and shows the current value; once a value is set,
- * a reset icon beside it clears that criterion alone. Resetting gives the focus back to the criterion, since the icon
- * goes away.
+ * a cross inside the criterion, at its right end, clears that criterion alone. Every criterion takes the full row, so
+ * no empty space is left beside the unset ones. Resetting gives the focus back to the criterion, since the cross goes away.
  */
 @Composable
 private fun FilterRow(label: String, value: String?, open: () -> Unit, modifier: Modifier = Modifier, reset: () -> Unit) {
     val criterion = remember { FocusRequester() }
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = open, modifier = Modifier.weight(1f).focusRequester(criterion)) {
+    var criterionFocused by remember { mutableStateOf(false) }
+    Box(modifier, contentAlignment = Alignment.CenterEnd) {
+        Button(onClick = open, modifier = Modifier.fillMaxWidth().focusRequester(criterion).onFocusChanged { criterionFocused = it.isFocused },
+            // Leaves room at the end for the cross, so a long value never runs under it.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 10.dp, bottom = 10.dp, end = if (value == null) 16.dp else 48.dp)) {
             Text(if (value == null) label else "$label : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (value != null) Button(onClick = { criterion.requestFocus(); reset() },
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
-            Icon(Icons.Outlined.Refresh, contentDescription = stringResource(R.string.reset_filter, label), modifier = Modifier.size(20.dp),
-                tint = androidx.tv.material3.LocalContentColor.current)
+        if (value != null) Button(onClick = { criterion.requestFocus(); reset() }, modifier = Modifier.padding(end = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
+            // At rest the cross sits on the criterion: dark once the focused criterion turns light, so it stays visible.
+            val content = androidx.tv.material3.LocalContentColor.current
+            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.reset_filter, label), modifier = Modifier.size(18.dp),
+                tint = if (criterionFocused && content == Plys.Text) Plys.Surface950 else content)
         }
-        // Keeps set and unset criteria the same width, so the column does not jag.
-        else androidx.compose.foundation.layout.Spacer(Modifier.size(44.dp))
     }
 }
 
