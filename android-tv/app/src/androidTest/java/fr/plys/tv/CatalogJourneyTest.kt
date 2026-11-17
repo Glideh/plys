@@ -258,6 +258,15 @@ class CatalogJourneyTest {
                 assertTrue(bounds.top >= play.top && bounds.bottom <= play.bottom)
             }
             assertEquals(freshAudio.top, rule.onNodeWithContentDescription(text(R.string.audio)).getUnclippedBoundsInRoot().top)
+            // Left from the first action unfolds the rail; right goes back to that action, though the rail covers the page.
+            val resumeButton = rule.onNodeWithText(resume)
+            resumeButton.performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            resumeButton.performKeyInput { pressKey(Key.DirectionLeft) }
+            rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isNotEmpty() }
+            resumeButton.assertIsNotFocused()
+            rule.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionRight) }
+            resumeButton.assertIsFocused()
+            rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isEmpty() }
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }

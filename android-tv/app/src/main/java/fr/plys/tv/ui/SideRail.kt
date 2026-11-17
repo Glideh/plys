@@ -70,12 +70,13 @@ fun sectionOf(kind: CatalogKind) = when (kind) {
 /**
  * Navigation always one press away, the Google TV pattern: a column of icons on the left that unfolds over the
  * screen, with labels, while it holds the focus. Pressing left from the first column of any screen reaches it, and
- * entering it lands on the current section rather than on whatever item is level with the focus.
+ * entering it lands on the current section rather than on whatever item is level with the focus. Right goes back to
+ * the element of the screen that held the focus before.
  */
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun SideRail(
-    current: Section, serverVersion: String, modifier: Modifier = Modifier,
+    current: Section, serverVersion: String, content: FocusRequester, modifier: Modifier = Modifier,
     home: () -> Unit, search: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -94,15 +95,15 @@ fun SideRail(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Brand(expanded, Modifier.padding(start = 4.dp, bottom = 24.dp))
-            RailItem(Icons.Outlined.Home, R.string.home, current == Section.HOME, expanded, requesters.getValue(Section.HOME), home)
-            RailItem(Icons.Outlined.Search, R.string.search, current == Section.SEARCH, expanded, requesters.getValue(Section.SEARCH), search)
-            RailItem(Icons.Outlined.FavoriteBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), watchlist)
+            RailItem(Icons.Outlined.Home, R.string.home, current == Section.HOME, expanded, requesters.getValue(Section.HOME), content, home)
+            RailItem(Icons.Outlined.Search, R.string.search, current == Section.SEARCH, expanded, requesters.getValue(Section.SEARCH), content, search)
+            RailItem(Icons.Outlined.FavoriteBorder, R.string.watchlist, current == Section.WATCHLIST, expanded, requesters.getValue(Section.WATCHLIST), content, watchlist)
             CatalogKind.entries.forEach { kind ->
                 val section = sectionOf(kind)
-                RailItem(kindIcon(kind), kindLabel(kind), current == section, expanded, requesters.getValue(section)) { openKind(kind) }
+                RailItem(kindIcon(kind), kindLabel(kind), current == section, expanded, requesters.getValue(section), content) { openKind(kind) }
             }
             Spacer(Modifier.weight(1f))
-            RailItem(Icons.AutoMirrored.Outlined.Logout, R.string.sign_out, false, expanded, requesters.getValue(Section.NONE), signOut)
+            RailItem(Icons.AutoMirrored.Outlined.Logout, R.string.sign_out, false, expanded, requesters.getValue(Section.NONE), content, signOut)
             // The web's footer: the server version, readable once the rail unfolds.
             if (expanded && serverVersion.isNotEmpty()) {
                 Text(stringResource(R.string.server_version, serverVersion), style = MaterialTheme.typography.labelSmall,
@@ -127,12 +128,13 @@ fun Brand(showName: Boolean = true, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded: Boolean, requester: FocusRequester, onClick: () -> Unit) {
+private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded: Boolean, requester: FocusRequester, content: FocusRequester, onClick: () -> Unit) {
     val text = stringResource(label)
     PlysButton(
         onClick = onClick, shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-        modifier = Modifier.fillMaxWidth().focusRequester(requester),
+        // Right always leaves the rail for the screen, whatever the unfolded rail happens to cover.
+        modifier = Modifier.fillMaxWidth().focusRequester(requester).focusProperties { right = content },
     ) {
         // Resting content is light and focused content dark: the current section keeps an accent that reads on both.
         val focused = LocalContentColor.current != Plys.Text

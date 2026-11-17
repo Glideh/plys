@@ -54,6 +54,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -90,36 +91,41 @@ fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier 
     Box(modifier) {
         // The detail page draws its backdrop under the rail; the other screens start after it.
         val detail = state.screen is Screen.Detail
-        Column(Modifier.fillMaxSize().padding(start = if (detail) 0.dp else RailWidth + 24.dp, end = if (detail) 0.dp else 40.dp, top = if (detail) 0.dp else 20.dp)
-            // Only left reaches the rail: up or down past the edge of the screen, or below a row still loading, stays put
-            // instead of landing on the nearest rail item (sign out, at the bottom).
-            .focusProperties { onExit = { if (requestedFocusDirection == FocusDirection.Up || requestedFocusDirection == FocusDirection.Down) cancelFocusChange() } }
-            .focusGroup()) {
-            state.error?.let {
-                ErrorBanner(LocalContext.current.errorMessage(it), if (state.canRetry) ({ model.retry() }) else null,
-                    Modifier.padding(start = if (detail) RailWidth + 24.dp else 0.dp, end = if (detail) 40.dp else 0.dp, top = if (detail) 20.dp else 0.dp, bottom = 12.dp))
-            }
-            when (val screen = state.screen) {
-                Screen.Splash, Screen.Login -> Unit
-                is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search, state.searchFocusRequested) }
-                is Screen.Libraries -> key("libraries") {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(stringResource(R.string.libraries), style = MaterialTheme.typography.headlineMedium)
-                        if (screen.items.isEmpty()) EmptyState(stringResource(R.string.empty))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(screen.items, key = { it.id }) { library ->
-                                Button(onClick = { model.openLibrary(library) },
-                                    modifier = Modifier.fillMaxWidth().focusInitially(library == screen.items.first())) { Text(library.name) }
+        // Right from the rail returns to the element that last held the focus: on the detail page the unfolded rail
+        // covers the start of the content, so a geometric search found nothing to its right and the focus was stuck.
+        val content = remember { FocusRequester() }
+        Box(Modifier.fillMaxSize().focusRequester(content).focusRestorer().focusGroup()) {
+            Column(Modifier.fillMaxSize().padding(start = if (detail) 0.dp else RailWidth + 24.dp, end = if (detail) 0.dp else 40.dp, top = if (detail) 0.dp else 20.dp)
+                // Only left reaches the rail: up or down past the edge of the screen, or below a row still loading, stays put
+                // instead of landing on the nearest rail item (sign out, at the bottom).
+                .focusProperties { onExit = { if (requestedFocusDirection == FocusDirection.Up || requestedFocusDirection == FocusDirection.Down) cancelFocusChange() } }
+                .focusGroup()) {
+                state.error?.let {
+                    ErrorBanner(LocalContext.current.errorMessage(it), if (state.canRetry) ({ model.retry() }) else null,
+                        Modifier.padding(start = if (detail) RailWidth + 24.dp else 0.dp, end = if (detail) 40.dp else 0.dp, top = if (detail) 20.dp else 0.dp, bottom = 12.dp))
+                }
+                when (val screen = state.screen) {
+                    Screen.Splash, Screen.Login -> Unit
+                    is Screen.Home -> key("home") { HomeScreen(screen.data, model, state.libraries, state.catalogCounts, state.recent, state.search, state.searchFocusRequested) }
+                    is Screen.Libraries -> key("libraries") {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(stringResource(R.string.libraries), style = MaterialTheme.typography.headlineMedium)
+                            if (screen.items.isEmpty()) EmptyState(stringResource(R.string.empty))
+                            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(screen.items, key = { it.id }) { library ->
+                                    Button(onClick = { model.openLibrary(library) },
+                                        modifier = Modifier.fillMaxWidth().focusInitially(library == screen.items.first())) { Text(library.name) }
+                                }
                             }
                         }
                     }
+                    is Screen.Watchlist -> key("watchlist") { WatchlistScreen(screen, model) }
+                    is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
+                    is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
                 }
-                is Screen.Watchlist -> key("watchlist") { WatchlistScreen(screen, model) }
-                is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
-                is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
             }
         }
-        SideRail(section, state.serverVersion, Modifier.align(Alignment.CenterStart), home = model::home, search = model::openSearch, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
+        SideRail(section, state.serverVersion, content, Modifier.align(Alignment.CenterStart), home = model::home, search = model::openSearch, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
         if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
     }
 }
