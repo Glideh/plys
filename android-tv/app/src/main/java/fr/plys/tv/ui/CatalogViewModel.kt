@@ -47,6 +47,8 @@ sealed interface Screen {
     data class Libraries(val items: List<Library>) : Screen
     data class Home(val data: HomeResponse) : Screen
     data class Watchlist(val data: WatchlistResponse) : Screen
+    /** The global search, opened from the rail: empty at first, back returns to where it was opened from. */
+    data object Search : Screen
     data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0,
         val focusedPosition: Int? = null) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
@@ -73,7 +75,7 @@ sealed interface Screen {
     }
 }
 
-/** The global search of the home screen; [result] keeps the previous matches while a new search runs. */
+/** The global search, of the home screen and of the search page; [result] keeps the previous matches while a new search runs. */
 data class SearchState(
     val query: String = "",
     val result: SearchResult? = null,
@@ -98,7 +100,7 @@ data class CatalogState(
     /** Latest additions of each kind, shown on the home screen. */
     val recent: Map<CatalogKind, List<ItemCard>> = emptyMap(),
     val search: SearchState = SearchState(),
-    /** The search entry of the rail was selected: the home screen focuses its search field and opens the keyboard. */
+    /** The search entry of the rail was selected: the search page focuses its field and opens the keyboard. */
     val searchFocusRequested: Boolean = false,
     /** Version of the signed-in server, empty until it answered. */
     val serverVersion: String = "",
@@ -240,19 +242,16 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun clearSearch() = search("")
 
     /**
-     * The search entry of the rail: the global search lives at the top of the home screen. From the home screen the
-     * current query is kept; from anywhere else the home screen opens with an empty search, as the home entry does.
+     * The search entry of the rail: a page of its own, empty at first, stacked over the current screen so that back
+     * returns to it. Selected again on the search page, it only gives the field the focus back with the query kept.
      */
     fun openSearch() {
-        if (mutableState.value.screen is Screen.Home) {
-            mutableState.value = mutableState.value.copy(searchFocusRequested = true)
-            return
+        if (mutableState.value.loading) return
+        if (mutableState.value.screen != Screen.Search) {
+            clearSearch()
+            navigate(Screen.Search)
         }
-        perform {
-            clearCatalogState(); clearSearch(); history.clear()
-            mutableState.value = mutableState.value.copy(searchFocusRequested = true)
-            loadHome()
-        }
+        mutableState.value = mutableState.value.copy(searchFocusRequested = true, error = null)
     }
 
     fun searchFocusHandled() {
@@ -484,12 +483,14 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun back(): Boolean {
         if (mutableState.value.loading) return true
         if (history.isEmpty()) return false
+        // The search page shares its query with the home screen's field: leaving it does not leave a search behind.
+        if (mutableState.value.screen == Screen.Search) clearSearch()
         val screen = history.removeAt(history.lastIndex)
         if (screen is Screen.Home) clearCatalogState()
         mutableState.value = mutableState.value.copy(screen = screen, error = null)
         perform {
             val refreshed = when (screen) {
-                Screen.Splash, Screen.Login -> screen
+                Screen.Splash, Screen.Login, Screen.Search -> screen
                 is Screen.Home -> { loadHome(); mutableState.value.screen }
                 is Screen.Libraries -> Screen.Libraries(api.libraries())
                 is Screen.Watchlist -> Screen.Watchlist(api.watchlist())

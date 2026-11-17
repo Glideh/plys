@@ -53,9 +53,10 @@ private val ExpandedRailWidth = 260.dp
 
 enum class Section { HOME, SEARCH, WATCHLIST, MOVIES, SERIES, OTHER, NONE }
 
-/** The rail entry of a screen: the home screen showing search results belongs to the search entry. */
-fun sectionOf(screen: Screen, search: SearchState): Section = when (screen) {
-    is Screen.Home -> if (search.query.isNotEmpty()) Section.SEARCH else Section.HOME
+/** The rail entry of a screen. */
+fun sectionOf(screen: Screen): Section = when (screen) {
+    is Screen.Home -> Section.HOME
+    Screen.Search -> Section.SEARCH
     is Screen.Watchlist -> Section.WATCHLIST
     is Screen.Catalog -> sectionOf(screen.query.kind)
     else -> Section.NONE
