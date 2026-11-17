@@ -65,6 +65,7 @@ import fr.plys.tv.data.PlaybackSelection
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
 import fr.plys.tv.data.VersionChoice
+import java.util.Locale
 
 fun MediaTrack.trackLabel(): String = listOfNotNull(
     language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() },
@@ -73,11 +74,37 @@ fun MediaTrack.trackLabel(): String = listOfNotNull(
 ).joinToString(" · ")
 
 /**
- * The track as named on the detail screen's button, which has little room: its language and title, without the
- * formats that the version summary and the dialog already show. Falls back to the full label when both are blank.
+ * The track as named on the detail screen's button, which has little room: its short language code and title,
+ * without the formats that the version summary and the dialog already show. Falls back to the full label when both
+ * are blank.
  */
 fun MediaTrack.shortLabel(): String =
-    listOfNotNull(language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() }).joinToString(" · ").ifEmpty { trackLabel() }
+    listOfNotNull(shortLanguage(language), title.takeIf { it.isNotBlank() }).joinToString(" · ").ifEmpty { trackLabel() }
+
+/** ISO 639-2 codes (bibliographic, as ffprobe reports them, and terminology) to their ISO 639-1 code. */
+private val iso6392to1: Map<String, String> by lazy {
+    val terminology = Locale.getISOLanguages().mapNotNull { code ->
+        runCatching { Locale.forLanguageTag(code).isO3Language }.getOrNull()?.takeIf { it.length == 3 }?.let { it to code }
+    }.toMap()
+    terminology + mapOf(
+        "fre" to "fr", "ger" to "de", "chi" to "zh", "dut" to "nl", "gre" to "el", "cze" to "cs", "per" to "fa",
+        "rum" to "ro", "slo" to "sk", "alb" to "sq", "arm" to "hy", "baq" to "eu", "bur" to "my", "geo" to "ka",
+        "ice" to "is", "mac" to "mk", "mao" to "mi", "may" to "ms", "tib" to "bo", "wel" to "cy", "heb" to "he",
+    )
+}
+
+/**
+ * A track language as a short code: the ISO 639-1 language in upper case, followed by the region in lower case when
+ * there is one ("fre" → "FR", "eng" → "EN", "fr-CA" → "FR-ca"). Codes without a two-letter equivalent are kept,
+ * in upper case. Null when the language is blank or undetermined ("und").
+ */
+fun shortLanguage(code: String): String? {
+    val parts = code.trim().split('-', '_').filter { it.isNotBlank() }
+    val base = parts.firstOrNull()?.lowercase(Locale.ROOT)?.takeIf { it != "und" } ?: return null
+    val language = (if (base.length == 3) iso6392to1[base] ?: base else base).uppercase(Locale.ROOT)
+    val region = parts.getOrNull(1)?.lowercase(Locale.ROOT)
+    return if (region == null) language else "$language-$region"
+}
 
 fun channelLayout(channels: Int): String? = when (channels) {
     0 -> null
