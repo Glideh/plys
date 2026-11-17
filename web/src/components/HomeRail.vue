@@ -30,7 +30,7 @@ function subtitle(it: HomeItem, resume: boolean): string | null {
     <p v-else-if="items.length === 0" class="rounded-xl border border-dashed border-white/10 px-6 py-10 text-center text-sm text-slate-500">
       {{ empty }}
     </p>
-    <ul v-else class="-mx-4 flex gap-4 overflow-x-auto px-4 pb-3 sm:-mx-8 sm:px-8">
+    <ul v-else class="-mx-4 -mt-2 flex gap-4 overflow-x-auto px-4 pt-2 pb-3 sm:-mx-8 sm:px-8">
       <li v-for="it in items" :key="it.id" class="w-36 shrink-0 sm:w-40">
         <div class="block">
           <RouterLink

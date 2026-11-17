@@ -18,7 +18,7 @@ function remote(it: WatchlistItem): ServerRef | null {
     <h2 class="mb-4 flex items-center gap-2 text-lg font-semibold">
       <Heart class="size-5 text-rose-400" fill="currentColor" aria-hidden="true" />{{ title }}
     </h2>
-    <ul class="-mx-4 flex gap-4 overflow-x-auto px-4 pb-3 sm:-mx-8 sm:px-8">
+    <ul class="-mx-4 -mt-2 flex gap-4 overflow-x-auto px-4 pt-2 pb-3 sm:-mx-8 sm:px-8">
       <li v-for="it in items" :key="`${it.source.serverId}/${it.id}`" class="w-36 shrink-0 sm:w-40">
         <PosterCard
           :to="{ name: 'item', params: { id: it.id }, query: serverQuery(remote(it)) }"
