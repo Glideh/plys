@@ -368,7 +368,7 @@ async function onMatched(merged: boolean) {
               <BaseButton
                 v-if="choices.length || item.playTarget"
                 class="!px-2.5"
-                :class="item.watched ? '!text-accent-300 hover:!text-accent-400' : ''"
+                :class="item.watched ? '!text-accent-300 hover:!text-accent-400' : '!text-slate-200/35 hover:!text-slate-200/70'"
                 :loading="togglingWatched"
                 :aria-pressed="item.watched"
                 :aria-label="watchedLabel"

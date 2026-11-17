@@ -55,6 +55,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -243,13 +244,14 @@ fun Action(label: Int, enabled: Boolean = true, modifier: Modifier = Modifier, p
         R.string.next_episode, R.string.play_next_now -> Icons.Outlined.SkipNext
         else -> null
     }
-    val tint = if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current
+    // Read inside the button content, the content color follows the focus: light at rest, dark on the focused light button.
+    val tint: @Composable () -> Color = { if (label == R.string.remove_from_watchlist) Plys.Favorite else LocalContentColor.current }
     // An icon-only action, like the web's restart and watchlist buttons, names itself to accessibility services.
     if (iconOnly && icon != null) Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary,
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
-        Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(20.dp), tint = tint)
+        Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(20.dp), tint = tint())
     } else Button(onClick = onClick, enabled = enabled, modifier = modifier, primary = primary) {
-        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint); Spacer(Modifier.width(8.dp)) }
+        if (icon != null) { Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = tint()); Spacer(Modifier.width(8.dp)) }
         // A label never wraps: squeezed into a narrow button it broke onto many lines and made the whole row tall.
         Text(stringResource(label), maxLines = 1, softWrap = false)
     }
