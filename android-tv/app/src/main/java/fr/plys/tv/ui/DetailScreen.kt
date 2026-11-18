@@ -162,7 +162,6 @@ private fun Header(item: ItemDetail, screen: Screen.Detail, openAncestor: (Ances
         item.year?.toString(),
         item.runtimeMinutes?.takeIf { it > 0 }?.let { durationLabel(it * 60.0) },
         item.rating?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-        screen.source?.serverName?.takeIf { it.isNotBlank() },
         stringResource(R.string.watched).takeIf { item.watched },
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -57,14 +57,15 @@ func (s *Server) peerTitleIDs(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, peerTitleResponse{Items: items, InWatchlist: watchlisted})
+	httpx.JSON(w, http.StatusOK, peerTitleResponse{Items: items, InWatchlist: &watchlisted})
 }
 
 // peerTitleResponse lists a peer's copies of a title for one of its users.
 type peerTitleResponse struct {
 	Items []titleRefDTO `json:"items"`
-	// InWatchlist tells whether the user added one of the copies to their watchlist; absent from older peers.
-	InWatchlist bool `json:"inWatchlist"`
+	// InWatchlist tells whether the user added one of the copies to their watchlist; nil when an older peer does not
+	// say, though it may still hold an entry.
+	InWatchlist *bool `json:"inWatchlist,omitempty"`
 }
 
 // titleSourcesResult describes a title across this server and its paired servers, for one user.
@@ -72,8 +73,9 @@ type titleSourcesResult struct {
 	Sources []cardSourceDTO
 	// InWatchlist is set when the user added any copy of the title to their watchlist, on any server.
 	InWatchlist bool
-	// PeersWatchlisting lists the paired servers on which the user added a copy.
-	PeersWatchlisting map[uuid.UUID]bool
+	// PeersMayWatchlist lists the paired servers on which the user added a copy, or which cannot tell (older peers):
+	// removing the title must reach them.
+	PeersMayWatchlist map[uuid.UUID]bool
 }
 
 // listTitleSources lists the servers holding a TMDB title, as the authenticated user sees them.
@@ -120,12 +122,18 @@ func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin boo
 	if err != nil {
 		return out, err
 	}
-	out.PeersWatchlisting = map[uuid.UUID]bool{}
+	out.PeersMayWatchlist = map[uuid.UUID]bool{}
 	for _, result := range results {
 		out.Sources = append(out.Sources, result.sources...)
-		if result.inWatchlist && len(result.sources) > 0 {
+		if len(result.sources) == 0 {
+			continue
+		}
+		listed := result.inWatchlist != nil && *result.inWatchlist
+		if listed {
 			out.InWatchlist = true
-			out.PeersWatchlisting[result.sources[0].ServerID] = true
+		}
+		if listed || result.inWatchlist == nil {
+			out.PeersMayWatchlist[result.sources[0].ServerID] = true
 		}
 	}
 	return out, nil
@@ -133,8 +141,9 @@ func (s *Server) titleSources(ctx context.Context, userID uuid.UUID, isAdmin boo
 
 // peerTitle is what one paired server holds of a title for the user.
 type peerTitle struct {
-	sources     []cardSourceDTO
-	inWatchlist bool
+	sources []cardSourceDTO
+	// inWatchlist is nil when the peer does not say whether the user listed the title.
+	inWatchlist *bool
 }
 
 // fetchPeerTitleSources asks one peer which of its items carry the same title, for the user.

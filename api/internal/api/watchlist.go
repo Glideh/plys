@@ -196,10 +196,19 @@ func (s *Server) removeTitleFromWatchlist(ctx context.Context, userID uuid.UUID,
 		return err
 	}
 	_, _, err = fanOutPeers(ctx, s, "watchlist removal", func(ctx context.Context, peer store.Peer) (struct{}, error) {
-		// The peer removes every copy it holds: one of its items is enough.
+		if !title.PeersMayWatchlist[peer.ID] {
+			return struct{}{}, nil
+		}
+		// A current peer removes every copy it holds from one of its items; an older one only removes the item named,
+		// so each copy is named.
 		for _, source := range title.Sources {
-			if source.ServerID == peer.ID && title.PeersWatchlisting[peer.ID] {
-				return struct{}{}, s.removePeerWatchlist(ctx, peer, userID, source.ItemID)
+			if source.ServerID != peer.ID {
+				continue
+			}
+			err := s.removePeerWatchlist(ctx, peer, userID, source.ItemID)
+			// A peer older than the watchlist holds no entry.
+			if err != nil && !errors.Is(err, errPeerNotFound) {
+				return struct{}{}, err
 			}
 		}
 		return struct{}{}, nil

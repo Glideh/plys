@@ -979,7 +979,7 @@ paths:
     delete:
       operationId: removeTitleFromWatchlist
       summary: Remove a title from the caller's watchlist on this server and on every compatible paired server
-      description: Idempotent; whichever copy of the title was added. Lets a client reading a peer's copy remove the title everywhere.
+      description: Idempotent; whichever copy of the title was added. Lets a client reading a peer's copy remove the title everywhere. The removal is forwarded to each paired server that reports the title listed, and to older peers that do not report it (every copy they hold is named).
       responses:
         "204": { description: Not listed }
         "400": { $ref: "#/components/responses/Error" }

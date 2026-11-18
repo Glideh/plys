@@ -206,6 +206,19 @@ class PlysApiTest {
         assertEquals("Bearer access-1", request.getHeader("Authorization"))
     }
 
+    @Test fun `title copies are listed by the user's server`() = runBlocking {
+        login()
+        json("""{"sources":[{"serverId":"origin","serverName":"Home","itemId":"film"},{"serverId":"peer","serverName":"Peer","serverUrl":"https://peer.example.org","itemId":"copy"}],"inWatchlist":false}""")
+        val title = api.titleSources("movie", 348)
+        assertEquals(listOf("film", "copy"), title.sources.map { it.itemId })
+        assertNull(title.sources.first().serverUrl)
+        assertEquals("/api/v1/kinds/movie/titles/348/sources", server.takeRequest().requestUrl?.encodedPath)
+        json("""{"items":[{"id":"copy","kind":"movie","title":"Alien","tmdbId":348,"addedAt":"2026-11-18T10:00:00Z","source":{"serverId":"peer","serverName":"Peer","serverUrl":"https://peer.example.org","itemId":"copy"}}],"unavailableServers":0}""")
+        assertEquals(348, api.watchlist().items.single().tmdbId)
+        json("""{"id":"film","kind":"movie","title":"Alien","versions":[],"children":[],"tmdbId":348,"sources":[{"serverId":"origin","itemId":"film"},{"serverId":"peer","serverUrl":"https://peer.example.org","itemId":"copy"}]}""")
+        assertEquals(2, api.item("film").sources.size)
+    }
+
     @Test fun `kind catalog encodes filters and normalizes local sources`() = runBlocking {
         login()
         json("""{"id":"origin"}""")

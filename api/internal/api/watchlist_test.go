@@ -174,7 +174,7 @@ func TestFederatedUserWatchlist(t *testing.T) {
 	setTMDB(t, env, library, 348)
 	var title peerTitleResponse
 	raw, _ := json.Marshal(do(t, env.h, http.MethodGet, "/api/v1/federation/catalog/titles/movie/348", token, nil).body)
-	if err := json.Unmarshal(raw, &title); err != nil || !title.InWatchlist || len(title.Items) != 1 {
+	if err := json.Unmarshal(raw, &title); err != nil || title.InWatchlist == nil || !*title.InWatchlist || len(title.Items) != 1 {
 		t.Errorf("peer title: %s", raw)
 	}
 	r := do(t, env.h, http.MethodGet, "/api/v1/federation/watchlist", token, nil)
@@ -260,7 +260,7 @@ func TestWatchlistTitleAcrossPeers(t *testing.T) {
 	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/federation/catalog/titles/movie/348":
-			_ = json.NewEncoder(w).Encode(peerTitleResponse{Items: []titleRefDTO{{ID: remoteID}}, InWatchlist: remoteListed})
+			_ = json.NewEncoder(w).Encode(peerTitleResponse{Items: []titleRefDTO{{ID: remoteID}}, InWatchlist: &remoteListed})
 		case r.URL.Path == "/api/v1/federation/watchlist":
 			items := []watchlistItemDTO{}
 			if remoteListed {
@@ -308,5 +308,50 @@ func TestWatchlistTitleAcrossPeers(t *testing.T) {
 	// Nothing is left on the peer: no call is made to it.
 	if r := do(t, env.h, http.MethodDelete, "/api/v1/kinds/movie/titles/348/watchlist", admin, nil); r.status != http.StatusNoContent || len(removed) != 1 {
 		t.Errorf("title removal: %d %v", r.status, removed)
+	}
+}
+
+// A peer older than the title-wide watchlist does not say whether the user listed the title, and only removes the
+// item it is asked to: the removal names each of its copies.
+func TestWatchlistRemovalReachesOlderPeers(t *testing.T) {
+	env, peer, admin := pairedEnv(t)
+	writeFiles(t, env.root, "films/Alien.1979.mkv")
+	library := env.createScannedLibrary(t, admin, "Films", "movies", "films", nil)
+	setTMDB(t, env, library, 348)
+	localID := env.get(t, admin, "/api/v1/libraries/"+library+"/items")["items"].([]any)[0].(map[string]any)["id"].(string)
+
+	copies := []uuid.UUID{uuid.New(), uuid.New()}
+	removed := map[string]bool{}
+	remote := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/api/v1/federation/catalog/titles/movie/348":
+			// No inWatchlist field.
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": []titleRefDTO{{ID: copies[0]}, {ID: copies[1]}}})
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/items/"+copies[0].String()+"/watchlist":
+			removed[copies[0].String()] = true
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodDelete && r.URL.Path == "/api/v1/items/"+copies[1].String()+"/watchlist":
+			// Like a peer that lost this copy since: the other ones are still removed.
+			removed[copies[1].String()] = true
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			peer.handler.ServeHTTP(w, r)
+		}
+	}))
+	t.Cleanup(remote.Close)
+	env.srv.HTTPClient = remote.Client()
+	if _, err := env.srv.q.UpdatePeerURL(context.Background(), store.UpdatePeerURLParams{ID: peer.id, Url: remote.URL}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The peer cannot tell: the local copy is not shown as listed because of it.
+	if d := env.get(t, admin, "/api/v1/items/"+localID); d["inWatchlist"] != false || len(d["sources"].([]any)) != 3 {
+		t.Fatalf("title held by an older peer: %v %v", d["inWatchlist"], d["sources"])
+	}
+	if r := do(t, env.h, http.MethodDelete, "/api/v1/kinds/movie/titles/348/watchlist", admin, nil); r.status != http.StatusNoContent {
+		t.Fatal(r.body)
+	}
+	if len(removed) != 2 {
+		t.Errorf("every copy of the older peer is removed: %v", removed)
 	}
 }

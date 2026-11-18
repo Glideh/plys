@@ -327,10 +327,11 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
 
     fun openItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
         val item = api.item(id, source)
-        val copies = copies(item, source, sources)
+        val grouped = titleSources(item, sources)
+        val copies = copies(item, source, grouped)
         val shown = shownCopy(item, source, copies)
         val shownItem = withTitleWatchlist(shown.item, shown.source)
-        navigate(Screen.Detail(shownItem, shown.source, sources, target = playTarget(shownItem, shown.source), copies = copies))
+        navigate(Screen.Detail(shownItem, shown.source, grouped, target = playTarget(shownItem, shown.source), copies = copies))
     }
 
     /**
@@ -359,7 +360,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
      */
     fun playItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
         val item = api.item(id, source)
-        val shown = shownCopy(item, source, copies(item, source, sources))
+        val shown = shownCopy(item, source, copies(item, source, titleSources(item, sources)))
         val playable = playTarget(shown.item, shown.source) ?: shown.item
         if (playable.playableVersion == null) throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
         mutableState.value = mutableState.value.copy(
@@ -370,11 +371,24 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         )
     }
 
+    /**
+     * Every server's copies of a top-level title, as a catalog card lists them: opened from anywhere else (watchlist,
+     * home, breadcrumb), the title is grouped the same way. Empty for seasons, episodes and unmatched titles.
+     */
+    private suspend fun titleSources(item: ItemDetail, known: List<ServerRef>): List<ServerRef> {
+        val tmdbId = item.tmdbId
+        if (known.isNotEmpty() || !item.canWatchlist || tmdbId == null) return known
+        // The user's server lists them on its own items; a paired server only knows its own copies.
+        if (item.sources.isNotEmpty()) return item.sources
+        return try { api.titleSources(item.kind, tmdbId).sources } catch (_: ClientException) { emptyList() }
+    }
+
     /** The items each server holds for a playable title, the given one first; servers that fail to answer are left out. */
     private suspend fun copies(item: ItemDetail, source: ServerRef?, sources: List<ServerRef>): List<TitleCopy> {
         if (item.children.isNotEmpty() || sources.size < 2) return emptyList()
         val others = sources
-            .filterNot { it.serverId == source?.serverId && (it.itemId.isBlank() || it.itemId == item.id) }
+            // Item IDs are unique across servers: the given item is left out even when its source is unknown.
+            .filterNot { it.itemId == item.id || (it.serverId == source?.serverId && it.itemId.isBlank()) }
             .filter { it.itemId.isNotBlank() }
             .distinctBy { it.serverId to it.itemId }
             .mapNotNull { other ->

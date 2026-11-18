@@ -79,6 +79,8 @@ data class WatchlistItem(
     val id: String, val kind: String, val title: String,
     val source: ServerRef,
     val year: Int? = null, val posterUrl: String? = null,
+    /** Groups the copies of a title; absent from older servers. */
+    val tmdbId: Int? = null,
 )
 
 /** The copies of a title, as the user's own server sees them. */
@@ -291,6 +293,8 @@ data class ItemDetail(
     val inWatchlist: Boolean = false,
     /** Groups the copies of a title held by several libraries or servers. */
     val tmdbId: Int? = null,
+    /** The copies of a top-level title across the servers, sent by the user's own server for its items only. */
+    val sources: List<ServerRef> = emptyList(),
     /** Subtitles can be searched online for the versions of this item. */
     val subtitleSearch: Boolean = false,
 ) {

@@ -151,10 +151,13 @@ class PlysApi(
         Unit
     }
 
-    /** Whether any copy of a title is in the watchlist, on the user's server or a paired one. */
-    suspend fun titleInWatchlist(kind: String, tmdbId: Int): Boolean = locked {
-        decode<TitleSources>(request("kinds/$kind/titles/$tmdbId/sources")).inWatchlist
+    /** The copies of a title on the user's server and its paired servers, and whether any of them is in the watchlist. */
+    suspend fun titleSources(kind: String, tmdbId: Int): TitleSources = locked {
+        decode(request("kinds/$kind/titles/$tmdbId/sources"))
     }
+
+    /** Whether any copy of a title is in the watchlist, on the user's server or a paired one. */
+    suspend fun titleInWatchlist(kind: String, tmdbId: Int): Boolean = titleSources(kind, tmdbId).inWatchlist
 
     /** Removes a title from the watchlist on every server, whichever copy was added. */
     suspend fun removeTitleFromWatchlist(kind: String, tmdbId: Int) = locked {
