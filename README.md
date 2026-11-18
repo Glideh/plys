@@ -12,7 +12,7 @@ Plys is a self-hosted media library for personal video collections.
 - **Transcoding** using the CPU or GPU if present.
 - **User management** with administrator account creation.
 - **Server federation** for sharing libraries.
-- **Android TV client**: native Kotlin MVP for library browsing, playback and resume.
+- **Android TV client**: native Kotlin app for library browsing, playback.
 
 ## Installation
 

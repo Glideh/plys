@@ -153,6 +153,15 @@ class CatalogJourneyTest {
 
     @Test fun splashShowsTheBrandOnly() {
         rule.runOnUiThread { rule.activity.setContent { PlysTheme { fr.plys.tv.ui.SplashScreen() } } }
+        val screenCenter = rule.onRoot().fetchSemanticsNode().boundsInRoot.center.y
+        val logoBounds = rule.onNodeWithTag("splashLogo").fetchSemanticsNode().boundsInRoot
+        val logoCenter = logoBounds.center.y
+        assertEquals(screenCenter, logoCenter, 1f)
+        val glowBounds = rule.onNodeWithTag("splashGlow").fetchSemanticsNode().boundsInRoot
+        val expectedGlowY = logoCenter + logoBounds.height * (82f / 184f)
+        assertEquals(expectedGlowY, glowBounds.center.y, 1f)
+        val titleTop = rule.onNodeWithText(text(R.string.brand)).fetchSemanticsNode().boundsInRoot.top
+        assertTrue(titleTop > logoBounds.bottom)
         rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.splash_tagline)).assertIsDisplayed()
         rule.onAllNodesWithText(text(R.string.sign_in)).assertCountEquals(0)
