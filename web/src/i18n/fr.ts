@@ -13,6 +13,7 @@ export default {
     delete: 'Supprimer',
     close: 'Fermer',
     retry: 'Réessayer',
+    actions: 'Actions',
   },
   setup: {
     title: 'Bienvenue',

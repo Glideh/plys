@@ -15,6 +15,7 @@ export default {
     delete: 'Delete',
     close: 'Close',
     retry: 'Retry',
+    actions: 'Actions',
   },
   setup: {
     title: 'Welcome',

@@ -15,6 +15,7 @@ export default {
     delete: 'Excluir',
     close: 'Fechar',
     retry: 'Tentar novamente',
+    actions: 'Ações',
   },
   setup: {
     title: 'Boas-vindas',

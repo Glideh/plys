@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Check, Heart, Info, Pencil, RotateCcw } from '@lucide/vue'
+import { Check, Ellipsis, Heart, Info, RotateCcw } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Track, type Version } from '@/api/catalog'
 import { personCatalogRoute } from '@/api/catalogFilters'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
@@ -42,6 +42,8 @@ const editOpen = ref(false)
 const revertOpen = ref(false)
 const infoOpen = ref(false)
 const refreshing = ref(false)
+const actionsOpen = ref(false)
+const actionsMenu = ref<HTMLElement | null>(null)
 const route = useRoute()
 // Null when this server holds the item; otherwise the paired server the page is read from.
 const server = serverFromQuery(route.query)
@@ -108,7 +110,21 @@ async function load() {
     error.value = errorMessage(err)
   }
 }
-onMounted(load)
+function closeActionsOnOutsideClick(event: PointerEvent) {
+  if (actionsMenu.value && !actionsMenu.value.contains(event.target as Node)) actionsOpen.value = false
+}
+function closeActionsOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') actionsOpen.value = false
+}
+onMounted(() => {
+  void load()
+  document.addEventListener('pointerdown', closeActionsOnOutsideClick)
+  document.addEventListener('keydown', closeActionsOnEscape)
+})
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', closeActionsOnOutsideClick)
+  document.removeEventListener('keydown', closeActionsOnEscape)
+})
 
 const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
 const version = computed(() => selected.value?.version ?? null)
@@ -383,7 +399,7 @@ async function onMatched(merged: boolean) {
               <BaseButton
                 v-if="choices.length || item.playTarget"
                 class="!px-2.5"
-                :class="item.watched ? '!text-accent-300 hover:!text-accent-400' : '!text-slate-200/35 hover:!text-slate-200/70'"
+                :class="item.watched ? 'border-accent-500 border-2' : ''"
                 :loading="togglingWatched"
                 :aria-pressed="item.watched"
                 :aria-label="watchedLabel"
@@ -404,16 +420,40 @@ async function onMatched(merged: boolean) {
               >
                 <Heart v-if="!togglingWatchlist" class="size-5" :fill="item.inWatchlist ? 'currentColor' : 'none'" aria-hidden="true" />
               </BaseButton>
-              <BaseButton v-if="hasLocation" class="!px-2.5" :aria-label="t('catalog.details')" :title="t('catalog.details')" @click="infoOpen = true">
+              <BaseButton v-if="hasLocation && !(auth.isAdmin && !server && hasOwnMetadata)" class="!px-2.5" :aria-label="t('catalog.details')" :title="t('catalog.details')" @click="infoOpen = true">
                 <Info class="size-5" aria-hidden="true" />
               </BaseButton>
-              <template v-if="auth.isAdmin && !server && hasOwnMetadata">
-                <BaseButton class="!px-2.5" :aria-label="t('catalog.editMetadata')" :title="t('catalog.editMetadata')" @click="editOpen = true">
-                  <Pencil class="size-5" aria-hidden="true" />
+              <div v-if="auth.isAdmin && !server && hasOwnMetadata" ref="actionsMenu" class="relative">
+                <BaseButton
+                  class="!px-2.5"
+                  aria-haspopup="menu"
+                  :aria-expanded="actionsOpen"
+                  :aria-label="t('common.actions')"
+                  :title="t('common.actions')"
+                  @click="actionsOpen = !actionsOpen"
+                >
+                  <Ellipsis class="size-5" aria-hidden="true" />
                 </BaseButton>
-                <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>
-                <BaseButton :loading="refreshing" @click="refresh">{{ t('catalog.refresh') }}</BaseButton>
-              </template>
+                <div
+                  v-if="actionsOpen"
+                  role="menu"
+                  class="absolute left-0 z-20 mt-2 w-64 rounded-lg bg-surface-800 p-1 shadow-lg ring-1 ring-white/10"
+                  @click="actionsOpen = false"
+                >
+                  <button v-if="hasLocation" type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="infoOpen = true">
+                    {{ t('catalog.details') }}
+                  </button>
+                  <button type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="editOpen = true">
+                    {{ t('catalog.editMetadata') }}
+                  </button>
+                  <button v-if="item.kind !== 'video'" type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="matchOpen = true">
+                    {{ t('catalog.fixMatch') }}
+                  </button>
+                  <button type="button" role="menuitem" :disabled="refreshing" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100 disabled:opacity-50" @click="refresh">
+                    {{ t('catalog.refresh') }}
+                  </button>
+                </div>
+              </div>
             </div>
 
             <!-- One row per choice: a selector when there are several options, plain text otherwise. -->
