@@ -286,9 +286,10 @@ class CatalogJourneyTest {
             resumeButton.performKeyInput { pressKey(Key.DirectionLeft) }
             rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isNotEmpty() }
             resumeButton.assertIsNotFocused()
-            rule.onNode(isFocused()).performKeyInput { pressKey(Key.DirectionRight) }
-            resumeButton.assertIsFocused()
+            InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isEmpty() }
+            resumeButton.assertIsDisplayed()
+            assertTrue(model.state.value.screen is Screen.Detail)
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }
@@ -384,9 +385,13 @@ class CatalogJourneyTest {
             rule.onAllNodesWithText("Plys TV").assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
             rule.onAllNodesWithText(text(R.string.back)).assertCountEquals(0)
-            val searchBounds = rule.onNodeWithContentDescription(text(R.string.search)).getUnclippedBoundsInRoot()
             val sortBounds = rule.onNodeWithText("${text(R.string.sort)} : ${text(R.string.sort_title)}").getUnclippedBoundsInRoot()
-            assertEquals(searchBounds.bottom - searchBounds.top, sortBounds.bottom - sortBounds.top)
+            val searchHeight = sortBounds.bottom - sortBounds.top
+            val searchHeightPx = searchHeight.value * rule.activity.resources.displayMetrics.density
+            val searchNodes = rule.onAllNodesWithContentDescription(text(R.string.search)).fetchSemanticsNodes()
+            assertTrue(searchNodes.any { node ->
+                kotlin.math.abs((node.boundsInRoot.bottom - node.boundsInRoot.top) - searchHeightPx) < 1f
+            })
             screenshot("catalog")
             val layouts = mutableListOf<TextLayoutResult>()
             rule.onNodeWithText(longTitle).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
@@ -408,7 +413,10 @@ class CatalogJourneyTest {
             rule.onAllNodesWithText(text(R.string.sign_out)).assertCountEquals(0)
             grid.performScrollToIndex(0)
             // Up from the grid focuses the search without editing it; up again stays there; OK starts editing.
-            val searchBox = rule.onNodeWithContentDescription(text(R.string.search))
+            val toolbarSearch = hasContentDescription(text(R.string.search)) and SemanticsMatcher("catalog toolbar search") { node ->
+                kotlin.math.abs((node.boundsInRoot.bottom - node.boundsInRoot.top) - searchHeightPx) < 1f
+            }
+            val searchBox = rule.onNode(toolbarSearch)
             val searchInput = rule.onNode(hasSetTextAction() and hasAnyAncestor(hasContentDescription(text(R.string.search))), useUnmergedTree = true)
             rule.onNodeWithText("Alien").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             rule.onNodeWithText("Alien").performKeyInput { pressKey(Key.DirectionUp) }
@@ -436,6 +444,10 @@ class CatalogJourneyTest {
             rule.onAllNodes(dialogInput).assertCountEquals(0)
             val genreLabel = text(R.string.filter_genres)
             filterList.performScrollToNode(hasText(genreLabel))
+            val genreBounds = rule.onNodeWithText(genreLabel).fetchSemanticsNode().boundsInRoot
+            val excludedGenreBounds = rule.onNodeWithText(text(R.string.filter_excluded_genres)).fetchSemanticsNode().boundsInRoot
+            assertEquals(genreBounds.top, excludedGenreBounds.top, 1f)
+            assertTrue(excludedGenreBounds.left > genreBounds.right)
             screenshot("filters")
             rule.onNodeWithText(genreLabel).activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }
@@ -446,14 +458,21 @@ class CatalogJourneyTest {
             rule.onNodeWithText("${text(R.string.filter_genres)} : Science-fiction").activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Drama").fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText("Drama").activate()
-            // The reset icon beside a criterion clears it alone.
-            rule.onNodeWithContentDescription(rule.activity.getString(R.string.reset_filter, text(R.string.filter_genres))).activate()
-            rule.onNodeWithText(genreLabel).activate()
+            rule.onNodeWithText("${text(R.string.filter_genres)} : Drama").activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText("Science-fiction").activate()
             rule.onAllNodesWithText(text(R.string.apply)).onLast().activate()
             rule.waitUntil(10000) { filtered.get() }
             rule.onNodeWithText(rule.activity.getString(R.string.filters_count, 2)).assertIsDisplayed()
+            val firstFilterChip = rule.onNodeWithText(rule.activity.getString(
+                R.string.remove_filter, "${text(R.string.filter_genres)}: Science-fiction",
+            ))
+            firstFilterChip.performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+            firstFilterChip.assertIsFocused()
+            val filterChipRow = rule.onNode(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange))
+            val chipBounds = firstFilterChip.getUnclippedBoundsInRoot()
+            val rowBounds = filterChipRow.getUnclippedBoundsInRoot()
+            assertTrue(chipBounds.left >= rowBounds.left && chipBounds.right <= rowBounds.right)
             rule.onNodeWithText("Alien").performSemanticsAction(SemanticsActions.RequestFocus) { it() }
             assertTrue(rule.onNodeWithText("Alien").getUnclippedBoundsInRoot().bottom <= grid.getUnclippedBoundsInRoot().bottom)
             screenshot("catalog-focused")

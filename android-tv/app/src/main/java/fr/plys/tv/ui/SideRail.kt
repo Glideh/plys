@@ -1,5 +1,6 @@
 package fr.plys.tv.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
@@ -81,6 +82,7 @@ fun SideRail(
     home: () -> Unit, search: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    BackHandler(enabled = expanded) { expanded = false }
     val width by animateDpAsState(if (expanded) ExpandedRailWidth else RailWidth, label = "railWidth")
     val requesters = remember { Section.entries.associateWith { FocusRequester() } }
     val scrim = if (expanded) Brush.horizontalGradient(0f to Plys.Surface950, 0.7f to Plys.Surface950.copy(alpha = 0.97f), 1f to Plys.Surface950.copy(alpha = 0f))

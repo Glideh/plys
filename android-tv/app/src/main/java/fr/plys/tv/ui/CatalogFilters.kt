@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material3.Icon
@@ -76,6 +75,7 @@ import kotlinx.coroutines.delay
 
 private val categories = listOf("genres", "excludeGenres", "actors", "creators", "keywords", "languages", "countries")
 private val choices = listOf("resolution", "audio")
+private val pickerCriteria = categories + choices
 
 /** Related bounds, shown side by side under one heading: title, then the label of each bound. */
 private data class NumberGroup(val title: Int, val fields: List<Pair<String, Int>>)
@@ -227,7 +227,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
             model.changeQuery(screen.query.copy(query = search, offset = 0))
         }
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = FocusGutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         SearchField(search, { search = it }, stringResource(R.string.search), Modifier.weight(1f))
         if (libraries.count { it.kind == screen.query.kind.value } > 1) ToolbarButton(Icons.Outlined.VideoLibrary,
             libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries)) { dialog = "library" }
@@ -240,7 +240,11 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         val selected = categories.flatMap { key -> filterSelection(filters, key).map { key to it } }
         val bounds = numericFilterValues(filters).filterValues { it.isNotBlank() }
         val technical = choices.mapNotNull { key -> choiceValue(filters, key)?.let { key to it } }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp),
+            modifier = Modifier.padding(vertical = 4.dp),
+        ) {
             items(selected, key = { "${it.first}:${it.second}" }) { (key, value) ->
                 val label = "${filterLabel(key, screen.query.kind)}: ${model.api.filterOptionLabel(if (key == "excludeGenres") "genres" else key, value)}"
                 Button(onClick = { model.changeQuery(screen.query.copy(filters = withFilterSelection(filters, key, filterSelection(filters, key) - value), offset = 0)) }) {
@@ -324,22 +328,35 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
             Column(Modifier.widthIn(max = 760.dp).fillMaxWidth().heightIn(max = 480.dp).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.advanced_filters), style = MaterialTheme.typography.titleLarge)
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                    items(categories) { category ->
-                        val value = filterSelection(draft, category).firstOrNull()
-                            ?.let { api.filterOptionLabel(if (category == "excludeGenres") "genres" else category, it) }
-                        FilterRow(filterLabel(category, query.kind), value, { picker = category }) { draft = withFilterSelection(draft, category, emptyList()) }
-                    }
-                    items(choices) { key ->
-                        FilterRow(filterLabel(key, query.kind), choiceValue(draft, key)?.let { choiceLabel(key, it) }, { choosing = key }) { draft = withChoice(draft, key, null) }
+                    items((pickerCriteria.size + 1) / 2) { rowIndex ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            repeat(2) { columnIndex ->
+                                val index = rowIndex * 2 + columnIndex
+                                if (index < pickerCriteria.size) {
+                                    val key = pickerCriteria[index]
+                                    val isCategory = key in categories
+                                    val value = if (isCategory) {
+                                        filterSelection(draft, key).firstOrNull()?.let {
+                                            api.filterOptionLabel(if (key == "excludeGenres") "genres" else key, it)
+                                        }
+                                    } else choiceValue(draft, key)?.let { choiceLabel(key, it) }
+                                    FilterRow(
+                                        label = filterLabel(key, query.kind), value = value,
+                                        open = { if (isCategory) picker = key else choosing = key },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                } else {
+                                    Box(Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
                     items(numberGroups.filter { query.kind == CatalogKind.MOVIES || it.title != R.string.filter_group_runtime }) { group ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(stringResource(group.title), style = MaterialTheme.typography.titleSmall, color = Plys.TextStrong)
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 group.fields.forEach { (key, label) ->
-                                    FilterRow(stringResource(label), numeric[key]?.takeIf { it.isNotBlank() }, { editingNumber = key }, Modifier.weight(1f)) {
-                                        numeric = numeric + (key to ""); invalid = false
-                                    }
+                                    FilterRow(stringResource(label), numeric[key]?.takeIf { it.isNotBlank() }, { editingNumber = key }, Modifier.weight(1f))
                                 }
                             }
                         }
@@ -381,28 +398,12 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
     }
 }
 
-/**
- * One criterion of the filters dialog: the button opens its editor and shows the current value; once a value is set,
- * a cross inside the criterion, at its right end, clears that criterion alone. Every criterion takes the full row, so
- * no empty space is left beside the unset ones. Resetting gives the focus back to the criterion, since the cross goes away.
- */
+/** A filter criterion button in the two-column picker grid. */
 @Composable
-private fun FilterRow(label: String, value: String?, open: () -> Unit, modifier: Modifier = Modifier, reset: () -> Unit) {
-    val criterion = remember { FocusRequester() }
-    var criterionFocused by remember { mutableStateOf(false) }
-    Box(modifier, contentAlignment = Alignment.CenterEnd) {
-        Button(onClick = open, modifier = Modifier.fillMaxWidth().focusRequester(criterion).onFocusChanged { criterionFocused = it.isFocused },
-            // Leaves room at the end for the cross, so a long value never runs under it.
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, top = 10.dp, bottom = 10.dp, end = if (value == null) 16.dp else 48.dp)) {
-            Text(if (value == null) label else "$label : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (value != null) Button(onClick = { criterion.requestFocus(); reset() }, modifier = Modifier.padding(end = 6.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)) {
-            // At rest the cross sits on the criterion: dark once the focused criterion turns light, so it stays visible.
-            val content = androidx.tv.material3.LocalContentColor.current
-            Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.reset_filter, label), modifier = Modifier.size(18.dp),
-                tint = if (criterionFocused && content == Plys.Text) Plys.Surface950 else content)
-        }
+private fun FilterRow(label: String, value: String?, open: () -> Unit, modifier: Modifier = Modifier) {
+    Button(onClick = open, modifier = modifier.fillMaxWidth(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)) {
+        Text(if (value == null) label else "$label : $value", maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

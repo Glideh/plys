@@ -48,7 +48,7 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
         }
     }
     Column(Modifier.fillMaxSize()) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.padding(horizontal = FocusGutter), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
             val total = screen.page.total
             val position = scrollPosition(screen.focusedPosition, total)
@@ -59,11 +59,12 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
                 style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
         }
         CatalogToolbar(screen, model, libraries)
-        if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) EmptyState(stringResource(R.string.empty), Modifier.padding(top = 12.dp))
+        if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) EmptyState(stringResource(R.string.empty), Modifier.padding(horizontal = FocusGutter, vertical = 12.dp))
         val focusId = screen.focusedId ?: screen.page.items.firstOrNull()?.id
         LazyVerticalGrid(
             columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(FocusGutter), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp),
+            contentPadding = PaddingValues(start = FocusGutter, end = FocusGutter, top = FocusGutter, bottom = FocusGutter),
+            horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             items(count = items.itemCount, key = items.itemKey { it.id }) { index ->
                 val card = items[index]

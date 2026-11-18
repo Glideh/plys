@@ -100,18 +100,27 @@ private fun CatalogAppContent(model: CatalogViewModel, state: CatalogState, modi
     Box(modifier) {
         // The detail page draws its backdrop under the rail; the other screens start after it.
         val detail = state.screen is Screen.Detail
+        val catalog = state.screen is Screen.Catalog
         // Right from the rail returns to the element that last held the focus: on the detail page the unfolded rail
         // covers the start of the content, so a geometric search found nothing to its right and the focus was stuck.
         val content = remember { FocusRequester() }
         Box(Modifier.fillMaxSize().focusRequester(content).focusRestorer().focusGroup()) {
-            Column(Modifier.fillMaxSize().padding(start = if (detail) 0.dp else RailWidth + 24.dp, end = if (detail) 0.dp else 40.dp, top = if (detail) 0.dp else 20.dp)
+            Column(Modifier.fillMaxSize().padding(
+                start = when { detail -> 0.dp; catalog -> RailWidth + 8.dp; else -> RailWidth + 24.dp },
+                end = when { detail -> 0.dp; catalog -> 16.dp; else -> 40.dp },
+                top = if (detail) 0.dp else 20.dp,
+            )
                 // Only left reaches the rail: up or down past the edge of the screen, or below a row still loading, stays put
                 // instead of landing on the nearest rail item (sign out, at the bottom).
                 .focusProperties { onExit = { if (requestedFocusDirection == FocusDirection.Up || requestedFocusDirection == FocusDirection.Down) cancelFocusChange() } }
                 .focusGroup()) {
                 state.error?.let {
                     ErrorBanner(LocalContext.current.errorMessage(it), if (state.canRetry) ({ model.retry() }) else null,
-                        Modifier.padding(start = if (detail) RailWidth + 24.dp else 0.dp, end = if (detail) 40.dp else 0.dp, top = if (detail) 20.dp else 0.dp, bottom = 12.dp))
+                        Modifier.padding(
+                            start = when { detail -> RailWidth + 24.dp; catalog -> FocusGutter; else -> 0.dp },
+                            end = when { detail -> 40.dp; catalog -> FocusGutter; else -> 0.dp },
+                            top = if (detail) 20.dp else 0.dp, bottom = 12.dp,
+                        ))
                 }
                 when (val screen = state.screen) {
                     Screen.Splash, Screen.Login -> Unit
