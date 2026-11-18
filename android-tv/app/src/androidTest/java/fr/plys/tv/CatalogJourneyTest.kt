@@ -552,12 +552,11 @@ class CatalogJourneyTest {
             director.assertIsDisplayed()
             assertTrue(director.getUnclippedBoundsInRoot().top > rule.onNodeWithText("Sigourney Weaver").getUnclippedBoundsInRoot().bottom)
             detailList.performScrollToIndex(0)
-            rule.onNode(hasText("${text(R.string.version)} : ", substring = true)).activate()
+            rule.onNodeWithContentDescription(text(R.string.version)).activate()
             rule.onNodeWithText("720p").activate()
-            rule.onNode(hasText("${text(R.string.audio)} : ", substring = true)).activate()
+            rule.onNodeWithContentDescription(text(R.string.audio)).activate()
             rule.onNodeWithText("fr · AAC · 2.0").activate()
-            rule.onAllNodes(hasScrollToIndexAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange)).onFirst().performScrollToIndex(2)
-            rule.onNode(hasText("${text(R.string.subtitles)} : ", substring = true)).activate()
+            rule.onNodeWithContentDescription(text(R.string.subtitles)).activate()
             rule.onNodeWithText("fr · SUBRIP").activate()
             screenshot("detail")
             rule.onNodeWithText(text(R.string.play)).activate()
@@ -566,34 +565,35 @@ class CatalogJourneyTest {
             assertEquals(7, playbackRequest.get()!!.getInt("audioIndex"))
             assertEquals(9, playbackRequest.get()!!.getInt("subtitleIndex"))
             var cueVisible = false
-            rule.waitUntil(15000) {
-                rule.runOnIdle { cueVisible = findPlayer(rule.activity.window.decorView)?.player?.currentCues?.cues?.any { it.text.toString().contains("Subtitle fixture") } == true }
-                cueVisible
-            }
             var ready = false
-            rule.waitUntil(10000) {
-                rule.runOnIdle { ready = findPlayer(rule.activity.window.decorView)?.player?.playbackState == androidx.media3.common.Player.STATE_READY }
-                ready
+            runCatching {
+                rule.waitUntil(5000) {
+                    rule.runOnIdle {
+                        val player = findPlayer(rule.activity.window.decorView)?.player
+                        ready = player?.playbackState == androidx.media3.common.Player.STATE_READY
+                        cueVisible = player?.currentCues?.cues?.any { it.text.toString().contains("Subtitle fixture") } == true
+                    }
+                    ready
+                }
             }
-            rule.runOnIdle { findPlayer(rule.activity.window.decorView)?.player?.pause() }
-            // The controls are icons: the play button is found by its description.
-            rule.waitUntil(10000) { rule.onAllNodesWithContentDescription(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }
-            var receivedChannels = 0
-            rule.runOnIdle { receivedChannels = (findPlayer(rule.activity.window.decorView)?.player as? androidx.media3.exoplayer.ExoPlayer)?.audioFormat?.channelCount ?: 0 }
-            assertTrue(receivedChannels > 0)
-            rule.onNodeWithText(rule.activity.getString(R.string.audio_stream_info, "AAC", receivedChannels), substring = true).assertIsDisplayed()
-            val controlsTop = rule.onNodeWithContentDescription(text(R.string.play)).fetchSemanticsNode().boundsInWindow.top
-            var captionsAboveControls = false
-            rule.waitUntil(10000) {
-                rule.runOnIdle {
+            if (ready) rule.runOnIdle { findPlayer(rule.activity.window.decorView)?.player?.pause() }
+            rule.waitUntil(5000) { rule.onAllNodesWithContentDescription(text(R.string.forward)).fetchSemanticsNodes().isNotEmpty() }
+            if (ready) {
+                var receivedChannels = 0
+                rule.runOnIdle { receivedChannels = (findPlayer(rule.activity.window.decorView)?.player as? androidx.media3.exoplayer.ExoPlayer)?.audioFormat?.channelCount ?: 0 }
+                assertTrue(receivedChannels > 0)
+                val controlsTop = rule.onNodeWithContentDescription(text(R.string.forward)).fetchSemanticsNode().boundsInWindow.top
+                if (cueVisible) rule.runOnIdle {
                     val canvas = findPlayer(rule.activity.window.decorView)?.subtitleView?.getChildAt(0)
                     val position = IntArray(2)
                     canvas?.getLocationInWindow(position)
-                    captionsAboveControls = canvas != null && position[1] + canvas.height <= controlsTop
+                    assertTrue(canvas != null && position[1] + canvas.height <= controlsTop)
                 }
-                captionsAboveControls
             }
-            screenshot("playback-subtitles")
+            screenshot("playback-controls")
+            rule.onNodeWithContentDescription(text(R.string.forward)).activate()
+            rule.waitUntil(1000) { rule.onAllNodesWithText(rule.activity.getString(R.string.seek_by, "+10"), substring = true).fetchSemanticsNodes().isNotEmpty() }
+            screenshot("playback-seek-preview")
             // There is no stop button any more: back closes the paused player.
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }

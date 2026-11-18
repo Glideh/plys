@@ -7,12 +7,18 @@ import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -110,6 +116,8 @@ private const val AUTO_NEXT_SECONDS = 10
 
 /** Delay after the last seek press before the accumulated seek is applied. */
 private const val DPAD_SEEK_DELAY_MS = 700L
+private const val SEEK_PREVIEW_FADE_MS = 250
+private data class SeekPreview(val offset: Double, val target: Double)
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -164,8 +172,13 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     // buttons) adds to one offset, applied once the presses stop: one server session is opened, not one per press.
     var pendingSeek by remember { mutableDoubleStateOf(0.0) }
     var seekPresses by remember { mutableIntStateOf(0) }
+    var seekPreview by remember { mutableStateOf<SeekPreview?>(null) }
     fun queueSeek(delta: Double) {
         pendingSeek += delta
+        seekPreview = SeekPreview(
+            offset = pendingSeek,
+            target = (state.position + pendingSeek).coerceIn(0.0, state.duration.takeIf { it > 0 } ?: Double.MAX_VALUE),
+        )
         seekPresses++
     }
     val rootFocus = remember { FocusRequester() }
@@ -183,6 +196,12 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
         model.seek(pendingSeek)
         pendingSeek = 0.0
         seekPresses = 0
+    }
+    LaunchedEffect(seekPresses) {
+        if (seekPresses == 0 && seekPreview != null) {
+            delay(SEEK_PREVIEW_FADE_MS.toLong())
+            seekPreview = null
+        }
     }
     // Focus goes to the first button when the controls appear, or when an error or the end replaces it; a seek
     // keeps the focus on the button that was pressed, so it can be pressed again.
@@ -245,14 +264,16 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             },
             modifier = Modifier.fillMaxSize(),
         )
-        if (seekPresses > 0) {
-            val target = (state.position + pendingSeek).coerceIn(0.0, state.duration.takeIf { it > 0 } ?: Double.MAX_VALUE)
-            val sign = if (pendingSeek < 0) "−" else "+"
-            Text("${stringResource(R.string.seek_by, sign + kotlin.math.abs(pendingSeek).toInt())} · ${clock(target)}",
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp)
-                    .background(Plys.Surface900.copy(alpha = 0.9f), Plys.Card)
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                style = MaterialTheme.typography.titleMedium)
+        AnimatedVisibility(
+            visible = !visible && seekPreview != null,
+            enter = fadeIn(animationSpec = tween(SEEK_PREVIEW_FADE_MS)),
+            exit = fadeOut(animationSpec = tween(SEEK_PREVIEW_FADE_MS)),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 48.dp, end = 48.dp, bottom = 28.dp),
+        ) {
+            SeekProgress(
+                preview = seekPreview ?: return@AnimatedVisibility,
+                duration = state.duration,
+            )
         }
         // Scrims keep the text readable over bright pictures without hiding the video behind a solid bar.
         if (visible) {
@@ -288,7 +309,8 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             listOfNotNull(versionSummary(state.item, state.selection).takeIf { it.isNotBlank() }, state.audioInfo).joinToString(" · ").takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
             }
-            Progress(state.position, state.duration, showEnd = !state.ended)
+            if (seekPreview != null) SeekProgress(seekPreview!!, state.duration)
+            else Progress(state.position, state.duration, showEnd = !state.ended)
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.ended && !upNext) Text(stringResource(R.string.ended), color = Plys.Muted)
             if (upNext) UpNext(countdown, Modifier.focusRequester(playFocus), playNow = model::next, cancel = { cancelled = true })
@@ -339,7 +361,21 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     subtitleSearch?.let { SubtitleSearchDialog(it, model) }
 }
 
-/** At the end of an episode the next one starts by itself after a countdown, unless the viewer cancels it. */
+/** Seek text and the player's normal timeline, kept at the same position with or without controls. */
+@Composable
+private fun SeekProgress(preview: SeekPreview, duration: Double) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val sign = if (preview.offset < 0) "−" else "+"
+        Text(stringResource(R.string.seek_by, sign + kotlin.math.abs(preview.offset).toInt()),
+            style = MaterialTheme.typography.titleMedium, color = Color.White)
+        PlaybackTimeline(preview.target, duration, showCursor = true)
+        Row(Modifier.fillMaxWidth()) {
+            Text("${clock(preview.target)} / ${clock(duration)}", style = MaterialTheme.typography.bodyMedium,
+                color = Color.White, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
 /** Films and videos show their year next to the title; episodes and parts already carry their context. */
 internal fun playerYear(item: ItemDetail): Int? = item.year?.takeIf { item.kind != "episode" && it > 0 }
 
@@ -377,9 +413,7 @@ private fun AutoplayToggle(enabled: Boolean, onToggle: () -> Unit) {
 private fun Progress(position: Double, duration: Double, showEnd: Boolean) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (duration > 0) Box(Modifier.fillMaxWidth().height(6.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(3.dp))) {
-            Box(Modifier.fillMaxWidth((position / duration).toFloat().coerceIn(0f, 1f)).height(6.dp).background(Plys.Accent400, RoundedCornerShape(3.dp)))
-        }
+        PlaybackTimeline(position, duration)
         val remaining = (duration - position).coerceAtLeast(0.0)
         Row(Modifier.fillMaxWidth()) {
             Text("${clock(position)} / ${clock(duration)}", style = MaterialTheme.typography.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
@@ -387,6 +421,23 @@ private fun Progress(position: Double, duration: Double, showEnd: Boolean) {
                 DateFormat.getTimeFormat(context).format(Date(System.currentTimeMillis() + (remaining * 1000).toLong()))),
                 style = MaterialTheme.typography.bodyMedium, color = Plys.Muted)
         }
+    }
+}
+
+@Composable
+private fun PlaybackTimeline(position: Double, duration: Double, showCursor: Boolean = false) {
+    if (duration <= 0) return
+    val progress = (position / duration).toFloat().coerceIn(0f, 1f)
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().height(if (showCursor) 10.dp else 6.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().height(6.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(3.dp)))
+        Box(Modifier.fillMaxWidth(progress).height(6.dp).background(Plys.Accent400, RoundedCornerShape(3.dp)))
+        if (showCursor) Box(
+            Modifier.offset(x = (maxWidth - 10.dp) * progress).size(10.dp)
+                .background(Color.White, androidx.compose.foundation.shape.CircleShape),
+        )
     }
 }
 
