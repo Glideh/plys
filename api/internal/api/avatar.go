@@ -156,12 +156,11 @@ func processAvatar(src []byte) ([]byte, error) {
 
 // scaleBox downsamples (or upsamples) the crop area into dst by averaging each destination pixel's source area.
 func scaleBox(dst *image.RGBA, src image.Image, crop image.Rectangle) {
-	n := dst.Bounds().Dx()
-	side := crop.Dx()
-	for y := 0; y < n; y++ {
-		y0, y1 := sourceSpan(crop.Min.Y, y, n, side, crop.Max.Y)
-		for x := 0; x < n; x++ {
-			x0, x1 := sourceSpan(crop.Min.X, x, n, side, crop.Max.X)
+	w, h := dst.Bounds().Dx(), dst.Bounds().Dy()
+	for y := 0; y < h; y++ {
+		y0, y1 := sourceSpan(crop.Min.Y, y, h, crop.Dy(), crop.Max.Y)
+		for x := 0; x < w; x++ {
+			x0, x1 := sourceSpan(crop.Min.X, x, w, crop.Dx(), crop.Max.X)
 			var r, g, b, a, count uint64
 			for sy := y0; sy < y1; sy++ {
 				for sx := x0; sx < x1; sx++ {

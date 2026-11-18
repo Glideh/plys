@@ -1246,6 +1246,74 @@ paths:
         "200": { description: Updated item }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /items/{id}/metadata:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      operationId: editItemMetadata
+      summary: Edit the metadata of a movie, series or video by hand (admin)
+      description: |
+        Only the fields sent change. Each of them is added to the item's `editedFields`, which metadata refreshes
+        (automatic or manual, including a new TMDB match) leave untouched until `revertItemMetadata`. An empty string
+        clears an optional text field. The release date also sets the year. People already listed keep their
+        TMDB ID and picture when their name is kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, minLength: 1, maxLength: 300 }
+                originalTitle: { type: string, maxLength: 300 }
+                releaseDate: { type: string, description: "YYYY-MM-DD, or empty to clear it" }
+                tagline: { type: string, maxLength: 500 }
+                overview: { type: string, maxLength: 10000 }
+                directors: { type: array, maxItems: 20, description: Directors of a movie, creators of a series, items: { type: string } }
+                cast:
+                  type: array
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [name]
+                    properties:
+                      name: { type: string, maxLength: 200 }
+                      character: { type: string, maxLength: 200 }
+      responses:
+        "200": { description: Updated item }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: revertItemMetadata
+      summary: Drop the manual edits of a movie, series or video and fetch its metadata again (admin)
+      description: |
+        Movies and series need a TMDB key (`409 tmdb_not_configured` otherwise, and the edits stay). An edited value
+        stays when there is nothing to replace it with (no TMDB match), but it is no longer locked.
+      responses:
+        "200": { description: "Updated item, or `{\"merged\": true}` when the refresh merged it into another one" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /items/{id}/poster:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setItemPoster
+      summary: Upload the poster of a movie or series (admin; JPEG or PNG, max 10 MB, stored as a JPEG of at most 1000x1500)
+      description: The poster is added to the item's `editedFields`. `revertItemMetadata` brings back the TMDB poster.
+      requestBody:
+        required: true
+        content:
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+      responses:
+        "200": { description: Updated item }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
   /playback/sessions:
     post:
       operationId: startPlayback
@@ -1851,6 +1919,10 @@ components:
         folder:
           type: string
           description: Deepest folder on the server (inside its media mount) holding every file of the item and of the items below it (seasons, episodes). Only sent to local admins, never to regular users nor to federated peers; omitted when the item has no file.
+        editedFields:
+          type: array
+          items: { type: string, enum: [title, originalTitle, releaseDate, tagline, overview, directors, cast, poster] }
+          description: Fields an administrator edited (`editItemMetadata`, `setItemPoster`), which metadata refreshes keep. Only sent to local admins; omitted when nothing was edited.
         playTarget:
           description: What "play" starts on a series or season. Null for playable items and when nothing is available.
           oneOf: [{ $ref: "#/components/schemas/PlayTarget" }, { type: "null" }]

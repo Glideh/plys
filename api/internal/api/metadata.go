@@ -308,16 +308,7 @@ func (s *Server) refreshAndRespond(w http.ResponseWriter, r *http.Request, it st
 		return
 	}
 	// A merge may have removed the item in favour of an older duplicate.
-	updated, err := s.q.GetItem(r.Context(), it.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.JSON(w, http.StatusOK, map[string]any{"merged": true})
-		return
-	}
-	if err != nil {
-		httpx.InternalError(w, r, err)
-		return
-	}
-	httpx.JSON(w, http.StatusOK, toItemSummary(updated))
+	s.respondItemSummary(w, r, it.ID)
 }
 
 func (s *Server) loadMatchableItem(w http.ResponseWriter, r *http.Request) (store.Item, bool) {

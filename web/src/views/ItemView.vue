@@ -2,13 +2,15 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
-import { Check, Heart, Info, RotateCcw } from '@lucide/vue'
+import { Check, Heart, Info, Pencil, RotateCcw } from '@lucide/vue'
 import { catalogApi, type CardSource, type ChildItem, type ItemDetail, type Track, type Version } from '@/api/catalog'
 import { personCatalogRoute } from '@/api/catalogFilters'
 import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery, type ServerRef } from '@/api/federation'
 import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ItemEditDialog from '@/components/ItemEditDialog.vue'
 import ItemInfoDialog from '@/components/ItemInfoDialog.vue'
 import MatchDialog from '@/components/MatchDialog.vue'
 import PosterCard from '@/components/PosterCard.vue'
@@ -36,6 +38,8 @@ const error = ref('')
 const choices = ref<VersionChoice[]>([])
 const versionId = ref<string>('')
 const matchOpen = ref(false)
+const editOpen = ref(false)
+const revertOpen = ref(false)
 const infoOpen = ref(false)
 const refreshing = ref(false)
 const route = useRoute()
@@ -293,6 +297,17 @@ async function refresh() {
   }
 }
 
+function askRevert() {
+  editOpen.value = false
+  revertOpen.value = true
+}
+
+async function revertEdits() {
+  const res = await catalogApi.revertMetadata(props.id)
+  if (res.merged) return router.replace({ name: 'library', params: { id: item.value!.libraryId } })
+  await load()
+}
+
 async function onMatched(merged: boolean) {
   if (merged) return router.replace({ name: 'library', params: { id: item.value!.libraryId } })
   await load()
@@ -393,6 +408,9 @@ async function onMatched(merged: boolean) {
                 <Info class="size-5" aria-hidden="true" />
               </BaseButton>
               <template v-if="auth.isAdmin && !server && hasOwnMetadata">
+                <BaseButton class="!px-2.5" :aria-label="t('catalog.editMetadata')" :title="t('catalog.editMetadata')" @click="editOpen = true">
+                  <Pencil class="size-5" aria-hidden="true" />
+                </BaseButton>
                 <BaseButton v-if="item.kind !== 'video'" @click="matchOpen = true">{{ t('catalog.fixMatch') }}</BaseButton>
                 <BaseButton :loading="refreshing" @click="refresh">{{ t('catalog.refresh') }}</BaseButton>
               </template>
@@ -524,6 +542,16 @@ async function onMatched(merged: boolean) {
         :paths="paths"
         @matched="onMatched"
       />
+      <template v-if="auth.isAdmin && !server && hasOwnMetadata">
+        <ItemEditDialog v-model:open="editOpen" :item="item" @saved="load" @revert="askRevert" />
+        <ConfirmDialog
+          v-model:open="revertOpen"
+          :title="t('catalog.editRevert')"
+          :message="t('catalog.editRevertConfirm')"
+          :confirm-label="t('catalog.editRevertButton')"
+          :action="revertEdits"
+        />
+      </template>
       <ItemInfoDialog v-if="hasLocation" v-model:open="infoOpen" :folder="item.folder" :paths="paths" />
     </template>
   </main>

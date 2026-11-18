@@ -60,6 +60,61 @@ func (q *Queries) DeleteSetting(ctx context.Context, key string) error {
 	return err
 }
 
+const editItemMetadata = `-- name: EditItemMetadata :exec
+UPDATE items SET
+    title               = $1,
+    sort_title          = $2,
+    original_title      = $3,
+    year                = $4,
+    release_date        = $5,
+    tagline             = $6,
+    overview            = $7,
+    directors           = $8::text[],
+    director_members    = $9::jsonb,
+    cast_members        = $10::jsonb,
+    poster_path         = $11,
+    locked_fields       = $12::text[],
+    metadata_updated_at = now(),
+    updated_at          = now()
+WHERE id = $13
+`
+
+type EditItemMetadataParams struct {
+	Title           string
+	SortTitle       string
+	OriginalTitle   *string
+	Year            *int32
+	ReleaseDate     *time.Time
+	Tagline         *string
+	Overview        *string
+	Directors       []string
+	DirectorMembers []byte
+	CastMembers     []byte
+	PosterPath      *string
+	LockedFields    []string
+	ID              uuid.UUID
+}
+
+// An administrator's edit: the handler sends every field, merged with the current values, and the fields to lock.
+func (q *Queries) EditItemMetadata(ctx context.Context, arg EditItemMetadataParams) error {
+	_, err := q.db.Exec(ctx, editItemMetadata,
+		arg.Title,
+		arg.SortTitle,
+		arg.OriginalTitle,
+		arg.Year,
+		arg.ReleaseDate,
+		arg.Tagline,
+		arg.Overview,
+		arg.Directors,
+		arg.DirectorMembers,
+		arg.CastMembers,
+		arg.PosterPath,
+		arg.LockedFields,
+		arg.ID,
+	)
+	return err
+}
+
 const findChild = `-- name: FindChild :one
 SELECT id FROM items WHERE parent_id = $1 AND kind = $2 AND match_key = $3
 `
@@ -105,7 +160,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path, locked_fields FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -153,6 +208,7 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.EnrichmentVersion,
 		&i.DirectorMembers,
 		&i.LogoPath,
+		&i.LockedFields,
 	)
 	return i, err
 }
@@ -460,6 +516,15 @@ func (q *Queries) SetItemThumb(ctx context.Context, arg SetItemThumbParams) erro
 	return err
 }
 
+const unlockItemFields = `-- name: UnlockItemFields :exec
+UPDATE items SET locked_fields = '{}', updated_at = now() WHERE id = $1
+`
+
+func (q *Queries) UnlockItemFields(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, unlockItemFields, id)
+	return err
+}
+
 const updateItemFilters = `-- name: UpdateItemFilters :exec
 UPDATE items SET genre_ids = $1::integer[], actor_ids = $2::integer[],
   creator_ids = $3::integer[], keyword_ids = $4::integer[],
@@ -499,20 +564,20 @@ const updateItemMetadata = `-- name: UpdateItemMetadata :exec
 UPDATE items SET
     tmdb_id             = $1,
     imdb_id             = $2,
-    title               = coalesce(nullif($3::text, ''), title),
-    sort_title          = coalesce(nullif($4::text, ''), sort_title),
-    original_title      = $5,
-    year                = coalesce($6, year),
-    overview            = $7,
-    tagline             = $8,
-    release_date        = $9,
+    title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif($3::text, ''), title) END,
+    sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif($4::text, ''), sort_title) END,
+    original_title      = CASE WHEN 'originalTitle' = ANY(locked_fields) THEN original_title ELSE $5 END,
+    year                = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN year ELSE coalesce($6, year) END,
+    overview            = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE $7 END,
+    tagline             = CASE WHEN 'tagline' = ANY(locked_fields) THEN tagline ELSE $8 END,
+    release_date        = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN release_date ELSE $9 END,
     runtime_minutes     = $10,
     rating              = $11,
     genres              = coalesce($12::text[], '{}'),
-    cast_members        = coalesce($13::jsonb, '[]'),
-    directors           = coalesce($14::text[], '{}'),
-    director_members    = coalesce($15::jsonb, '[]'),
-    poster_path         = $16,
+    cast_members        = CASE WHEN 'cast' = ANY(locked_fields) THEN cast_members ELSE coalesce($13::jsonb, '[]') END,
+    directors           = CASE WHEN 'directors' = ANY(locked_fields) THEN directors ELSE coalesce($14::text[], '{}') END,
+    director_members    = CASE WHEN 'directors' = ANY(locked_fields) THEN director_members ELSE coalesce($15::jsonb, '[]') END,
+    poster_path         = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE $16 END,
     backdrop_path       = $17,
     logo_path           = $18,
     thumb_path          = coalesce($19, thumb_path),
@@ -548,6 +613,7 @@ type UpdateItemMetadataParams struct {
 	ID               uuid.UUID
 }
 
+// Fields listed in locked_fields were edited by an administrator and keep their value.
 func (q *Queries) UpdateItemMetadata(ctx context.Context, arg UpdateItemMetadataParams) error {
 	_, err := q.db.Exec(ctx, updateItemMetadata,
 		arg.TmdbID,

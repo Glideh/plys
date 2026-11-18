@@ -134,6 +134,21 @@ export interface Person {
   photoUrl: string | null
 }
 
+/** A field an administrator edited by hand; metadata refreshes keep it. */
+export type EditedField = 'title' | 'originalTitle' | 'releaseDate' | 'tagline' | 'overview' | 'directors' | 'cast' | 'poster'
+
+/** Fields to change on an item; an empty string clears an optional text and the release date. */
+export interface MetadataEdit {
+  title?: string
+  originalTitle?: string
+  /** YYYY-MM-DD. */
+  releaseDate?: string
+  tagline?: string
+  overview?: string
+  directors?: string[]
+  cast?: { name: string; character: string }[]
+}
+
 export interface ItemDetail {
   id: string
   kind: ItemKind
@@ -178,6 +193,8 @@ export interface ItemDetail {
   sources: CardSource[]
   /** Deepest folder holding every file of the item and its children, only sent to admins. */
   folder?: string
+  /** Fields an administrator edited by hand, only sent to admins. */
+  editedFields?: EditedField[]
 }
 
 export interface PlayTarget {
@@ -234,4 +251,10 @@ export const catalogApi = {
   },
   setMatch: (id: string, tmdbId: number) => api<{ merged?: boolean }>(`/items/${id}/match`, { method: 'POST', body: { tmdbId } }),
   refresh: (id: string) => api<{ merged?: boolean }>(`/items/${id}/refresh`, { method: 'POST' }),
+  /** Saves an administrator's changes; the fields sent are locked against metadata refreshes. */
+  editMetadata: (id: string, changes: MetadataEdit) => api<unknown>(`/items/${id}/metadata`, { method: 'PATCH', body: changes }),
+  /** Unlocks the edited fields and fetches the metadata again. */
+  revertMetadata: (id: string) => api<{ merged?: boolean }>(`/items/${id}/metadata`, { method: 'DELETE' }),
+  /** Uploads a JPEG or PNG poster for a movie or series. */
+  setPoster: (id: string, file: Blob) => api<unknown>(`/items/${id}/poster`, { method: 'PUT', body: file }),
 }

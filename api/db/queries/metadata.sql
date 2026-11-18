@@ -24,23 +24,24 @@ SELECT l.* FROM libraries l WHERE EXISTS (
 );
 
 -- name: UpdateItemMetadata :exec
+-- Fields listed in locked_fields were edited by an administrator and keep their value.
 UPDATE items SET
     tmdb_id             = @tmdb_id,
     imdb_id             = @imdb_id,
-    title               = coalesce(nullif(@title::text, ''), title),
-    sort_title          = coalesce(nullif(@sort_title::text, ''), sort_title),
-    original_title      = @original_title,
-    year                = coalesce(@year, year),
-    overview            = @overview,
-    tagline             = @tagline,
-    release_date        = @release_date,
+    title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif(@title::text, ''), title) END,
+    sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif(@sort_title::text, ''), sort_title) END,
+    original_title      = CASE WHEN 'originalTitle' = ANY(locked_fields) THEN original_title ELSE @original_title END,
+    year                = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN year ELSE coalesce(@year, year) END,
+    overview            = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE @overview END,
+    tagline             = CASE WHEN 'tagline' = ANY(locked_fields) THEN tagline ELSE @tagline END,
+    release_date        = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN release_date ELSE @release_date END,
     runtime_minutes     = @runtime_minutes,
     rating              = @rating,
     genres              = coalesce(@genres::text[], '{}'),
-    cast_members        = coalesce(@cast_members::jsonb, '[]'),
-    directors           = coalesce(@directors::text[], '{}'),
-    director_members    = coalesce(@director_members::jsonb, '[]'),
-    poster_path         = @poster_path,
+    cast_members        = CASE WHEN 'cast' = ANY(locked_fields) THEN cast_members ELSE coalesce(@cast_members::jsonb, '[]') END,
+    directors           = CASE WHEN 'directors' = ANY(locked_fields) THEN directors ELSE coalesce(@directors::text[], '{}') END,
+    director_members    = CASE WHEN 'directors' = ANY(locked_fields) THEN director_members ELSE coalesce(@director_members::jsonb, '[]') END,
+    poster_path         = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE @poster_path END,
     backdrop_path       = @backdrop_path,
     logo_path           = @logo_path,
     thumb_path          = coalesce(@thumb_path, thumb_path),
@@ -49,6 +50,28 @@ UPDATE items SET
     metadata_updated_at = now(),
     updated_at          = now()
 WHERE id = @id;
+
+-- name: EditItemMetadata :exec
+-- An administrator's edit: the handler sends every field, merged with the current values, and the fields to lock.
+UPDATE items SET
+    title               = @title,
+    sort_title          = @sort_title,
+    original_title      = @original_title,
+    year                = @year,
+    release_date        = @release_date,
+    tagline             = @tagline,
+    overview            = @overview,
+    directors           = @directors::text[],
+    director_members    = @director_members::jsonb,
+    cast_members        = @cast_members::jsonb,
+    poster_path         = @poster_path,
+    locked_fields       = @locked_fields::text[],
+    metadata_updated_at = now(),
+    updated_at          = now()
+WHERE id = @id;
+
+-- name: UnlockItemFields :exec
+UPDATE items SET locked_fields = '{}', updated_at = now() WHERE id = $1;
 
 -- name: SetItemMatchStatus :exec
 UPDATE items SET match_status = $2, metadata_updated_at = now() WHERE id = $1;

@@ -126,3 +126,32 @@ func (c *ImageCache) TMDB(ctx context.Context, size, file string) (string, error
 func (c *ImageCache) Local(file string) string {
 	return filepath.Join(c.dir, "local", filepath.Base(file))
 }
+
+// SaveLocal writes an image uploaded by an administrator, such as a custom poster, next to the thumbnails.
+func (c *ImageCache) SaveLocal(file string, data []byte) error {
+	path := c.Local(file)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".upload-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
+// RemoveLocal deletes a local image; a missing file is not an error.
+func (c *ImageCache) RemoveLocal(file string) error {
+	if err := os.Remove(c.Local(file)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}

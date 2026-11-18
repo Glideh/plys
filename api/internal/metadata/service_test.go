@@ -476,3 +476,35 @@ func TestParseNFO(t *testing.T) {
 		t.Error("nfo without ids must be ignored")
 	}
 }
+
+func TestEditedFieldsSurviveRefresh(t *testing.T) {
+	e := newEnv(t, "good-key")
+	lib := e.library(t, "movies", "Alien.1979.1080p.BluRay.mkv")
+	ctx := context.Background()
+	var id uuid.UUID
+	if err := e.pool.QueryRow(ctx, `SELECT id FROM items WHERE library_id = $1 AND kind = 'movie'`, lib).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.pool.Exec(ctx, `UPDATE items SET title = 'Mon Alien', sort_title = 'mon alien', poster_path = 'local/custom.jpg',
+		cast_members = '[{"name": "Moi"}]', release_date = '2000-01-01', year = 2000, overview = 'old',
+		locked_fields = '{title,poster,cast,releaseDate}' WHERE id = $1`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.RefreshItem(ctx, id, nil); err != nil {
+		t.Fatal(err)
+	}
+	it, err := e.q.GetItem(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Title != "Mon Alien" || it.SortTitle != "mon alien" || *it.PosterPath != "local/custom.jpg" || string(it.CastMembers) != `[{"name": "Moi"}]` {
+		t.Errorf("edited fields must be kept: %q %q %v %s", it.Title, it.SortTitle, *it.PosterPath, it.CastMembers)
+	}
+	if *it.Year != 2000 || it.ReleaseDate.Year() != 2000 {
+		t.Errorf("edited release date must be kept: %v %v", *it.Year, it.ReleaseDate)
+	}
+	if it.Overview == nil || *it.Overview == "old" || it.RuntimeMinutes == nil || *it.RuntimeMinutes != 117 {
+		t.Errorf("fields that were not edited must be refreshed: %v %v", it.Overview, it.RuntimeMinutes)
+	}
+}

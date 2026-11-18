@@ -76,6 +76,7 @@ type Item struct {
 	EnrichmentVersion int32
 	DirectorMembers   []byte
 	LogoPath          *string
+	LockedFields      []string
 }
 
 type Library struct {

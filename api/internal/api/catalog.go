@@ -342,6 +342,8 @@ type itemDetailDTO struct {
 	SubtitleSearch bool `json:"subtitleSearch"`
 	// Folder is the deepest directory holding every file of the item and its children, only sent to local admins.
 	Folder string `json:"folder,omitempty"`
+	// EditedFields lists the fields an administrator edited, which metadata refreshes keep; only sent to local admins.
+	EditedFields []string `json:"editedFields,omitempty"`
 }
 
 func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
@@ -413,6 +415,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		dto.Folder = commonFolder(paths)
+		dto.EditedFields = it.LockedFields
 	}
 	if err := s.withProgress(r, it, &dto); err != nil {
 		httpx.InternalError(w, r, err)
