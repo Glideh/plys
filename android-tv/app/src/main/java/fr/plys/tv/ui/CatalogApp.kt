@@ -139,7 +139,7 @@ private fun CatalogAppContent(model: CatalogViewModel, state: CatalogState, modi
                         }
                     }
                     is Screen.Watchlist -> key("watchlist") { WatchlistScreen(screen, model) }
-                    is Screen.Catalog -> key(screen.query) { CatalogScreen(screen, model, state.libraries) }
+                    is Screen.Catalog -> key(screen.query.kind, screen.query.libraryId) { CatalogScreen(screen, model, state.libraries) }
                     is Screen.Detail -> key(screen.source?.serverId, screen.item.id) { DetailScreen(screen, model) }
                 }
             }

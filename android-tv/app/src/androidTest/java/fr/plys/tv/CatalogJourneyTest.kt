@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.height
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import android.view.View
 import android.view.ViewGroup
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModelProvider
 import fr.plys.tv.data.HomeItem
 import fr.plys.tv.data.HomeResponse
+import fr.plys.tv.data.CatalogKind
 import fr.plys.tv.data.ServerRef
 import fr.plys.tv.ui.CatalogViewModel
 import fr.plys.tv.ui.CatalogState
@@ -290,6 +292,62 @@ class CatalogJourneyTest {
             rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isEmpty() }
             resumeButton.assertIsDisplayed()
             assertTrue(model.state.value.screen is Screen.Detail)
+            rule.runOnIdle { model.logout() }
+            rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
+        }
+    }
+
+    @Test fun catalogSearchKeepsFocusAndDebouncesRequests() {
+        val searchRequests = AtomicInteger()
+        val lastSearch = AtomicReference("")
+        MockWebServer().use { server ->
+            server.dispatcher = object : Dispatcher() {
+                override fun dispatch(request: RecordedRequest): MockResponse {
+                    val url = request.requestUrl!!
+                    if (url.encodedPath == "/api/v1/kinds/movies/items") {
+                        url.queryParameter("query")?.takeIf(String::isNotBlank)?.let { query ->
+                            lastSearch.set(query)
+                            searchRequests.incrementAndGet()
+                        }
+                        return MockResponse().setHeader("Content-Type", "application/json")
+                            .setBody("""{"items":[],"total":0,"offset":0,"limit":40}""")
+                    }
+                    val body = when (url.encodedPath) {
+                        "/api/v1/setup/status" -> """{"needsSetup":false}"""
+                        "/api/v1/auth/login" -> """{"accessToken":"search-fixture","refreshToken":"search-refresh","user":{"id":"viewer","username":"Viewer","locale":"en"}}"""
+                        "/api/v1/auth/logout" -> "{}"
+                        "/api/v1/server" -> """{"id":"local"}"""
+                        "/api/v1/libraries" -> """{"items":[]}"""
+                        "/api/v1/me/home" -> """{"continueWatching":[],"nextUp":[]}"""
+                        else -> return MockResponse().setResponseCode(404)
+                    }
+                    return MockResponse().setHeader("Content-Type", "application/json").setBody(body)
+                }
+            }
+            server.start()
+            val serverAddress = server.url("/").toString()
+            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+            rule.waitUntil(10000) { !model.state.value.loading }
+            rule.runOnIdle { model.login(serverAddress, "viewer", "fixture-password") }
+            rule.waitUntil(10000) { model.state.value.screen is Screen.Home && !model.state.value.loading }
+            rule.runOnIdle { model.openKind(CatalogKind.MOVIES) }
+            rule.waitUntil(10000) { model.state.value.screen is Screen.Catalog && !model.state.value.loading }
+
+            val searchLabel = text(R.string.search)
+            val searchInput = rule.onNode(hasSetTextAction() and hasAnyAncestor(hasContentDescription(searchLabel)), useUnmergedTree = true)
+            rule.onAllNodesWithContentDescription(searchLabel).onLast().activate()
+            rule.waitUntil(5000) { searchInput.fetchSemanticsNode().config.getOrElse(SemanticsProperties.Focused) { false } }
+            searchInput.performTextReplacement("Ali")
+            searchInput.performTextReplacement("Alien")
+            rule.waitUntil(5000) { searchRequests.get() > 0 }
+            assertEquals(1, searchRequests.get())
+            assertEquals("Alien", lastSearch.get())
+            searchInput.assertIsFocused()
+
+            searchInput.performTextInput("!")
+            rule.waitUntil(5000) { searchRequests.get() == 2 }
+            assertEquals("Alien!", lastSearch.get())
+            searchInput.assertIsFocused()
             rule.runOnIdle { model.logout() }
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.sign_in)).fetchSemanticsNodes().isNotEmpty() }
         }
