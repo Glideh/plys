@@ -20,6 +20,7 @@ export type ApiErrorCode =
   | 'tmdb_not_configured'
   | 'transcoder_busy'
   | 'invalid_opensubtitles_credentials'
+  | 'invalid_opensubtitles_login'
   | 'subtitles_not_configured'
   | 'subtitles_unauthorized'
   | 'subtitles_quota'

@@ -24,6 +24,15 @@ func fakeOpenSubtitles(t *testing.T) *httptest.Server {
 		switch r.URL.Path {
 		case "/discover/popular":
 			_, _ = w.Write([]byte(`{"data":{}}`))
+		case "/login":
+			var body map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body["username"] != "me" || body["password"] != "secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"message":"Invalid username/password"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"token":"tok"}`))
 		case "/subtitles":
 			if r.URL.Query().Get("query") != "alien" || r.URL.Query().Get("languages") != "fr" {
 				t.Errorf("unexpected search %s", r.URL.RawQuery)
@@ -39,6 +48,11 @@ func fakeOpenSubtitles(t *testing.T) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+func errorCode(body map[string]any) any {
+	errBody, _ := body["error"].(map[string]any)
+	return errBody["code"]
 }
 
 func TestOnlineSubtitles(t *testing.T) {
@@ -64,8 +78,8 @@ func TestOnlineSubtitles(t *testing.T) {
 		t.Errorf("unconfigured search: expected 409, got %d", r.status)
 	}
 
-	if r := do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesApiKey": "bad"}); r.status != http.StatusBadRequest {
-		t.Errorf("rejected key: expected 400, got %d", r.status)
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesApiKey": "bad"}); r.status != http.StatusBadRequest || errorCode(r.body) != "invalid_opensubtitles_credentials" {
+		t.Errorf("rejected key: expected 400 invalid_opensubtitles_credentials, got %d %v", r.status, r.body)
 	}
 	r := do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesApiKey": " key "})
 	if r.status != http.StatusOK || r.body["openSubtitlesConfigured"] != true || r.body["openSubtitlesApiKey"] != nil {
@@ -73,6 +87,17 @@ func TestOnlineSubtitles(t *testing.T) {
 	}
 	if r := do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesUsername": "me"}); r.status != http.StatusBadRequest {
 		t.Errorf("username without password: expected 400, got %d", r.status)
+	}
+	r = do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesUsername": "me@example.com", "openSubtitlesPassword": "secret"})
+	if errBody, _ := r.body["error"].(map[string]any); r.status != http.StatusBadRequest || errBody["code"] != "invalid_opensubtitles_login" || errBody["message"] != "Invalid username/password (HTTP 401)" {
+		t.Errorf("rejected login: expected 400 invalid_opensubtitles_login with the OpenSubtitles message, got %d %v", r.status, r.body)
+	}
+	r = do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesUsername": "me", "openSubtitlesPassword": "secret"})
+	if r.status != http.StatusOK || r.body["openSubtitlesUsername"] != "me" {
+		t.Fatalf("login: %d %v", r.status, r.body)
+	}
+	if r := do(t, e.h, http.MethodPatch, "/api/v1/admin/settings", admin, map[string]any{"openSubtitlesUsername": ""}); r.status != http.StatusOK || r.body["openSubtitlesUsername"] != "" {
+		t.Fatalf("remove login: %d %v", r.status, r.body)
 	}
 	if item := do(t, e.h, http.MethodGet, "/api/v1/items/"+itemID, admin, nil).body; item["subtitleSearch"] != true {
 		t.Errorf("search must be offered once configured")

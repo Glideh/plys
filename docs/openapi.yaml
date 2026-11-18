@@ -1161,7 +1161,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Settings" }
         "400":
-          description: "`validation`, `invalid_tmdb_key` or `invalid_opensubtitles_credentials`"
+          description: "`validation`, `invalid_tmdb_key`, `invalid_opensubtitles_credentials` (API key rejected) or `invalid_opensubtitles_login` (username or password rejected); the message of the last two is the OpenSubtitles answer and HTTP status"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

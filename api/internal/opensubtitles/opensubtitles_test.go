@@ -90,6 +90,8 @@ func TestSearchAndDownload(t *testing.T) {
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"link": srv.URL + "/file.srt"})
+		case "/api/v1/discover/popular":
+			_, _ = w.Write([]byte(`{"data":[]}`))
 		case "/file.srt":
 			_, _ = w.Write([]byte("1\n00:00:01,000 --> 00:00:02,000\nOlá\n"))
 		default:
@@ -121,10 +123,16 @@ func TestSearchAndDownload(t *testing.T) {
 		t.Errorf("the login token must be reused, %d logins", logins.Load())
 	}
 
-	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "me", Password: "wrong"}); !errors.Is(err, ErrUnauthorized) {
+	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "me", Password: "secret"}); err != nil {
+		t.Errorf("valid key and login: %v", err)
+	}
+	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "me", Password: "wrong"}); !errors.Is(err, ErrUnauthorized) || !errors.Is(err, ErrInvalidLogin) || errors.Is(err, ErrInvalidAPIKey) {
 		t.Errorf("wrong password: %v", err)
 	}
-	if err := c.Validate(ctx, Credentials{APIKey: "bad"}); !errors.Is(err, ErrUnauthorized) {
+	if err := c.Validate(ctx, Credentials{APIKey: "bad", Username: "me", Password: "secret"}); !errors.Is(err, ErrInvalidAPIKey) || errors.Is(err, ErrInvalidLogin) {
+		t.Errorf("wrong key with a login: %v", err)
+	}
+	if err := c.Validate(ctx, Credentials{APIKey: "bad"}); !errors.Is(err, ErrUnauthorized) || !errors.Is(err, ErrInvalidAPIKey) {
 		t.Errorf("wrong key: %v", err)
 	}
 	creds = Credentials{}
@@ -177,7 +185,7 @@ func TestErrors(t *testing.T) {
 	}
 	var apiErr *APIError
 	err := c.Validate(ctx, Credentials{APIKey: "bad"})
-	if !errors.Is(err, ErrUnauthorized) || !errors.As(err, &apiErr) || apiErr.Message != "You cannot consume this service" {
+	if !errors.Is(err, ErrInvalidAPIKey) || !errors.As(err, &apiErr) || apiErr.Message != "You cannot consume this service" {
 		t.Errorf("unknown key: %v", err)
 	}
 	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "busy", Password: "p"}); err != nil {
@@ -186,8 +194,9 @@ func TestErrors(t *testing.T) {
 	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "flood", Password: "p"}); !errors.Is(err, ErrRateLimited) {
 		t.Errorf("a long rate limit must not be waited for: %v", err)
 	}
-	if err := c.Validate(ctx, Credentials{APIKey: "key", Username: "me@example.com", Password: "p"}); !errors.Is(err, ErrUnauthorized) {
-		t.Errorf("a login refused with 400 means wrong credentials: %v", err)
+	err = c.Validate(ctx, Credentials{APIKey: "key", Username: "me@example.com", Password: "p"})
+	if !errors.Is(err, ErrInvalidLogin) || !errors.As(err, &apiErr) || apiErr.Detail() != "Error, invalid username/password (HTTP 400)" {
+		t.Errorf("a login refused with 400 means wrong credentials, with the OpenSubtitles message: %v", err)
 	}
 	err = c.Validate(ctx, Credentials{APIKey: "key", Username: "other", Password: "p"})
 	if errors.Is(err, ErrUnauthorized) || !errors.As(err, &apiErr) || apiErr.Detail() != "maintenance (HTTP 503)" {

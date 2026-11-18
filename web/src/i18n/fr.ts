@@ -198,7 +198,7 @@ export default {
     subtitlesHelp: 'Avec une clé d’API OpenSubtitles, les spectateurs peuvent chercher et télécharger des sous-titres depuis le lecteur. Les sous-titres téléchargés sont conservés et proposés à tous ceux qui peuvent lire la vidéo.',
     getOpenSubtitlesKey: 'Obtenir une clé d’API OpenSubtitles',
     openSubtitlesKey: 'Clé d’API OpenSubtitles',
-    openSubtitlesLoginHelp: 'Facultatif : un compte opensubtitles.com augmente le nombre de téléchargements autorisés par jour. Laissez le nom d’utilisateur vide pour télécharger anonymement.',
+    openSubtitlesLoginHelp: 'Facultatif : un compte opensubtitles.com augmente le nombre de téléchargements autorisés par jour. Utilisez son nom d’utilisateur, pas son e-mail ; les comptes opensubtitles.org ne fonctionnent pas ici. Laissez le nom d’utilisateur vide pour télécharger anonymement.',
     passwordUnchanged: 'Inchangé',
     serverIdentity: 'Identité du serveur',
     serverIdentityHelp:
@@ -416,7 +416,8 @@ export default {
     tmdb_unreachable: 'TMDB est injoignable, la clé n’a pas pu être vérifiée.',
     tmdb_not_configured: 'Configurez d’abord une clé TMDB.',
     transcoder_busy: 'Le serveur convertit déjà le nombre maximal de vidéos. Réessayez dans quelques instants.',
-    invalid_opensubtitles_credentials: 'OpenSubtitles a refusé cette clé ou cet identifiant.',
+    invalid_opensubtitles_credentials: 'OpenSubtitles a refusé cette clé d’API : {detail}',
+    invalid_opensubtitles_login: 'OpenSubtitles a refusé ce nom d’utilisateur ou ce mot de passe : {detail}',
     subtitles_not_configured: 'La recherche de sous-titres en ligne n’est pas configurée sur ce serveur.',
     subtitles_unauthorized: 'OpenSubtitles a refusé les identifiants du serveur. Un administrateur doit les vérifier.',
     subtitles_quota: 'La limite quotidienne de téléchargements OpenSubtitles est atteinte. Réessayez plus tard.',

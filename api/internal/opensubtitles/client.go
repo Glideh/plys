@@ -33,6 +33,9 @@ var (
 	ErrQuota        = errors.New("OpenSubtitles download quota reached")
 	// ErrRateLimited means too many requests were sent in a short time (logins are limited to one per second).
 	ErrRateLimited = errors.New("OpenSubtitles rate limit reached")
+	// ErrInvalidAPIKey and ErrInvalidLogin tell, along with ErrUnauthorized, which credential Validate saw rejected.
+	ErrInvalidAPIKey = errors.New("OpenSubtitles rejected the API key")
+	ErrInvalidLogin  = errors.New("OpenSubtitles rejected the username or password")
 )
 
 // APIError is an unexpected answer from OpenSubtitles, with the message it gave when there was one.
@@ -275,15 +278,23 @@ func (c *Client) Download(ctx context.Context, fileID int) ([]byte, error) {
 	return data, nil
 }
 
-// Validate checks an API key, and the login when one is given, before they are saved.
+// Validate checks the API key, then the login when one is given, before they are saved. A rejection wraps
+// ErrUnauthorized with ErrInvalidAPIKey or ErrInvalidLogin, so that the administrator knows which field to fix.
 func (c *Client) Validate(ctx context.Context, cr Credentials) error {
-	if cr.Username != "" {
-		_, _, err := c.login(ctx, cr)
-		return err
-	}
 	// The /infos endpoints are cached and answer even to an unknown key; this one checks it.
 	var discard json.RawMessage
-	return c.do(ctx, http.MethodGet, c.baseURL+"/discover/popular?languages=en", cr.APIKey, "", nil, &discard)
+	err := c.do(ctx, http.MethodGet, c.baseURL+"/discover/popular?languages=en", cr.APIKey, "", nil, &discard)
+	if errors.Is(err, ErrUnauthorized) {
+		return fmt.Errorf("%w: %w", ErrInvalidAPIKey, err)
+	}
+	if err != nil || cr.Username == "" {
+		return err
+	}
+	_, _, err = c.login(ctx, cr)
+	if errors.Is(err, ErrUnauthorized) {
+		return fmt.Errorf("%w: %w", ErrInvalidLogin, err)
+	}
+	return err
 }
 
 // session returns the API base URL and token to download with; without a login, downloads are anonymous.

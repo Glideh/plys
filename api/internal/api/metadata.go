@@ -209,12 +209,12 @@ func (s *Server) updateOpenSubtitles(w http.ResponseWriter, r *http.Request, req
 		var apiErr *opensubtitles.APIError
 		switch {
 		case err == nil:
+		case errors.Is(err, opensubtitles.ErrInvalidLogin):
+			// The message is the OpenSubtitles one, shown as is to the administrator.
+			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_login", openSubtitlesDetail(err))
+			return false
 		case errors.Is(err, opensubtitles.ErrUnauthorized):
-			msg := "OpenSubtitles rejected this API key or login"
-			if errors.As(err, &apiErr) && apiErr.Message != "" {
-				msg += ": " + apiErr.Message
-			}
-			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_credentials", msg)
+			httpx.Error(w, http.StatusBadRequest, "invalid_opensubtitles_credentials", openSubtitlesDetail(err))
 			return false
 		case errors.Is(err, opensubtitles.ErrRateLimited):
 			httpx.Error(w, http.StatusTooManyRequests, "subtitles_rate_limited", "OpenSubtitles received too many requests, try again in a moment")
@@ -232,6 +232,15 @@ func (s *Server) updateOpenSubtitles(w http.ResponseWriter, r *http.Request, req
 		return false
 	}
 	return true
+}
+
+// openSubtitlesDetail returns what OpenSubtitles answered to a rejected check, such as "Invalid username/password (HTTP 401)".
+func openSubtitlesDetail(err error) string {
+	var apiErr *opensubtitles.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Detail()
+	}
+	return "no detail given"
 }
 
 type matchCandidateDTO struct {
