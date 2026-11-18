@@ -3,6 +3,7 @@ package fr.plys.tv
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -15,7 +16,11 @@ import fr.plys.tv.ui.PlaybackScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        splashScreen.setOnExitAnimationListener { splash ->
+            splash.view.animate().alpha(0f).setDuration(280L).withEndAction { splash.remove() }.start()
+        }
         setContent {
             PlysTheme {
                     val model: CatalogViewModel = viewModel()

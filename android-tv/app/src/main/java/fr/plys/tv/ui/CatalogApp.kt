@@ -1,6 +1,8 @@
 package fr.plys.tv.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -75,11 +77,17 @@ import fr.plys.tv.ui.PlysButton as Button
 
 @Composable
 fun CatalogApp(model: CatalogViewModel, state: CatalogState, modifier: Modifier = Modifier) {
-    // Back on the splash leaves the app, as on any launch screen.
-    if (state.screen == Screen.Splash) {
-        SplashScreen(modifier)
-        return
+    Crossfade(
+        targetState = state.screen == Screen.Splash,
+        animationSpec = tween(320),
+        label = "startupSplash",
+    ) { showingSplash ->
+        if (showingSplash) SplashScreen(modifier) else CatalogAppContent(model, state, modifier)
     }
+}
+
+@Composable
+private fun CatalogAppContent(model: CatalogViewModel, state: CatalogState, modifier: Modifier) {
     BackHandler(model.canGoBack || state.loading) { model.back() }
     if (state.screen == Screen.Login) {
         Box(modifier) {

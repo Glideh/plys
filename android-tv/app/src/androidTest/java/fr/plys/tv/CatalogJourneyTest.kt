@@ -35,6 +35,7 @@ import fr.plys.tv.data.HomeItem
 import fr.plys.tv.data.HomeResponse
 import fr.plys.tv.data.ServerRef
 import fr.plys.tv.ui.CatalogViewModel
+import fr.plys.tv.ui.CatalogState
 import fr.plys.tv.ui.HomeScreen
 import fr.plys.tv.ui.Screen
 import fr.plys.tv.ui.PlysTheme
@@ -153,8 +154,20 @@ class CatalogJourneyTest {
     @Test fun splashShowsTheBrandOnly() {
         rule.runOnUiThread { rule.activity.setContent { PlysTheme { fr.plys.tv.ui.SplashScreen() } } }
         rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.splash_tagline)).assertIsDisplayed()
         rule.onAllNodesWithText(text(R.string.sign_in)).assertCountEquals(0)
         screenshot("splash")
+    }
+
+    @Test fun loginScreenShowsTheBrand() {
+        val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+        rule.runOnUiThread {
+            rule.activity.setContent {
+                PlysTheme { fr.plys.tv.ui.CatalogApp(model, CatalogState(screen = Screen.Login)) }
+            }
+        }
+        rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
+        rule.onNodeWithText(text(R.string.sign_in_title)).assertIsDisplayed()
     }
 
     @Test fun watchlistFromSideRailAndDetail() {
@@ -327,6 +340,7 @@ class CatalogJourneyTest {
             }
             server.start()
             rule.waitUntil(10000) { rule.onAllNodes(hasText(text(R.string.sign_in))).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
             screenshot("login")
             rule.onNodeWithText(text(R.string.server)).performTextReplacement(server.url("/").toString())
             rule.onNodeWithText(text(R.string.username)).performTextReplacement("viewer")

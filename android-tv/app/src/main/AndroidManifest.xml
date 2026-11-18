@@ -10,7 +10,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner_image"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Plys"
+        android:theme="@style/Theme.Plys.Starting"
         android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"

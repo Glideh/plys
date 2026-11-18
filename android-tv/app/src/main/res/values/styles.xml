@@ -1,4 +1,9 @@
 <resources>
+    <style name="Theme.Plys.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0B2A47</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/brand_mark</item>
+        <item name="postSplashScreenTheme">@style/Theme.Plys</item>
+    </style>
     <style name="Theme.Plys" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowFullscreen">true</item>
