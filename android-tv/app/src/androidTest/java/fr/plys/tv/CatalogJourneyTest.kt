@@ -56,7 +56,9 @@ class CatalogJourneyTest {
         val image = if (name == "filters" || name == "filter-options" || name == "playback-subtitles") {
             InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         } else rule.onRoot().captureToImage().asAndroidBitmap()
-        File(rule.activity.getExternalFilesDir(null), "$name.png").outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val output = File(rule.activity.getExternalFilesDir(null), "$name.png")
+        output.parentFile?.mkdirs()
+        output.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     @Test fun homeRowsStackVertically() {
@@ -590,10 +592,10 @@ class CatalogJourneyTest {
                     assertTrue(canvas != null && position[1] + canvas.height <= controlsTop)
                 }
             }
-            screenshot("playback-controls")
+            screenshot("player-states/controls")
             rule.onNodeWithContentDescription(text(R.string.forward)).activate()
             rule.waitUntil(1000) { rule.onAllNodesWithText(rule.activity.getString(R.string.seek_by, "+10"), substring = true).fetchSemanticsNodes().isNotEmpty() }
-            screenshot("playback-seek-preview")
+            screenshot("player-states/controls-seeking")
             // There is no stop button any more: back closes the paused player.
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(10000) { rule.onAllNodesWithText(text(R.string.play)).fetchSemanticsNodes().isNotEmpty() }

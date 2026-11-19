@@ -118,6 +118,8 @@ private const val AUTO_NEXT_SECONDS = 10
 private const val DPAD_SEEK_DELAY_MS = 700L
 private const val SEEK_PREVIEW_FADE_MS = 250
 private data class SeekPreview(val offset: Double, val target: Double)
+internal fun playbackControlsVisible(requested: Boolean, loading: Boolean, seekInProgress: Boolean): Boolean =
+    requested || (loading && !seekInProgress)
 
 @Composable
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -173,6 +175,8 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     var pendingSeek by remember { mutableDoubleStateOf(0.0) }
     var seekPresses by remember { mutableIntStateOf(0) }
     var seekPreview by remember { mutableStateOf<SeekPreview?>(null) }
+    var seekInProgress by remember { mutableStateOf(false) }
+    val controlsRequested = showControls || menu.isNotEmpty() || subtitleSearch != null || state.paused || state.error != null || state.ended
     fun queueSeek(delta: Double) {
         pendingSeek += delta
         seekPreview = SeekPreview(
@@ -183,7 +187,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     }
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
-    val visible = showControls || menu.isNotEmpty() || subtitleSearch != null || state.paused || state.loading || state.error != null || state.ended
+    val visible = playbackControlsVisible(controlsRequested, state.loading, seekInProgress)
     LaunchedEffect(interaction, state.paused, state.loading, state.error, state.ended, menu, subtitleSearch != null) {
         if (!state.paused && !state.loading && state.error == null && !state.ended && menu.isEmpty() && subtitleSearch == null) {
             delay(5000)
@@ -193,6 +197,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     LaunchedEffect(seekPresses) {
         if (seekPresses == 0) return@LaunchedEffect
         delay(DPAD_SEEK_DELAY_MS)
+        seekInProgress = true
         model.seek(pendingSeek)
         pendingSeek = 0.0
         seekPresses = 0
@@ -202,6 +207,9 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             delay(SEEK_PREVIEW_FADE_MS.toLong())
             seekPreview = null
         }
+    }
+    LaunchedEffect(state.loading, seekPresses) {
+        if (seekInProgress && !state.loading && seekPresses == 0) seekInProgress = false
     }
     // Focus goes to the first button when the controls appear, or when an error or the end replaces it; a seek
     // keeps the focus on the button that was pressed, so it can be pressed again.
@@ -306,11 +314,15 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             val version = state.selection.version(state.item)
-            listOfNotNull(versionSummary(state.item, state.selection).takeIf { it.isNotBlank() }, state.audioInfo).joinToString(" · ").takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = Plys.Muted)
-            }
-            if (seekPreview != null) SeekProgress(seekPreview!!, state.duration)
-            else Progress(state.position, state.duration, showEnd = !state.ended)
+            val streamInfo = listOfNotNull(versionSummary(state.item, state.selection).takeIf { it.isNotBlank() }, state.audioInfo).joinToString(" · ")
+            Progress(
+                position = seekPreview?.target ?: state.position,
+                duration = state.duration,
+                showEnd = !state.ended && seekPreview == null,
+                showCursor = seekPreview != null,
+                streamInfo = streamInfo,
+                seekOffset = seekPreview?.let { seekOffset(it.offset) },
+            )
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (state.ended && !upNext) Text(stringResource(R.string.ended), color = Plys.Muted)
             if (upNext) UpNext(countdown, Modifier.focusRequester(playFocus), playNow = model::next, cancel = { cancelled = true })
@@ -365,8 +377,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
 @Composable
 private fun SeekProgress(preview: SeekPreview, duration: Double) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val sign = if (preview.offset < 0) "−" else "+"
-        Text(stringResource(R.string.seek_by, sign + kotlin.math.abs(preview.offset).toInt()),
+        Text(seekOffset(preview.offset), modifier = Modifier.align(Alignment.End),
             style = MaterialTheme.typography.titleMedium, color = Color.White)
         PlaybackTimeline(preview.target, duration, showCursor = true)
         Row(Modifier.fillMaxWidth()) {
@@ -374,6 +385,12 @@ private fun SeekProgress(preview: SeekPreview, duration: Double) {
                 color = Color.White, modifier = Modifier.weight(1f))
         }
     }
+}
+
+@Composable
+private fun seekOffset(offset: Double): String {
+    val sign = if (offset < 0) "−" else "+"
+    return stringResource(R.string.seek_by, sign + kotlin.math.abs(offset).toInt())
 }
 
 /** Films and videos show their year next to the title; episodes and parts already carry their context. */
@@ -410,10 +427,26 @@ private fun AutoplayToggle(enabled: Boolean, onToggle: () -> Unit) {
 
 /** Position, duration and, while playing, the time left and the time the video will end. */
 @Composable
-private fun Progress(position: Double, duration: Double, showEnd: Boolean) {
+private fun Progress(
+    position: Double,
+    duration: Double,
+    showEnd: Boolean,
+    showCursor: Boolean = false,
+    streamInfo: String = "",
+    seekOffset: String? = null,
+) {
     val context = LocalContext.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        PlaybackTimeline(position, duration)
+        Row(
+            Modifier.fillMaxWidth().height(28.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(streamInfo, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall,
+                color = Plys.Muted, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if (seekOffset != null) Text(seekOffset, style = MaterialTheme.typography.titleMedium, color = Color.White)
+        }
+        PlaybackTimeline(position, duration, showCursor)
         val remaining = (duration - position).coerceAtLeast(0.0)
         Row(Modifier.fillMaxWidth()) {
             Text("${clock(position)} / ${clock(duration)}", style = MaterialTheme.typography.bodyMedium, color = Color.White, modifier = Modifier.weight(1f))
@@ -429,7 +462,7 @@ private fun PlaybackTimeline(position: Double, duration: Double, showCursor: Boo
     if (duration <= 0) return
     val progress = (position / duration).toFloat().coerceIn(0f, 1f)
     BoxWithConstraints(
-        Modifier.fillMaxWidth().height(if (showCursor) 10.dp else 6.dp),
+        Modifier.fillMaxWidth().height(10.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Box(Modifier.fillMaxWidth().height(6.dp).background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(3.dp)))

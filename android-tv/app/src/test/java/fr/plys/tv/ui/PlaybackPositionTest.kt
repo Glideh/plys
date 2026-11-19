@@ -30,4 +30,11 @@ class PlaybackPositionTest {
         assertEquals("1:01:01", clock(3661.0))
         assertEquals("0:00", clock(-5.0))
     }
+
+    @Test fun `seek loading follows the current controls request`() {
+        assertEquals(false, playbackControlsVisible(requested = false, loading = true, seekInProgress = true))
+        assertEquals(true, playbackControlsVisible(requested = true, loading = true, seekInProgress = true))
+        assertEquals(true, playbackControlsVisible(requested = false, loading = true, seekInProgress = false))
+        assertEquals(false, playbackControlsVisible(requested = false, loading = false, seekInProgress = false))
+    }
 }
