@@ -46,14 +46,14 @@ fun SplashScreen(modifier: Modifier = Modifier) {
         Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(250.dp).background(
             Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF1474A8).copy(alpha = 0.12f))),
         ))
-        Image(
-            painterResource(R.drawable.brand_mark), contentDescription = null,
-            modifier = Modifier.align(Alignment.Center).size(logoSize).testTag("splashLogo"),
-        )
         Box(
             Modifier.align(Alignment.Center).offset(y = logoTipOffset).width(92.dp).height(3.dp)
                 .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xFF5EB3DA), Color.Transparent)), RoundedCornerShape(2.dp))
                 .testTag("splashGlow"),
+        )
+        Image(
+            painterResource(R.drawable.brand_mark), contentDescription = null,
+            modifier = Modifier.align(Alignment.Center).size(logoSize).testTag("splashLogo"),
         )
         Column(
             Modifier.align(Alignment.TopCenter).padding(top = maxHeight / 2 + logoSize / 2 + textTopGap),
