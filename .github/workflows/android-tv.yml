@@ -1,0 +1,26 @@
+# Android TV: builds the debug APK in the android-build image and uploads it as the `android-tv-apk` artifact.
+# Called by the Release workflow, which attaches the APK to the GitHub release.
+name: Android TV
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build APK
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run as the runner user
+        run: printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+      - run: docker compose --profile android build android-build
+      - run: docker compose --profile android run --rm android-build :app:assembleDebug
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android-tv-apk
+          path: android-tv/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

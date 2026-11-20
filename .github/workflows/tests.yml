@@ -1,0 +1,92 @@
+# Tests: Go vet + tests (with PostgreSQL and ffmpeg), web type checks + tests, Android unit tests + lint.
+# Also called by the Release workflow before anything is published.
+name: Tests
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Called by Release, github.workflow is "Release": that run gets its own group and is never cancelled.
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'Tests' }}
+
+jobs:
+  api:
+    name: API (go vet, go test)
+    runs-on: ubuntu-24.04
+    # Same Go and Debian as the api image, so ffmpeg matches the one the server runs with.
+    container: golang:1.26-trixie
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: toto
+          POSTGRES_PASSWORD: toto
+          POSTGRES_DB: toto_test
+        options: >-
+          --health-cmd "pg_isready -U toto -d toto_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      TEST_DATABASE_URL: postgres://toto:toto@postgres:5432/toto_test?sslmode=disable
+      # Database tests fail instead of being skipped when the database is missing.
+      TESTDB_REQUIRED: "1"
+      GOFLAGS: -buildvcs=false
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install ffmpeg
+        run: apt-get update && apt-get install -y --no-install-recommends ffmpeg
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            /go/pkg/mod
+          key: go-${{ hashFiles('api/go.sum') }}
+          restore-keys: go-
+      - run: go vet ./...
+      - run: go test ./...
+
+  web:
+    name: Web (typecheck, vitest)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  android:
+    name: Android TV (unit tests, lint)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run as the runner user
+        run: printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+      - run: docker compose --profile android build android-build
+      - run: docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-reports
+          path: android-tv/app/build/reports/
+          if-no-files-found: ignore

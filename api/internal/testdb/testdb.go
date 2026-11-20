@@ -13,10 +13,14 @@ import (
 )
 
 // New recreates the schema, applies migrations and returns a pool bound to it.
+// It skips the test when TEST_DATABASE_URL is unset, unless TESTDB_REQUIRED is set (CI), where it fails.
 func New(t *testing.T, schema string) *pgxpool.Pool {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
+		if os.Getenv("TESTDB_REQUIRED") != "" {
+			t.Fatal("TEST_DATABASE_URL not set while TESTDB_REQUIRED is")
+		}
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()

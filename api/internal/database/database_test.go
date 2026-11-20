@@ -26,6 +26,9 @@ func TestConnectGivesUpWhenTheDatabaseStaysDown(t *testing.T) {
 func TestConnectSucceedsWhenTheDatabaseIsUp(t *testing.T) {
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
+		if os.Getenv("TESTDB_REQUIRED") != "" {
+			t.Fatal("TEST_DATABASE_URL not set while TESTDB_REQUIRED is")
+		}
 		t.Skip("TEST_DATABASE_URL not set")
 	}
 	pool, err := Connect(context.Background(), url)

@@ -1,0 +1,86 @@
+# Release: publishes the version in VERSION.
+#   - on a push to develop or master that changes VERSION (bump.sh), or manually to re-run the current VERSION;
+#   - runs the Tests, then builds the APK and pushes the Docker images, then creates or moves the
+#     x.y.z tag to this commit, then creates or updates the GitHub release (notes = commits since the
+#     previous version tag grouped by Area, plus the APK).
+name: Release
+
+on:
+  push:
+    branches: [develop, master]
+    paths: [VERSION]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: echo "version=$(.github/scripts/check-release.sh)" >> "$GITHUB_OUTPUT"
+
+  tests:
+    needs: version
+    uses: ./.github/workflows/tests.yml
+
+  android-tv:
+    needs: tests
+    uses: ./.github/workflows/android-tv.yml
+
+  docker:
+    needs: [version, tests]
+    uses: ./.github/workflows/docker.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    secrets: inherit
+
+  publish:
+    name: Tag and GitHub release
+    needs: [version, android-tv, docker]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-tv-apk
+          path: apk
+      - name: Create or move the tag
+        run: |
+          git tag --force "$VERSION" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$VERSION"
+      - name: Release notes
+        run: |
+          {
+            .github/scripts/release-notes.sh "$VERSION" "$GITHUB_SHA"
+            echo
+            echo "**Docker images**: \`glide/plys-api:$VERSION\`, \`glide/plys-web:$VERSION\`"
+            echo
+            echo "**Android TV**: \`app-debug.apk\` below."
+          } > notes.md
+          cat notes.md
+      - name: Create or update the GitHub release
+        run: |
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            gh release edit "$VERSION" --title "$VERSION" --notes-file notes.md
+            gh release upload "$VERSION" apk/app-debug.apk --clobber
+          else
+            gh release create "$VERSION" apk/app-debug.apk --verify-tag --title "$VERSION" --notes-file notes.md
+          fi
