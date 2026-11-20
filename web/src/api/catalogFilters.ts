@@ -10,12 +10,10 @@ export interface CatalogFilters {
   excludeGenres?: number[]
   actors?: number[]
   creators?: number[]
-  keywords?: number[]
   languages?: string[]
   countries?: string[]
   yearMin?: number
   yearMax?: number
-  ratingMin?: number
   votesMin?: number
   runtimeMin?: number
   runtimeMax?: number
@@ -23,12 +21,12 @@ export interface CatalogFilters {
   audio?: AudioFormat
 }
 
-export const selectionKeys = ['genres', 'excludeGenres', 'actors', 'creators', 'keywords', 'languages', 'countries'] as const
+export const selectionKeys = ['genres', 'excludeGenres', 'actors', 'creators', 'languages', 'countries'] as const
 export type SelectionKey = typeof selectionKeys[number]
 export type FilterCategory = Exclude<SelectionKey, 'excludeGenres'>
 export interface FilterOption { id: string; label: string }
 export interface FilterOptionsPage { options: Partial<Record<FilterCategory, FilterOption[]>>; unavailableServers: number; unavailableServerNames?: string[] }
-export const numberKeys = ['yearMin', 'yearMax', 'ratingMin', 'votesMin', 'runtimeMin', 'runtimeMax'] as const
+export const numberKeys = ['yearMin', 'yearMax', 'votesMin', 'runtimeMin', 'runtimeMax'] as const
 export type NumberKey = typeof numberKeys[number]
 /** Technical criteria picked from a fixed list of values. */
 export const choiceKeys = ['resolution', 'audio'] as const

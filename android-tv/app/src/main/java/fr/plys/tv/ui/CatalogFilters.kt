@@ -73,7 +73,7 @@ import fr.plys.tv.data.Library
 import fr.plys.tv.data.PlysApi
 import kotlinx.coroutines.delay
 
-private val categories = listOf("genres", "excludeGenres", "actors", "creators", "keywords", "languages", "countries")
+private val categories = listOf("genres", "excludeGenres", "actors", "creators", "languages", "countries")
 private val choices = listOf("resolution", "audio")
 private val pickerCriteria = categories + choices
 
@@ -81,7 +81,6 @@ private val pickerCriteria = categories + choices
 private data class NumberGroup(val title: Int, val fields: List<Pair<String, Int>>)
 private val numberGroups = listOf(
     NumberGroup(R.string.filter_group_year, listOf("yearMin" to R.string.filter_from, "yearMax" to R.string.filter_to)),
-    NumberGroup(R.string.filter_group_rating, listOf("ratingMin" to R.string.filter_min_rating, "votesMin" to R.string.filter_min_votes)),
     NumberGroup(R.string.filter_group_runtime, listOf("runtimeMin" to R.string.filter_minimum, "runtimeMax" to R.string.filter_maximum)),
 )
 
@@ -113,7 +112,6 @@ fun filterSelection(filters: CatalogFilters, key: String): List<String> = when (
     "excludeGenres" -> filters.excludeGenres.map(Int::toString)
     "actors" -> filters.actors.map(Int::toString)
     "creators" -> filters.creators.map(Int::toString)
-    "keywords" -> filters.keywords.map(Int::toString)
     "languages" -> filters.languages
     "countries" -> filters.countries
     else -> emptyList()
@@ -124,7 +122,6 @@ fun withFilterSelection(filters: CatalogFilters, key: String, values: List<Strin
     "excludeGenres" -> filters.copy(excludeGenres = values.take(1).mapNotNull(String::toIntOrNull))
     "actors" -> filters.copy(actors = values.take(1).mapNotNull(String::toIntOrNull))
     "creators" -> filters.copy(creators = values.take(1).mapNotNull(String::toIntOrNull))
-    "keywords" -> filters.copy(keywords = values.take(1).mapNotNull(String::toIntOrNull))
     "languages" -> filters.copy(languages = values.take(1))
     "countries" -> filters.copy(countries = values.take(1))
     else -> filters
@@ -136,12 +133,10 @@ private fun filterLabel(key: String, kind: CatalogKind): String = stringResource
     "excludeGenres" -> R.string.filter_excluded_genres
     "actors" -> R.string.filter_actors
     "creators" -> if (kind == CatalogKind.MOVIES) R.string.filter_directors else R.string.filter_creators
-    "keywords" -> R.string.filter_keywords
     "languages" -> R.string.filter_languages
     "countries" -> if (kind == CatalogKind.MOVIES) R.string.filter_countries else R.string.filter_origins
     "yearMin" -> R.string.filter_year_min
     "yearMax" -> R.string.filter_year_max
-    "ratingMin" -> R.string.filter_rating
     "votesMin" -> R.string.filter_votes
     "runtimeMin" -> R.string.filter_runtime_min
     "resolution" -> R.string.filter_resolution
@@ -351,6 +346,9 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                             }
                         }
                     }
+                    item {
+                        FilterRow(stringResource(R.string.filter_votes), numeric["votesMin"]?.takeIf { it.isNotBlank() }, { editingNumber = "votesMin" })
+                    }
                     items(numberGroups.filter { query.kind == CatalogKind.MOVIES || it.title != R.string.filter_group_runtime }) { group ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(stringResource(group.title), style = MaterialTheme.typography.titleSmall, color = Plys.TextStrong)
@@ -369,9 +367,9 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
                     androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
                     Action(R.string.cancel, onClick = dismiss)
                     Action(R.string.apply, primary = true) {
-                        val valuesValid = numeric.all { (key, value) -> value.isBlank() || if (key == "ratingMin") value.toDoubleOrNull() != null else value.toIntOrNull() != null }
+                        val valuesValid = numeric.all { (_, value) -> value.isBlank() || value.toIntOrNull() != null }
                         val result = draft.copy(yearMin = numeric["yearMin"]?.toIntOrNull(), yearMax = numeric["yearMax"]?.toIntOrNull(),
-                            ratingMin = numeric["ratingMin"]?.toDoubleOrNull(), votesMin = numeric["votesMin"]?.toIntOrNull(),
+                            votesMin = numeric["votesMin"]?.toIntOrNull(),
                             runtimeMin = if (query.kind == CatalogKind.MOVIES) numeric["runtimeMin"]?.toIntOrNull() else null,
                             runtimeMax = if (query.kind == CatalogKind.MOVIES) numeric["runtimeMax"]?.toIntOrNull() else null)
                         if (valuesValid && result.valid) apply(result) else invalid = true
@@ -391,7 +389,7 @@ private fun FiltersDialog(query: CatalogQuery, api: PlysApi, dismiss: () -> Unit
         FilterPickerDialog(query, key, draft, api, { picker = null }) { draft = withFilterSelection(draft, key, it); picker = null }
     }
     editingNumber?.let { key ->
-        FilterInputDialog(filterLabel(key, query.kind), numeric[key].orEmpty(), if (key == "ratingMin") KeyboardType.Decimal else KeyboardType.Number,
+        FilterInputDialog(filterLabel(key, query.kind), numeric[key].orEmpty(), KeyboardType.Number,
             dismiss = { editingNumber = null },
             apply = { numeric = numeric + (key to it); invalid = false; editingNumber = null },
         )
@@ -431,14 +429,13 @@ private fun FilterInputDialog(title: String, initial: String, keyboardType: Keyb
 }
 
 private fun numericFilterValues(filters: CatalogFilters): Map<String, String> = mapOf(
-    "yearMin" to filters.yearMin, "yearMax" to filters.yearMax, "ratingMin" to filters.ratingMin,
+    "yearMin" to filters.yearMin, "yearMax" to filters.yearMax,
     "votesMin" to filters.votesMin, "runtimeMin" to filters.runtimeMin, "runtimeMax" to filters.runtimeMax,
 ).mapValues { it.value?.toString() ?: "" }
 
 private fun withoutBound(filters: CatalogFilters, key: String): CatalogFilters = when (key) {
     "yearMin" -> filters.copy(yearMin = null)
     "yearMax" -> filters.copy(yearMax = null)
-    "ratingMin" -> filters.copy(ratingMin = null)
     "votesMin" -> filters.copy(votesMin = null)
     "runtimeMin" -> filters.copy(runtimeMin = null)
     else -> filters.copy(runtimeMax = null)

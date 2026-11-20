@@ -18,12 +18,11 @@ const validation = ref('')
 const panel = useTemplateRef<HTMLDialogElement>('panel')
 const labels = ref<Partial<Record<FilterCategory, Record<string, string>>>>({})
 const count = computed(() => filterCount(model.value))
-const pickerKeys = computed(() => selectionKeys)
+const pickerKeys = computed(() => selectionKeys.filter((key) => key !== 'genres' && key !== 'excludeGenres'))
 // Related bounds are shown side by side under one heading.
 interface NumberGroup { title: string; fields: { key: NumberKey; label: string }[] }
 const numberGroups = computed<NumberGroup[]>(() => [
   { title: 'filters.yearGroup', fields: [{ key: 'yearMin', label: 'filters.from' }, { key: 'yearMax', label: 'filters.to' }] },
-  { title: 'filters.ratingGroup', fields: [{ key: 'ratingMin', label: 'filters.minRating' }, { key: 'votesMin', label: 'filters.minVotes' }] },
   ...(props.kind === 'movies' ? [{ title: 'filters.runtimeGroup', fields: [{ key: 'runtimeMin', label: 'filters.runtimeFrom' }, { key: 'runtimeMax', label: 'filters.runtimeTo' }] } satisfies NumberGroup] : []),
 ])
 const inputClassNoMarginTop = 'h-10 w-full rounded-lg border border-white/10 bg-surface-800 px-3 text-sm text-slate-100'
@@ -33,6 +32,8 @@ function category(key: SelectionKey): FilterCategory { return key === 'excludeGe
 function fieldLabel(key: SelectionKey | NumberKey | ChoiceKey) {
   if (key === 'creators') return t(props.kind === 'movies' ? 'filters.directors' : 'filters.creators')
   if (key === 'countries') return t(props.kind === 'movies' ? 'filters.productionCountries' : 'filters.originCountries')
+  if (key === 'genres') return t('filters.includedGenres')
+  if (key === 'excludeGenres') return t('filters.excludedGenres')
   return t(`filters.${key}`)
 }
 function values(key: SelectionKey) { return (draft.value[key] ?? []).map(String) }
@@ -55,11 +56,6 @@ const active = computed(() => [
   ...choiceKeys.filter((key) => model.value[key]).map((key) => ({ key, value: undefined, text: `${fieldLabel(key)}: ${choiceLabel(key, model.value[key]!)}` })),
 ])
 function choiceLabel(key: ChoiceKey, value: string) { return t(`filters.${key}Values.${value}`) }
-function setChoice(key: ChoiceKey, event: Event) {
-  const value = (event.target as HTMLSelectElement).value
-  if (value) draft.value[key] = value as never
-  else delete draft.value[key]
-}
 function remove(key: SelectionKey | NumberKey | ChoiceKey, value?: string | number) {
   const next = { ...model.value }
   if (selectionKeys.includes(key as SelectionKey)) {
@@ -135,23 +131,38 @@ watch(() => serializeFilters(model.value), restoreLabels)
           <h2 :id="`${id}-title`" class="text-base font-semibold">{{ t('filters.title') }}</h2>
           <button type="button" class="grid size-9 shrink-0 place-items-center rounded-lg hover:bg-white/5" :aria-label="t('common.close')" :title="t('common.close')" @click="open = false"><X class="size-5" aria-hidden="true" /></button>
         </header>
-        <div class="grid min-h-0 min-w-0 flex-1 gap-5 overflow-y-auto sm:grid-cols-2 sm:overflow-visible lg:grid-cols-3">
-          <CatalogFilterPicker v-for="key in pickerKeys" :key="key" :kind="kind" :library="library" :category="category(key)" :label="fieldLabel(key)" :model-value="values(key)" :disabled-values="key === 'genres' ? values('excludeGenres') : key === 'excludeGenres' ? values('genres') : undefined" @update:model-value="setValues(key, $event)" @options="remember" />
-          <div v-for="key in choiceKeys" :key="key" class="min-w-0">
-            <select :value="draft[key] ?? ''" :class="inputClassNoMarginTop" @change="setChoice(key, $event)">
-              <option value="">{{ fieldLabel(key) }}</option>
-              <option v-for="value in choiceValues[key]" :key="value" :value="value">{{ choiceLabel(key, value) }}</option>
-            </select>
-          </div>
+        <div class="grid min-h-0 min-w-0 flex-1 items-start gap-5 overflow-y-auto sm:grid-cols-2 sm:overflow-visible lg:grid-cols-3">
+          <CatalogFilterPicker v-for="key in pickerKeys" :key="key" :kind="kind" :library="library" :category="category(key)" :label="fieldLabel(key)" :model-value="values(key)" @update:model-value="setValues(key, $event)" @options="remember" />
+          <CatalogFilterPicker
+            v-for="key in choiceKeys" :key="key" :label="fieldLabel(key)"
+            :static-options="choiceValues[key].map(value => ({ id: value, label: choiceLabel(key, value) }))"
+            :model-value="draft[key] ? [draft[key] as string] : []"
+            @update:model-value="draft[key] = $event[0] as never; if (!$event.length) delete draft[key]"
+          />
+          <fieldset class="min-w-0 rounded-lg border border-white/10 px-3 pt-1 pb-3">
+            <legend class="px-1 text-sm text-slate-300">{{ t('filters.genreGroup') }}</legend>
+            <div class="grid grid-cols-2 gap-3">
+              <CatalogFilterPicker
+                v-for="key in (['genres', 'excludeGenres'] as const)" :key="key"
+                :kind="kind" :library="library" :category="category(key)" :label="fieldLabel(key)" label-above :model-value="values(key)"
+                :disabled-values="key === 'genres' ? values('excludeGenres') : values('genres')"
+                @update:model-value="setValues(key, $event)" @options="remember"
+              />
+            </div>
+          </fieldset>
           <fieldset v-for="group in numberGroups" :key="group.title" class="min-w-0 rounded-lg border border-white/10 px-3 pt-1 pb-3">
             <legend class="px-1 text-sm text-slate-300">{{ t(group.title) }}</legend>
             <div class="grid grid-cols-2 gap-3">
               <label v-for="field in group.fields" :key="field.key" class="min-w-0 text-xs text-slate-400" :for="`${id}-${field.key}`">
                 {{ t(field.label) }}
-                <input :id="`${id}-${field.key}`" type="number" :value="draft[field.key]" :min="field.key.startsWith('year') ? 1800 : 0" :max="field.key === 'ratingMin' ? 10 : field.key.startsWith('year') ? 9999 : field.key === 'votesMin' ? 2147483647 : 10000" :step="field.key === 'ratingMin' ? 0.1 : 1" :class="inputClass" @input="setNumber(field.key, $event)" />
+                <input :id="`${id}-${field.key}`" type="number" :value="draft[field.key]" :min="field.key.startsWith('year') ? 1800 : 0" :max="field.key.startsWith('year') ? 9999 : 10000" step="1" :class="inputClass" @input="setNumber(field.key, $event)" />
               </label>
             </div>
           </fieldset>
+          <label class="min-w-0 text-xs text-slate-400" :for="`${id}-votesMin`">
+            {{ t('filters.votesMin') }}
+            <input :id="`${id}-votesMin`" type="number" :value="draft.votesMin" min="0" max="2147483647" step="1" :class="inputClass" @input="setNumber('votesMin', $event)" />
+          </label>
         </div>
         <p v-if="validation" class="mt-4 text-sm text-red-300" role="alert">{{ validation }}</p>
         <footer class="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-white/5 pt-4">

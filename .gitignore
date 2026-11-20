@@ -12,3 +12,5 @@ android-tv/local.properties
 CLAUDE.md
 CLAUDE.local.md
 .claude/
+
+.vscode/

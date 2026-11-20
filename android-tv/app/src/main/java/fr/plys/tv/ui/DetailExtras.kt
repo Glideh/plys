@@ -268,11 +268,11 @@ private fun TrackButton(icon: androidx.compose.ui.graphics.vector.ImageVector, n
 @Composable
 fun Choice(label: String, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     PlysButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth().focusInitially(selected)) {
+        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
         Box(Modifier.size(22.dp)) {
             if (selected) Icon(Icons.Outlined.Check, contentDescription = null, tint = androidx.tv.material3.LocalContentColor.current, modifier = Modifier.fillMaxSize())
         }
-        androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
-        Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

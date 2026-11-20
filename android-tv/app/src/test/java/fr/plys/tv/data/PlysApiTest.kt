@@ -223,7 +223,7 @@ class PlysApiTest {
         login()
         json("""{"id":"origin"}""")
         json("""{"items":[{"id":"film","kind":"movie","title":"Alien","sources":[{"serverId":"origin","serverName":"Home","serverUrl":"${server.url("/")}","itemId":"film"}]}],"total":1,"offset":0,"limit":40,"unavailableServers":1}""")
-        val page = api.catalog(CatalogQuery(CatalogKind.MOVIES, libraryId = "library", query = "Alien & space", sort = "rating", filters = CatalogFilters(genres = listOf(878), ratingMin = 7.0)))
+        val page = api.catalog(CatalogQuery(CatalogKind.MOVIES, libraryId = "library", query = "Alien & space", sort = "rating", filters = CatalogFilters(genres = listOf(878), votesMin = 500)))
         assertNull(page.items.single().sources.single().serverUrl)
         assertEquals(1, page.unavailableServers)
         assertEquals("/api/v1/server", server.takeRequest().requestUrl?.encodedPath)
@@ -232,7 +232,7 @@ class PlysApiTest {
         assertEquals("Alien & space", request.requestUrl?.queryParameter("query"))
         assertEquals("library", request.requestUrl?.queryParameter("library"))
         assertEquals("rating", request.requestUrl?.queryParameter("sort"))
-        assertEquals("""{"genres":[878],"ratingMin":7.0}""", request.requestUrl?.queryParameter("filters"))
+        assertEquals("""{"genres":[878],"votesMin":500}""", request.requestUrl?.queryParameter("filters"))
         assertEquals("Bearer access-1", request.getHeader("Authorization"))
     }
 
@@ -293,13 +293,13 @@ class PlysApiTest {
     }
 
     @Test fun `advanced filters reject contradictory and invalid bounds`() {
-        assertTrue(CatalogFilters(genres = listOf(878), yearMin = 2000, ratingMin = 7.0).valid)
+        assertTrue(CatalogFilters(genres = listOf(878), yearMin = 2000, votesMin = 500).valid)
         assertFalse(CatalogFilters(genres = listOf(27), excludeGenres = listOf(27)).valid)
         assertFalse(CatalogFilters(yearMin = 2020, yearMax = 2000).valid)
         assertFalse(CatalogFilters(runtimeMin = 120, runtimeMax = 90).valid)
-        assertFalse(CatalogFilters(ratingMin = Double.NaN).valid)
+        assertFalse(CatalogFilters(votesMin = -1).valid)
         assertFalse(CatalogFilters(languages = listOf("english")).valid)
-        assertEquals(2, CatalogFilters(genres = listOf(27, 878), ratingMin = 0.0).count)
+        assertEquals(2, CatalogFilters(genres = listOf(27, 878), votesMin = 0).count)
         assertTrue(CatalogFilters(resolution = "2160p", audio = "atmos").valid)
         assertFalse(CatalogFilters(resolution = "4k").valid)
         assertFalse(CatalogFilters(audio = "dolby").valid)

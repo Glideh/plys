@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -135,6 +137,26 @@ func TestCatalogFilterSuggestionsRespectAccess(t *testing.T) {
 	selected := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/filters?category=actors&selected=10205&query=other", admin, nil)
 	if selected.status != http.StatusOK || len(selected.body["options"].(map[string]any)["actors"].([]any)) != 1 {
 		t.Fatalf("selected labels: %v", selected.body)
+	}
+	countries := make([]map[string]string, 60)
+	for index := range countries {
+		code := fmt.Sprintf("X%02d", index)
+		countries[index] = map[string]string{"id": code, "label": code}
+	}
+	labels, err := json.Marshal(map[string]any{"countries": countries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.srv.Pool.Exec(context.Background(), `UPDATE items SET filter_labels = $1::jsonb WHERE library_id = $2`, labels, library); err != nil {
+		t.Fatal(err)
+	}
+	allCountries := do(t, env.h, http.MethodGet, "/api/v1/kinds/movies/filters?category=countries", admin, nil)
+	if got := len(allCountries.body["options"].(map[string]any)["countries"].([]any)); got != 60 {
+		t.Fatalf("country suggestions truncated: got %d, want 60", got)
+	}
+	_, err = env.srv.Pool.Exec(context.Background(), `UPDATE items SET filter_labels = '{"genres":[{"id":"878","label":"Science-fiction"},{"id":"35","label":"Comédie"}],"actors":[{"id":"10205","label":"Sigourney Weaver"}],"countries":[{"id":"GB","label":"GB"}],"languages":[{"id":"en","label":"en"}]}' WHERE library_id = $1`, library)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, test := range []struct{ category, query, locale string }{{"countries", "royaume", "fr"}, {"languages", "anglais", "fr"}, {"languages", "english", "en"}, {"countries", "reino", "pt-BR"}, {"languages", "ingl", "pt-br"},
 		// Accents are ignored, both in the database labels and in the localized names.

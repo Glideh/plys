@@ -513,10 +513,11 @@ class CatalogJourneyTest {
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }
             // The picker's search field is passed over without opening the keyboard.
             rule.onAllNodes(dialogInput and isFocused()).assertCountEquals(0)
-            screenshot("filter-options")
             rule.onNodeWithText("Science-fiction").activate()
             rule.onNodeWithText("${text(R.string.filter_genres)} : Science-fiction").activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Drama").fetchSemanticsNodes().isNotEmpty() }
+            rule.onAllNodesWithText("Science-fiction").assertCountEquals(1)
+            screenshot("filter-options")
             rule.onNodeWithText("Drama").activate()
             rule.onNodeWithText("${text(R.string.filter_genres)} : Drama").activate()
             rule.waitUntil(10000) { rule.onAllNodesWithText("Science-fiction").fetchSemanticsNodes().isNotEmpty() }

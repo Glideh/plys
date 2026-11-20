@@ -172,7 +172,11 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 			}
 			return strings.Compare(strings.ToLower(left.Label), strings.ToLower(right.Label))
 		})
-		response.Options[key] = unique[:min(len(unique), 50)]
+		limit := 50
+		if key == "languages" || key == "countries" {
+			limit = 250
+		}
+		response.Options[key] = unique[:min(len(unique), limit)]
 	}
 	httpx.JSON(w, http.StatusOK, response)
 }

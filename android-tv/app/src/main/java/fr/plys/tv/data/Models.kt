@@ -102,23 +102,23 @@ data class HomeResponse(
 data class CatalogFilters(
     val genres: List<Int> = emptyList(), val excludeGenres: List<Int> = emptyList(),
     val actors: List<Int> = emptyList(),
-    val creators: List<Int> = emptyList(), val keywords: List<Int> = emptyList(),
+    val creators: List<Int> = emptyList(),
     val languages: List<String> = emptyList(), val countries: List<String> = emptyList(),
     val yearMin: Int? = null, val yearMax: Int? = null,
-    val ratingMin: Double? = null, val votesMin: Int? = null,
+    val votesMin: Int? = null,
     val runtimeMin: Int? = null, val runtimeMax: Int? = null,
     val resolution: String? = null, val audio: String? = null,
 ) {
-    val count: Int get() = listOf(genres, excludeGenres, actors, creators, keywords, languages, countries).count { it.isNotEmpty() } +
-        listOf(yearMin, yearMax, ratingMin, votesMin, runtimeMin, runtimeMax, resolution, audio).count { it != null }
+    val count: Int get() = listOf(genres, excludeGenres, actors, creators, languages, countries).count { it.isNotEmpty() } +
+        listOf(yearMin, yearMax, votesMin, runtimeMin, runtimeMax, resolution, audio).count { it != null }
     val valid: Boolean get() = genres.none { it in excludeGenres } &&
-        listOf(genres, excludeGenres, actors, creators, keywords).all { it.size <= 20 && it.all { id -> id > 0 } } &&
+        listOf(genres, excludeGenres, actors, creators).all { it.size <= 20 && it.all { id -> id > 0 } } &&
         listOf(languages, countries).all { it.size <= 20 && it.all { code -> code.matches(Regex("[a-zA-Z]{2}")) } } &&
         listOfNotNull(yearMin, yearMax).all { it in 1800..9999 } &&
         (yearMin == null || yearMax == null || yearMin <= yearMax) &&
         (runtimeMin == null || runtimeMax == null || runtimeMin <= runtimeMax) &&
         listOfNotNull(runtimeMin, runtimeMax).all { it in 0..10000 } &&
-        (ratingMin == null || ratingMin.isFinite() && ratingMin in 0.0..10.0) && (votesMin == null || votesMin >= 0) &&
+        (votesMin == null || votesMin >= 0) &&
         (resolution == null || resolution in RESOLUTIONS) && (audio == null || audio in AUDIO_FORMATS)
 
     companion object {
