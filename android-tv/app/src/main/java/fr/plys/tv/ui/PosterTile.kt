@@ -112,7 +112,7 @@ fun PosterTile(
 @Composable
 fun TmdbRating(rating: Double, modifier: Modifier = Modifier) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(R.drawable.tmdb_logo), contentDescription = "TMDB", modifier = Modifier.width(46.dp).height(6.dp))
+        Image(painterResource(R.drawable.tmdb_logo_short), contentDescription = "TMDB", modifier = Modifier.width(20.dp).height(9.dp))
         Spacer(Modifier.width(5.dp))
         Text("${(rating.coerceIn(0.0, 10.0) * 10).roundToInt()}%", style = MaterialTheme.typography.bodySmall, color = Plys.Text)
     }

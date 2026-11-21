@@ -291,6 +291,7 @@ class CatalogJourneyTest {
             resumeButton.performKeyInput { pressKey(Key.DirectionLeft) }
             rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isNotEmpty() }
             resumeButton.assertIsNotFocused()
+            screenshot("rail-transparent")
             InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
             rule.waitUntil(5000) { rule.onAllNodesWithText(text(R.string.sign_out)).fetchSemanticsNodes().isEmpty() }
             resumeButton.assertIsDisplayed()

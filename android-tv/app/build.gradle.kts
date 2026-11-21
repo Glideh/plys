@@ -12,8 +12,8 @@ android {
         applicationId = "fr.plys.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.7.3"
+        versionCode = 16
+        versionName = "0.7.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }

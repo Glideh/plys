@@ -1,5 +1,8 @@
 package fr.plys.tv.ui
 
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -24,6 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -61,11 +67,12 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
         CatalogToolbar(screen, model, libraries)
         if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) EmptyState(stringResource(R.string.empty), Modifier.padding(horizontal = FocusGutter, vertical = 12.dp))
         val focusId = screen.focusedId ?: screen.page.items.firstOrNull()?.id
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = FocusGutter, end = FocusGutter, top = FocusGutter, bottom = FocusGutter),
-            horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp),
-        ) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = FocusGutter, end = FocusGutter, top = FocusGutter, bottom = FocusGutter),
+                horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
             items(count = items.itemCount, key = items.itemKey { it.id }) { index ->
                 val card = items[index]
                 if (card != null) MediaCard(card, model.api,
@@ -79,8 +86,18 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
                 if (loading) Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(32.dp), color = Plys.Accent400, strokeWidth = 3.dp)
                 }
-                if (error != null) ErrorBanner(if (error is ClientException) LocalContext.current.errorMessage(error) else stringResource(R.string.error_network),
-                    { items.retry() })
+                    if (error != null) ErrorBanner(if (error is ClientException) LocalContext.current.errorMessage(error) else stringResource(R.string.error_network),
+                        { items.retry() })
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = grid.firstVisibleItemIndex > 0 || grid.firstVisibleItemScrollOffset > 0,
+                enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Box(Modifier.fillMaxWidth().height(16.dp).background(
+                    Brush.verticalGradient(listOf(Plys.Surface950, Color.Transparent)),
+                ))
             }
         }
     }

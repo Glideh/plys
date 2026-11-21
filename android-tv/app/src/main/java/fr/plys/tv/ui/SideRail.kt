@@ -134,7 +134,7 @@ fun Brand(showName: Boolean = true, modifier: Modifier = Modifier) {
 private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded: Boolean, requester: FocusRequester, content: FocusRequester, onClick: () -> Unit) {
     val text = stringResource(label)
     PlysButton(
-        onClick = onClick, shape = RoundedCornerShape(12.dp),
+        onClick = onClick, transparent = true, shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
         // Right always leaves the rail for the screen, whatever the unfolded rail happens to cover.
         modifier = Modifier.fillMaxWidth().focusRequester(requester).focusProperties { right = content },

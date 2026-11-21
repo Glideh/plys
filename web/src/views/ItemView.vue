@@ -363,7 +363,7 @@ async function onMatched(merged: boolean) {
             <p class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-300">
               <span v-for="(m, i) in metaLine" :key="i">{{ m }}</span>
               <span v-if="item.rating" class="inline-flex items-center gap-1.5" title="TMDB">
-                <img src="/tmdb-logo.svg" alt="TMDB" class="h-3 w-auto max-w-[50px]" />
+                <img src="/tmdb-logo-short.svg" alt="TMDB" class="h-3.5 w-auto" />
                 <span>{{ Math.round(item.rating * 10) }}%</span>
               </span>
               <span v-for="g in item.genres" :key="g" class="rounded-full border border-white/15 px-2 py-0.5 text-xs">{{ g }}</span>

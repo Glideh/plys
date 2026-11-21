@@ -22,6 +22,7 @@ fun PlysButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     primary: Boolean = false,
+    transparent: Boolean = false,
     shape: Shape = Plys.Small,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
@@ -32,7 +33,7 @@ fun PlysButton(
         scale = ButtonDefaults.scale(focusedScale = 1.05f, pressedScale = 0.98f),
         contentPadding = contentPadding,
         border = ButtonDefaults.border(
-            border = Border(BorderStroke(1.dp, if (primary) Color.Transparent else Plys.Hairline), shape = shape),
+            border = Border(BorderStroke(1.dp, if (primary || transparent) Color.Transparent else Plys.Hairline), shape = shape),
             focusedBorder = Border(BorderStroke(2.dp, if (primary) Plys.Accent300 else Color.White), shape = shape),
         ),
         colors = if (primary) ButtonDefaults.colors(
@@ -41,10 +42,10 @@ fun PlysButton(
             pressedContainerColor = Plys.Accent400, pressedContentColor = Plys.Surface950,
             disabledContainerColor = Plys.Accent600.copy(alpha = 0.4f), disabledContentColor = Plys.Surface950.copy(alpha = 0.7f),
         ) else ButtonDefaults.colors(
-            containerColor = Color.White.copy(alpha = 0.07f), contentColor = Plys.Text,
+            containerColor = if (transparent) Color.Transparent else Color.White.copy(alpha = 0.07f), contentColor = Plys.Text,
             focusedContainerColor = Plys.Text, focusedContentColor = Plys.Surface950,
             pressedContainerColor = Plys.Muted, pressedContentColor = Plys.Surface950,
-            disabledContainerColor = Color.White.copy(alpha = 0.03f), disabledContentColor = Plys.Subtle.copy(alpha = 0.75f),
+            disabledContainerColor = if (transparent) Color.Transparent else Color.White.copy(alpha = 0.03f), disabledContentColor = Plys.Subtle.copy(alpha = 0.75f),
         ),
         content = content,
     )
