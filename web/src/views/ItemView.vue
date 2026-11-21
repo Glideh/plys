@@ -190,7 +190,6 @@ const metaLine = computed(() => {
   else if (it.year) parts.push(String(it.year))
   const runtime = formatRuntime(it.runtimeMinutes ?? (version.value?.durationSeconds ? Math.round(version.value.durationSeconds / 60) : null))
   if (runtime) parts.push(runtime)
-  if (it.rating) parts.push(`★ ${it.rating.toFixed(1)}`)
   return parts
 })
 
@@ -363,6 +362,10 @@ async function onMatched(merged: boolean) {
             <p v-if="item.originalTitle && item.originalTitle !== item.title" class="mt-1 text-slate-400">{{ item.originalTitle }}</p>
             <p class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-300">
               <span v-for="(m, i) in metaLine" :key="i">{{ m }}</span>
+              <span v-if="item.rating" class="inline-flex items-center gap-1.5" title="TMDB">
+                <img src="/tmdb-logo.svg" alt="TMDB" class="h-3 w-auto max-w-[50px]" />
+                <span>{{ Math.round(item.rating * 10) }}%</span>
+              </span>
               <span v-for="g in item.genres" :key="g" class="rounded-full border border-white/15 px-2 py-0.5 text-xs">{{ g }}</span>
               <span v-if="auth.isAdmin && item.matchStatus === 'unmatched'" class="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
                 {{ t('catalog.unidentified') }}

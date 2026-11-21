@@ -227,8 +227,8 @@ private fun Login(model: CatalogViewModel, state: CatalogState) {
 @Composable
 fun MediaCard(item: ItemCard, api: PlysApi, modifier: Modifier, onPlay: (() -> Unit)? = null, onClick: () -> Unit) {
     PosterTile(title = item.title, image = item.posterUrl, api = api, modifier = modifier,
-        subtitle = listOfNotNull(item.year?.toString(), item.rating?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
-            item.sources.firstOrNull()?.serverName?.takeIf { it.isNotBlank() }).joinToString(" · "),
+        subtitle = listOfNotNull(item.year?.toString(), item.sources.firstOrNull()?.serverName?.takeIf { it.isNotBlank() }).joinToString(" · "),
+        rating = item.rating,
         landscape = item.kind == "video", watched = item.watched, onPlay = onPlay, onClick = onClick)
 }
 

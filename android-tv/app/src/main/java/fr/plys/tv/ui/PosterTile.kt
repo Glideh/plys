@@ -1,18 +1,22 @@
 package fr.plys.tv.ui
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,12 +36,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import fr.plys.tv.R
 import fr.plys.tv.data.PlysApi
+import kotlin.math.roundToInt
 import fr.plys.tv.data.ServerRef
 
 /** Focused tiles grow by this factor: rows and grids keep [FocusGutter] around them so nothing is clipped. */
@@ -51,7 +58,7 @@ private const val FOCUSED_SCALE = 1.08f
 @Composable
 fun PosterTile(
     title: String, image: String?, api: PlysApi, modifier: Modifier = Modifier,
-    subtitle: String? = null, source: ServerRef? = null, landscape: Boolean = false,
+    subtitle: String? = null, rating: Double? = null, source: ServerRef? = null, landscape: Boolean = false,
     progress: Float? = null, watched: Boolean = false, unwatched: Int? = null, label: String? = null,
     onPlay: (() -> Unit)? = null, onClick: () -> Unit,
 ) {
@@ -88,7 +95,25 @@ fun PosterTile(
         Text(title, modifier = Modifier.padding(top = 10.dp), style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold, color = if (focused) Plys.TextStrong else Plys.Text,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
-            color = if (focused) Plys.Muted else Plys.Subtle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!subtitle.isNullOrBlank() || rating != null && rating > 0) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                    color = if (focused) Plys.Muted else Plys.Subtle, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f))
+                if (rating != null && rating > 0) {
+                    if (!subtitle.isNullOrBlank()) Spacer(Modifier.width(8.dp))
+                    TmdbRating(rating)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TmdbRating(rating: Double, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.tmdb_logo), contentDescription = "TMDB", modifier = Modifier.width(46.dp).height(6.dp))
+        Spacer(Modifier.width(5.dp))
+        Text("${(rating.coerceIn(0.0, 10.0) * 10).roundToInt()}%", style = MaterialTheme.typography.bodySmall, color = Plys.Text)
     }
 }

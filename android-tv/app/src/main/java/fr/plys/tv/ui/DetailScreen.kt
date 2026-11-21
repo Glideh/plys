@@ -161,11 +161,11 @@ private fun Header(item: ItemDetail, screen: Screen.Detail, openAncestor: (Ances
         episodeCode(item.seasonNumber.takeIf { item.kind == "episode" }, item.episodeNumber),
         item.year?.toString(),
         item.runtimeMinutes?.takeIf { it > 0 }?.let { durationLabel(it * 60.0) },
-        item.rating?.takeIf { it > 0 }?.let { "★ %.1f".format(it) },
         stringResource(R.string.watched).takeIf { item.watched },
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (facts.isNotEmpty()) Text(facts.joinToString("  ·  "), style = MaterialTheme.typography.bodyMedium, color = Plys.Text)
+        item.rating?.takeIf { it > 0 }?.let { TmdbRating(it) }
         item.genres.take(4).forEach { genre ->
             Text(genre, style = MaterialTheme.typography.labelMedium, color = Plys.Text, maxLines = 1,
                 modifier = Modifier.border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 2.dp))

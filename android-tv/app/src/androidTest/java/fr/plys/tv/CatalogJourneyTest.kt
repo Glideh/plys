@@ -240,7 +240,7 @@ class CatalogJourneyTest {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.requestUrl!!.encodedPath
                     val versions = """[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","codec":"aac","channels":2,"default":true},{"index":2,"language":"fr","codec":"aac","channels":2}],"subtitles":[{"index":5,"language":"fr","codec":"subrip"}]}]"""
-                    fun film(id: String, position: Int) = """{"id":"$id","kind":"movie","title":"Alien","overview":"A crew encounters an unknown life form.","year":1979,"runtimeMinutes":117,"positionSeconds":$position,"versions":$versions,"children":[]}"""
+                    fun film(id: String, position: Int) = """{"id":"$id","kind":"movie","title":"Alien","overview":"A crew encounters an unknown life form.","year":1979,"runtimeMinutes":117,"rating":7.53,"positionSeconds":$position,"versions":$versions,"children":[]}"""
                     val body = when {
                         path == "/api/v1/setup/status" -> """{"needsSetup":false}"""
                         path == "/api/v1/auth/login" -> """{"accessToken":"started-fixture","refreshToken":"started-refresh","user":{"id":"viewer","username":"Viewer","locale":"en"}}"""
@@ -274,6 +274,7 @@ class CatalogJourneyTest {
             // Resuming adds a restart button: the actions stay on one line and the pickers below do not move.
             val resume = rule.activity.getString(R.string.resume, "1:02:05")
             open("started", resume)
+            rule.onNodeWithText("75%").assertIsDisplayed()
             screenshot("detail-started")
             val play = rule.onNodeWithText(resume).getUnclippedBoundsInRoot()
             assertEquals(freshPlay.top, play.top)
