@@ -3,6 +3,17 @@ const iso6392to1: Record<string, string> = {
   fre: 'fr', fra: 'fr', eng: 'en', ger: 'de', deu: 'de', spa: 'es', ita: 'it', jpn: 'ja', kor: 'ko',
   chi: 'zh', zho: 'zh', por: 'pt', rus: 'ru', ara: 'ar', hin: 'hi', dut: 'nl', nld: 'nl', swe: 'sv',
   dan: 'da', nor: 'no', fin: 'fi', pol: 'pl', tur: 'tr', gre: 'el', ell: 'el', heb: 'he', tha: 'th',
+  cze: 'cs', ces: 'cs', hun: 'hu', rum: 'ro', ron: 'ro', ukr: 'uk', vie: 'vi', ind: 'id', per: 'fa', fas: 'fa',
+}
+
+/**
+ * A language code reduced to what two tracks in the same language share: the ISO 639-1 code when known, without the
+ * region ("fre", "fra", "fr" and "fr-CA" all give "fr"). Null when the language is blank or undetermined.
+ */
+export function languageKey(code: string | undefined | null): string | null {
+  const base = code?.trim().split(/[-_]/)[0]?.toLowerCase()
+  if (!base || base === 'und') return null
+  return iso6392to1[base] ?? base
 }
 
 export function languageName(code: string | undefined, locale: string): string | null {

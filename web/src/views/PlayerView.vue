@@ -21,6 +21,7 @@ import {
   subtitleClasses,
   type SubtitleStyle,
 } from '@/utils/subtitleStyle'
+import { loadTrackLanguages, preferredTrack, rememberAudio, rememberSubtitle } from '@/utils/trackLanguages'
 
 const props = defineProps<{ id: string }>()
 const { t, locale } = useI18n()
@@ -46,6 +47,10 @@ onMounted(async () => {
     loadError.value = t('player.unavailable')
     return
   }
+  // Opened without tracks (from the home, a series or the previous episode): the languages last picked, when found.
+  const languages = loadTrackLanguages()
+  if (route.query.a === undefined) audioIndex.value = preferredTrack(v.audio, languages.audio)?.index ?? null
+  if (route.query.s === undefined) subtitleIndex.value = preferredTrack(v.subtitles, languages.subtitle)?.index ?? null
   // Tracks from the URL that this version does not have fall back to the server's choice.
   if (!v.audio.some((a) => a.index === audioIndex.value)) audioIndex.value = null
   if (!v.subtitles.some((s) => s.index === subtitleIndex.value)) subtitleIndex.value = null
@@ -323,6 +328,7 @@ function onSubtitleDownloaded(sub: ExternalSubtitle) {
   const v = version.value
   // A peer running an older version sends no externalSubtitles.
   if (v && !v.externalSubtitles?.some((s) => s.id === sub.id)) v.externalSubtitles = [...(v.externalSubtitles ?? []), sub]
+  rememberSubtitle(sub.language)
   player.setExternalSubtitle(sub.id)
 }
 
@@ -351,10 +357,23 @@ function setSubtitleStyle(patch: Partial<SubtitleStyle>) {
   saveSubtitleStyle(subtitleStyle.value)
 }
 
+/** A track picked here becomes the language preferred for the next titles. */
 function pick(kind: 'audio' | 'subtitles', index: number | null) {
   menu.value = null
-  if (kind === 'audio') player.setAudio(index as number)
-  else player.setSubtitle(index)
+  const v = version.value
+  if (kind === 'audio') {
+    rememberAudio(v?.audio.find((a) => a.index === index)?.language)
+    player.setAudio(index as number)
+  } else {
+    rememberSubtitle(index === null ? null : v?.subtitles.find((s) => s.index === index)?.language)
+    player.setSubtitle(index)
+  }
+}
+
+function pickExternal(sub: ExternalSubtitle) {
+  menu.value = null
+  rememberSubtitle(sub.language)
+  player.setExternalSubtitle(sub.id)
 }
 </script>
 
@@ -515,7 +534,7 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
                   :aria-checked="s.id === externalSubtitleId"
                   :title="s.release"
                   class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10"
-                  @click="menu = null; player.setExternalSubtitle(s.id)"
+                  @click="pickExternal(s)"
                 >
                   <span class="w-4 shrink-0 text-accent-400">{{ s.id === externalSubtitleId ? '✓' : '' }}</span>
                   <span class="truncate">{{ externalLabel(s) }}</span>

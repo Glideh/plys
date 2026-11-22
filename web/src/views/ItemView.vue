@@ -18,6 +18,7 @@ import { useErrorMessage } from '@/composables/useErrorMessage'
 import { useAuthStore } from '@/stores/auth'
 import { channelLayout, formatBytes, formatRuntime, languageName } from '@/utils/format'
 import { formatClock } from '@/utils/player'
+import { loadTrackLanguages, preferredTrack, rememberAudio, rememberSubtitle } from '@/utils/trackLanguages'
 
 const props = defineProps<{ id: string }>()
 const { t, d, locale } = useI18n()
@@ -129,17 +130,28 @@ onUnmounted(() => {
 const selected = computed(() => choices.value.find((c) => c.version.id === versionId.value) ?? null)
 const version = computed(() => selected.value?.version ?? null)
 
-// Tracks the player opens with: the default audio track and no subtitles, reset when the version changes.
+// Tracks the player opens with, reset when the version changes: the first ones in the languages last picked,
+// otherwise the default audio track and no subtitles.
 const audioIndex = ref<number | null>(null)
 const subtitleIndex = ref<number | null>(null)
 watch(
   version,
   (v) => {
-    audioIndex.value = (v?.audio.find((a) => a.default) ?? v?.audio[0])?.index ?? null
-    subtitleIndex.value = null
+    const languages = loadTrackLanguages()
+    audioIndex.value = (preferredTrack(v?.audio ?? [], languages.audio) ?? v?.audio.find((a) => a.default) ?? v?.audio[0])?.index ?? null
+    subtitleIndex.value = preferredTrack(v?.subtitles ?? [], languages.subtitle)?.index ?? null
   },
   { immediate: true },
 )
+
+/** A track picked here becomes the language preferred for the next titles. */
+function onAudioPicked() {
+  rememberAudio(version.value?.audio.find((a) => a.index === audioIndex.value)?.language)
+}
+function onSubtitlePicked() {
+  const index = subtitleIndex.value
+  rememberSubtitle(index === null ? null : version.value?.subtitles.find((s) => s.index === index)?.language)
+}
 
 const selectClass =
   'w-full max-w-md truncate rounded-lg border border-white/10 bg-surface-800/80 px-3 py-1.5 text-sm text-slate-100 focus:border-accent-500 focus:outline-none'
@@ -470,14 +482,14 @@ async function onMatched(merged: boolean) {
               </dd>
               <dt id="item-audio" class="text-slate-500">{{ t('catalog.audio') }}</dt>
               <dd class="min-w-0 text-slate-300">
-                <select v-if="version.audio.length > 1" v-model="audioIndex" aria-labelledby="item-audio" :class="selectClass">
+                <select v-if="version.audio.length > 1" v-model="audioIndex" aria-labelledby="item-audio" @change="onAudioPicked" :class="selectClass">
                   <option v-for="a in version.audio" :key="a.index" :value="a.index">{{ trackLabel(a) }}</option>
                 </select>
                 <span v-else :class="readonlyClass">{{ version.audio[0] ? trackLabel(version.audio[0]) : t('catalog.none') }}</span>
               </dd>
               <dt id="item-subtitles" class="text-slate-500">{{ t('catalog.subtitles') }}</dt>
               <dd class="min-w-0 text-slate-300">
-                <select v-if="version.subtitles.length" v-model="subtitleIndex" aria-labelledby="item-subtitles" :class="selectClass">
+                <select v-if="version.subtitles.length" v-model="subtitleIndex" aria-labelledby="item-subtitles" @change="onSubtitlePicked" :class="selectClass">
                   <option :value="null">{{ t('catalog.none') }}</option>
                   <option v-for="s in version.subtitles" :key="s.index" :value="s.index">{{ subtitleLabel(s) }}</option>
                 </select>

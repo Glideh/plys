@@ -105,6 +105,7 @@ private const val SEARCH_DEBOUNCE_MS = 350L
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     val api = (application as PlysApplication).api
     val updater = (application as PlysApplication).updater
+    private val trackLanguages = TrackLanguageStore(application)
     private val mutableState = MutableStateFlow(CatalogState())
     val state = mutableState.asStateFlow()
     private val history = mutableListOf<Screen>()
@@ -317,7 +318,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         val copies = copies(item, source, grouped)
         val shown = shownCopy(item, source, copies)
         val shownItem = withTitleWatchlist(shown.item, shown.source)
-        navigate(Screen.Detail(shownItem, shown.source, grouped, target = playTarget(shownItem, shown.source), copies = copies))
+        val target = playTarget(shownItem, shown.source)
+        navigate(Screen.Detail(shownItem, shown.source, grouped, trackLanguages.read().selection(target ?: shownItem), target, copies))
     }
 
     /**
@@ -341,7 +343,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     }
 
     /**
-     * Plays a title straight away, as its detail page's play button would with the default tracks: a film or an
+     * Plays a title straight away, as its detail page's play button would with the preferred tracks: a film or an
      * episode from where it was left, a series or a season from its next episode.
      */
     fun playItem(id: String, source: ServerRef? = null, sources: List<ServerRef> = emptyList()) = perform {
@@ -353,7 +355,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
             playback = playable,
             playbackPosition = shown.item.playTarget?.positionSeconds ?: playable.positionSeconds,
             playbackSource = shown.source,
-            playbackSelection = PlaybackSelection().normalized(playable),
+            playbackSelection = trackLanguages.read().selection(playable),
         )
     }
 
@@ -387,7 +389,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun selectSource(source: ServerRef) = perform {
         val screen = mutableState.value.screen as? Screen.Detail ?: return@perform
         val item = withTitleWatchlist(api.item(source.itemId, source), source)
-        mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = PlaybackSelection(), target = playTarget(item, source)))
+        val target = playTarget(item, source)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(item = item, source = source, selection = trackLanguages.read().selection(target ?: item), target = target))
     }
 
     /** Picks a version; one held by another server shows that server's copy, with its own progress and watched state. */
@@ -401,7 +404,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 // Keeps what was loaded for the copy left, so coming back to it shows its latest state.
                 copies = screen.copies.map { if (screen.isShown(it)) TitleCopy(screen.source, screen.item) else it },
             )
-        mutableState.value = mutableState.value.copy(screen = next.copy(selection = PlaybackSelection(choice.version.id).normalized(next.playable)))
+        mutableState.value = mutableState.value.copy(screen = next.copy(selection = trackLanguages.read().selection(next.playable, choice.version.id)))
     }
 
     /** The episode a series or season would play; null for playable items or when it cannot be loaded. */
@@ -418,14 +421,17 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
             target == null -> screen.selection.normalized(item)
             screen.target?.id == target.id -> screen.selection.normalized(target)
             screen.target != null -> screen.selection.forNext(screen.target, target)
-            else -> PlaybackSelection().normalized(target)
+            else -> trackLanguages.read().selection(target)
         }
         return screen.copy(item = item, target = target, selection = selection)
     }
 
+    /** A track picked on the detail page also becomes the language preferred for the next titles. */
     fun selectPlayback(selection: PlaybackSelection) {
         val screen = mutableState.value.screen as? Screen.Detail ?: return
-        mutableState.value = mutableState.value.copy(screen = screen.copy(selection = selection.normalized(screen.playable)))
+        val next = selection.normalized(screen.playable)
+        trackLanguages.remember(screen.playable, screen.selection.normalized(screen.playable), next)
+        mutableState.value = mutableState.value.copy(screen = screen.copy(selection = next))
     }
 
     fun toggleWatched() = perform {
@@ -451,7 +457,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         val chosenFor = screen?.playable ?: item
         val playable = if (target == null) item
             else screen?.target?.takeIf { it.id == target.id } ?: api.item(target.id, source)
-        val selection = screen?.selection ?: PlaybackSelection()
+        val selection = screen?.selection ?: trackLanguages.read().selection(chosenFor)
         if (playable.playableVersion == null) {
             throw ClientException(fr.plys.tv.data.Failure.NOT_FOUND)
         }

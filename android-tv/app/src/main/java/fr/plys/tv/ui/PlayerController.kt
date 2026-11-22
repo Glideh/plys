@@ -63,6 +63,7 @@ class PlayerController(
     initialSelection: PlaybackSelection = PlaybackSelection(),
 ) {
     private var selection = initialSelection.normalized(item)
+    private val trackLanguages = TrackLanguageStore(application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val player = ExoPlayer.Builder(application).build().apply {
         setAudioAttributes(playbackAudioAttributes(), true)
@@ -179,11 +180,15 @@ class PlayerController(
         open(seekPosition(mutableState.value.position, delta, mutableState.value.duration))
     }
 
-    /** Switches the audio or subtitle track: the server session is reopened at the current position. */
+    /**
+     * Switches the audio or subtitle track: the server session is reopened at the current position. The picked track
+     * also becomes the language preferred for the next titles.
+     */
     fun select(choice: PlaybackSelection) {
         if (closing || disposing) return
         val next = choice.normalized(mutableState.value.item)
         if (next == selection) return
+        trackLanguages.remember(mutableState.value.item, selection, next)
         selection = next
         mutableState.value = mutableState.value.copy(selection = next)
         if (!mutableState.value.loading && !mutableState.value.ended) updatePosition()
