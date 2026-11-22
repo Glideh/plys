@@ -65,6 +65,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -144,7 +145,9 @@ private fun CatalogAppContent(model: CatalogViewModel, state: CatalogState, modi
                 }
             }
         }
-        SideRail(section, state.serverVersion, content, Modifier.align(Alignment.CenterStart), home = model::home, search = model::openSearch, watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout)
+        val update by model.updater.state.collectAsStateWithLifecycle()
+        SideRail(section, state.serverVersion, content, Modifier.align(Alignment.CenterStart), home = model::home, search = model::openSearch,
+            watchlist = model::openWatchlist, openKind = model::openKind, signOut = model::logout, update = update, installUpdate = model.updater::install)
         if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
     }
 }

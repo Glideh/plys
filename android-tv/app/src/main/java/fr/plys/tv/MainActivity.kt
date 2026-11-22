@@ -18,6 +18,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        // Silent and non-blocking: a newer release only shows up later as an entry in the rail.
+        (application as PlysApplication).updater.start()
         splashScreen.setOnExitAnimationListener { splash ->
             splash.view.animate().alpha(0f).setDuration(280L).withEndAction { splash.remove() }.start()
         }

@@ -35,6 +35,7 @@ jobs:
   android-tv:
     needs: version
     uses: ./.github/workflows/android-tv.yml
+    secrets: inherit
 
   docker:
     needs: version

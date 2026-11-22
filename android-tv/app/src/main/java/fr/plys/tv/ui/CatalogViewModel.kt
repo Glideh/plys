@@ -112,6 +112,7 @@ private const val SEARCH_DEBOUNCE_MS = 350L
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     val api = (application as PlysApplication).api
+    val updater = (application as PlysApplication).updater
     private val mutableState = MutableStateFlow(CatalogState())
     val state = mutableState.asStateFlow()
     private val history = mutableListOf<Screen>()

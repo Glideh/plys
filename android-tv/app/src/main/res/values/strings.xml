@@ -161,4 +161,12 @@
         <item quantity="one">%d download</item>
         <item quantity="other">%d downloads</item>
     </plurals>
+    <string name="update_available">Update to %1$s</string>
+    <string name="update_downloading">Downloading the update…</string>
+    <string name="update_downloading_progress">Downloading… %1$d%%</string>
+    <string name="update_installing">Installing…</string>
+    <string name="update_permission">Allow Plys to install unknown apps in the settings, then select the update again.</string>
+    <string name="update_download_failed">The download failed. Select the update to try again.</string>
+    <string name="update_install_failed">The installation failed. Select the update to try again.</string>
+    <string name="update_signature">This copy of Plys was signed with another key: uninstall it, then install the new version by hand once.</string>
 </resources>

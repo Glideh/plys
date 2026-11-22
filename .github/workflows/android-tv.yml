@@ -1,5 +1,9 @@
 # Android TV: builds the debug APK in the android-build image and uploads it as the `android-tv-apk` artifact.
 # Called by the Release workflow, which attaches the APK to the GitHub release.
+# The app updates itself from these releases, and Android only accepts an update signed with the installed app's
+# key: the APK is signed with the pinned keystore of the `release` environment (ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD). Without it, the build falls back to a
+# throwaway debug key and installed apps cannot update to it.
 name: Android TV
 
 on:
@@ -13,12 +17,34 @@ jobs:
   apk:
     name: Build APK
     runs-on: ubuntu-24.04
+    environment: release
     steps:
       - uses: actions/checkout@v7
       - name: Run as the runner user
         run: printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
       - run: docker compose --profile android build android-build
-      - run: docker compose --profile android run --rm android-build :app:assembleDebug
+      - name: Pinned signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set: the APK is signed with a throwaway debug key and installed apps cannot update to it."
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE" | base64 --decode > android-tv/release.keystore
+          echo "PLYS_KEYSTORE=/workspace/release.keystore" >> "$GITHUB_ENV"
+      - name: Build
+        env:
+          PLYS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PLYS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PLYS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          docker compose --profile android run --rm \
+            -e PLYS_KEYSTORE="${PLYS_KEYSTORE:-}" -e PLYS_KEYSTORE_PASSWORD -e PLYS_KEY_ALIAS -e PLYS_KEY_PASSWORD \
+            android-build :app:assembleDebug
+      - name: Remove the keystore
+        if: always()
+        run: rm -f android-tv/release.keystore
       - uses: actions/upload-artifact@v7
         with:
           name: android-tv-apk

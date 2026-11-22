@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,6 +49,8 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import fr.plys.tv.R
 import fr.plys.tv.data.CatalogKind
+import fr.plys.tv.update.UpdateFailure
+import fr.plys.tv.update.UpdateState
 
 /** Width of the folded rail: the screens start after it. */
 val RailWidth = 64.dp
@@ -80,11 +84,13 @@ fun sectionOf(kind: CatalogKind) = when (kind) {
 fun SideRail(
     current: Section, serverVersion: String, content: FocusRequester, modifier: Modifier = Modifier,
     home: () -> Unit, search: () -> Unit, watchlist: () -> Unit, openKind: (CatalogKind) -> Unit, signOut: () -> Unit,
+    update: UpdateState = UpdateState.None, installUpdate: () -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     BackHandler(enabled = expanded) { expanded = false }
     val width by animateDpAsState(if (expanded) ExpandedRailWidth else RailWidth, label = "railWidth")
     val requesters = remember { Section.entries.associateWith { FocusRequester() } }
+    val updateRequester = remember { FocusRequester() }
     val scrim = if (expanded) Brush.horizontalGradient(0f to Plys.Surface950, 0.7f to Plys.Surface950.copy(alpha = 0.97f), 1f to Plys.Surface950.copy(alpha = 0f))
         else Brush.horizontalGradient(listOf(Plys.Surface950, Plys.Surface950))
     Box(modifier.fillMaxHeight().width(if (expanded) width + 120.dp else width).background(scrim)) {
@@ -106,6 +112,14 @@ fun SideRail(
                 RailItem(kindIcon(kind), kindLabel(kind), current == section, expanded, requesters.getValue(section), content) { openKind(kind) }
             }
             Spacer(Modifier.weight(1f))
+            if (update != UpdateState.None) {
+                RailItem(Icons.Outlined.SystemUpdate, updateLabel(update), false, expanded, updateRequester, content, badge = true, onClick = installUpdate)
+                val hint = updateHint(update)
+                if (expanded && hint != null) {
+                    Text(stringResource(hint), style = MaterialTheme.typography.labelSmall, color = Plys.Subtle,
+                        maxLines = 3, modifier = Modifier.padding(start = 12.dp, end = 4.dp, bottom = 4.dp))
+                }
+            }
             RailItem(Icons.AutoMirrored.Outlined.Logout, R.string.sign_out, false, expanded, requesters.getValue(Section.NONE), content, signOut)
             // The web's footer: the server version, readable once the rail unfolds.
             if (expanded && serverVersion.isNotEmpty()) {
@@ -130,9 +144,36 @@ fun Brand(showName: Boolean = true, modifier: Modifier = Modifier) {
     }
 }
 
+/** The rail entry of an available update, naming the step it is at. */
 @Composable
-private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded: Boolean, requester: FocusRequester, content: FocusRequester, onClick: () -> Unit) {
-    val text = stringResource(label)
+private fun updateLabel(state: UpdateState): String = when (state) {
+    UpdateState.None -> ""
+    is UpdateState.Available -> stringResource(R.string.update_available, state.update.version)
+    is UpdateState.Downloading -> state.progress?.let { stringResource(R.string.update_downloading_progress, (it * 100).toInt()) }
+        ?: stringResource(R.string.update_downloading)
+    is UpdateState.Installing -> stringResource(R.string.update_installing)
+    is UpdateState.NeedsPermission -> stringResource(R.string.update_available, state.update.version)
+    is UpdateState.Failed -> stringResource(R.string.update_available, state.update.version)
+}
+
+/** What to do next, under the entry, once the rail unfolds. */
+private fun updateHint(state: UpdateState): Int? = when (state) {
+    is UpdateState.NeedsPermission -> R.string.update_permission
+    is UpdateState.Failed -> when (state.reason) {
+        UpdateFailure.DOWNLOAD -> R.string.update_download_failed
+        UpdateFailure.SIGNATURE -> R.string.update_signature
+        UpdateFailure.INSTALL -> R.string.update_install_failed
+    }
+    else -> null
+}
+
+@Composable
+private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded: Boolean, requester: FocusRequester, content: FocusRequester, onClick: () -> Unit) =
+    RailItem(icon, stringResource(label), selected, expanded, requester, content, onClick = onClick)
+
+@Composable
+private fun RailItem(icon: ImageVector, text: String, selected: Boolean, expanded: Boolean, requester: FocusRequester, content: FocusRequester,
+    badge: Boolean = false, onClick: () -> Unit) {
     PlysButton(
         onClick = onClick, transparent = true, shape = RoundedCornerShape(12.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
@@ -141,8 +182,12 @@ private fun RailItem(icon: ImageVector, label: Int, selected: Boolean, expanded:
     ) {
         // Resting content is light and focused content dark: the current section keeps an accent that reads on both.
         val focused = LocalContentColor.current != Plys.Text
-        Icon(icon, contentDescription = text.takeIf { !expanded }, modifier = Modifier.size(24.dp),
-            tint = if (!selected) LocalContentColor.current else if (focused) Plys.Accent600 else Plys.Accent400)
+        Box {
+            Icon(icon, contentDescription = text.takeIf { !expanded }, modifier = Modifier.size(24.dp),
+                tint = if (!selected) LocalContentColor.current else if (focused) Plys.Accent600 else Plys.Accent400)
+            // A dot keeps the entry noticeable while the rail is folded to its icons.
+            if (badge) Box(Modifier.align(Alignment.TopEnd).size(8.dp).background(Plys.Accent400, CircleShape))
+        }
         if (expanded) {
             Spacer(Modifier.width(16.dp))
             Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,

@@ -7,6 +7,7 @@ android-tv/.gradle/
 android-tv/.kotlin/
 android-tv/**/build/
 android-tv/local.properties
+android-tv/*.keystore
 
 # Claude Code
 CLAUDE.md

@@ -161,4 +161,12 @@
         <item quantity="one">%d téléchargement</item>
         <item quantity="other">%d téléchargements</item>
     </plurals>
+    <string name="update_available">Mettre à jour (%1$s)</string>
+    <string name="update_downloading">Téléchargement de la mise à jour…</string>
+    <string name="update_downloading_progress">Téléchargement… %1$d %%</string>
+    <string name="update_installing">Installation…</string>
+    <string name="update_permission">Autorisez Plys à installer des applications inconnues dans les paramètres, puis sélectionnez à nouveau la mise à jour.</string>
+    <string name="update_download_failed">Le téléchargement a échoué. Sélectionnez la mise à jour pour réessayer.</string>
+    <string name="update_install_failed">L\'installation a échoué. Sélectionnez la mise à jour pour réessayer.</string>
+    <string name="update_signature">Cette copie de Plys est signée avec une autre clé : désinstallez-la, puis installez une fois la nouvelle version à la main.</string>
 </resources>

@@ -58,6 +58,22 @@ on the TV with the server's root URL. For the development API, use
 `localhost` refers to the device itself. Use HTTP only on a trusted local network;
 HTTPS certificates must be trusted by Android.
 
+## Updates
+
+The app reads the latest GitHub release at launch and then once a day while it
+runs (with the release's ETag, so an unchanged release costs nothing). A newer
+version shows an entry above "Sign out" in the side rail: selecting it downloads
+the APK and opens the system installer. Android asks once to allow Plys to
+install unknown apps.
+
+Android only accepts an update signed with the installed app's key. Release APKs
+are signed with the keystore pinned in the `release` environment of the
+repository (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). Local builds keep their own debug
+key unless `PLYS_KEYSTORE` and the matching variables are passed to
+`android-build`. An app installed from a build signed with another key must be
+uninstalled and reinstalled by hand once.
+
 ## Code Layout
 
 - `app/src/main/java/fr/plys/tv/data/`: API client, models, sessions and pagination.

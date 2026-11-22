@@ -15,8 +15,26 @@ android {
         versionCode = 16
         versionName = "0.7.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // GitHub repository whose latest release the app offers as an update; empty disables the check.
+        buildConfigField("String", "UPDATE_REPO", "\"${providers.gradleProperty("plys.updateRepo").getOrElse("Glideh/plys")}\"")
     }
-    buildFeatures { compose = true }
+    signingConfigs {
+        // Android only installs an update signed with the same key as the installed app. The release pipeline pins
+        // that key through these variables; without them, builds keep the machine's own debug key.
+        getByName("debug") {
+            val keystore = System.getenv("PLYS_KEYSTORE")?.takeIf { it.isNotBlank() }
+            if (keystore != null) {
+                storeFile = file(keystore)
+                storePassword = System.getenv("PLYS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PLYS_KEY_ALIAS")
+                keyPassword = System.getenv("PLYS_KEY_PASSWORD")
+            }
+        }
+    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
