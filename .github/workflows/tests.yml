@@ -106,7 +106,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # Optional: a deploy key allowed to bypass the master ruleset. Without it the job token pushes.
+          # The job token cannot push commits that change .github/workflows; a deploy key with write access can.
           ssh-key: ${{ secrets.MASTER_DEPLOY_KEY }}
       - id: check
         name: Compare VERSION with master
@@ -122,7 +122,13 @@ jobs:
           fi
       - name: Fast-forward master
         if: steps.check.outputs.promote == 'true'
+        env:
+          HAS_KEY: ${{ secrets.MASTER_DEPLOY_KEY != '' }}
         run: |
+          if [[ "$HAS_KEY" != "true" ]]; then
+            echo "::error::The MASTER_DEPLOY_KEY repository secret is missing: master cannot be updated."
+            exit 1
+          fi
           if ! git merge-base --is-ancestor origin/master "$GITHUB_SHA"; then
             echo "::error::master has commits that are not on develop: merge master into develop first."
             exit 1
