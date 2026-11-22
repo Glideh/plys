@@ -1,21 +1,22 @@
 # Tests: Go vet + tests (with PostgreSQL and ffmpeg), web type checks + tests, Android unit tests + lint.
-# Also called by the Release workflow before anything is published.
+# On a push to develop whose VERSION differs from master's, a green run then promotes the commit: master is
+# fast-forwarded to it and the Release workflow is started on master. master only receives tested commits
+# this way, so it has no push trigger here and the release does not run the tests again.
 name: Tests
 
 on:
   push:
-    branches: [develop, master]
+    branches: [develop]
   pull_request:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  # Called by Release, github.workflow is "Release": that run gets its own group and is never cancelled.
-  group: tests-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.workflow == 'Tests' }}
+  group: tests-${{ github.ref }}
+  # Pushes are never cancelled, so a run cannot stop between the promotion and the release dispatch.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   api:
@@ -90,3 +91,50 @@ jobs:
           name: android-reports
           path: android-tv/app/build/reports/
           if-no-files-found: ignore
+
+  promote:
+    name: Promote to master
+    needs: [api, web, android]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          # Optional: a deploy key allowed to bypass the master ruleset. Without it the job token pushes.
+          ssh-key: ${{ secrets.MASTER_DEPLOY_KEY }}
+      - id: check
+        name: Compare VERSION with master
+        run: |
+          version="$(.github/scripts/check-release.sh)"
+          released="$(git show origin/master:VERSION | tr -d '[:space:]')"
+          if [[ "$version" == "$released" ]]; then
+            echo "VERSION $version is already on master: nothing to release."
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION $released on master, $version on develop: promoting $GITHUB_SHA."
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Fast-forward master
+        if: steps.check.outputs.promote == 'true'
+        run: |
+          if ! git merge-base --is-ancestor origin/master "$GITHUB_SHA"; then
+            echo "::error::master has commits that are not on develop: merge master into develop first."
+            exit 1
+          fi
+          git push origin "$GITHUB_SHA:refs/heads/master"
+      - name: Start the release on master
+        if: steps.check.outputs.promote == 'true'
+        # Retried in case the dispatch API does not see the new master yet. If it still fails, start Release by
+        # hand on master: VERSION now matches, so a later push would not promote again.
+        run: |
+          for attempt in 1 2 3; do
+            gh workflow run release.yml --ref master && exit 0
+            sleep 10
+          done
+          exit 1

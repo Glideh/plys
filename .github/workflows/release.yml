@@ -1,14 +1,12 @@
-# Release: publishes the version in VERSION.
-#   - on a push to develop or master that changes VERSION (bump.sh), or manually to re-run the current VERSION;
-#   - runs the Tests, then builds the APK and pushes the Docker images, then creates or moves the
-#     x.y.z tag to this commit, then creates or updates the GitHub release (notes = commits since the
-#     previous version tag grouped by Area, plus the APK).
+# Release: publishes the version in VERSION from master.
+#   - started by the Tests workflow once it has promoted a develop commit with a new VERSION (bump.sh) to
+#     master, or manually on master to re-run the current VERSION;
+#   - the tests already passed on that exact commit, so it builds the APK and pushes the Docker images, then
+#     creates or moves the x.y.z tag to this commit, then creates or updates the GitHub release (notes =
+#     commits since the previous version tag grouped by Area, plus the APK).
 name: Release
 
 on:
-  push:
-    branches: [develop, master]
-    paths: [VERSION]
   workflow_dispatch:
 
 permissions:
@@ -25,20 +23,21 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
     steps:
+      - name: Run on master only
+        if: github.ref != 'refs/heads/master'
+        run: |
+          echo "::error::Releases are published from master (got $GITHUB_REF)."
+          exit 1
       - uses: actions/checkout@v7
       - id: check
         run: echo "version=$(.github/scripts/check-release.sh)" >> "$GITHUB_OUTPUT"
 
-  tests:
-    needs: version
-    uses: ./.github/workflows/tests.yml
-
   android-tv:
-    needs: tests
+    needs: version
     uses: ./.github/workflows/android-tv.yml
 
   docker:
-    needs: [version, tests]
+    needs: version
     uses: ./.github/workflows/docker.yml
     with:
       version: ${{ needs.version.outputs.version }}

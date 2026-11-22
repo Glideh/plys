@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the production images and publishes them to Docker Hub.
-# Releases are normally published by the Release GitHub workflow (.github/workflows/release.yml) when a
-# commit changing VERSION reaches develop or master; this script is the manual fallback.
+# Releases are normally published by the Release GitHub workflow (.github/workflows/release.yml), on master,
+# once a develop commit with a new VERSION has passed the Tests and been promoted; this script is the manual fallback.
 #   ./release.sh           build + push glide/plys-api and glide/plys-web at the version in VERSION (set it with bump.sh)
 #   ./release.sh --local   build :dev into the local Docker only
 # Requires `docker login` first. NAMESPACE overrides the Docker Hub account.
