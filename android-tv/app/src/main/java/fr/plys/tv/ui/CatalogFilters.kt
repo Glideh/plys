@@ -216,7 +216,7 @@ fun SearchField(
 }
 
 @Composable
-fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
+fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>, onSearchFocus: (Boolean) -> Unit = {}) {
     var search by remember(screen.query.kind, screen.query.libraryId) { mutableStateOf(screen.query.query) }
     var dialog by remember { mutableStateOf("") }
     LaunchedEffect(search) {
@@ -226,7 +226,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
         }
     }
     Row(Modifier.fillMaxWidth().padding(horizontal = FocusGutter, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        SearchField(search, { search = it }, stringResource(R.string.search), Modifier.weight(1f))
+        SearchField(search, { search = it }, stringResource(R.string.search), Modifier.weight(1f).onFocusChanged { onSearchFocus(it.hasFocus) })
         if (libraries.count { it.kind == screen.query.kind.value } > 1) ToolbarButton(Icons.Outlined.VideoLibrary,
             libraries.firstOrNull { it.id == screen.query.libraryId }?.name ?: stringResource(R.string.all_libraries)) { dialog = "library" }
         ToolbarButton(Icons.AutoMirrored.Outlined.Sort, "${stringResource(R.string.sort)} : ${stringResource(sortLabel(screen.query.sort))}") { dialog = "sort" }

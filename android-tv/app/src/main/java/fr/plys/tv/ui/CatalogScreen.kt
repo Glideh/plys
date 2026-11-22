@@ -54,6 +54,9 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
             restored = true
         }
     }
+    var searchFocused by remember { mutableStateOf(false) }
+    // A list replaced while typing in the search field leaves the focus there: its first card taking it would end the editing and close the keyboard.
+    val cardsTakeFocus = remember(screen.list) { !searchFocused }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(horizontal = FocusGutter), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(stringResource(kindLabel(screen.query.kind)), style = MaterialTheme.typography.headlineLarge, color = Plys.TextStrong)
@@ -65,9 +68,9 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
             if (screen.page.unavailableServers > 0) Text(partialResults(screen.page.unavailableServers, screen.page.unavailableServerNames),
                 style = MaterialTheme.typography.bodySmall, color = Plys.Warning, modifier = Modifier.padding(bottom = 6.dp))
         }
-        CatalogToolbar(screen, model, libraries)
+        CatalogToolbar(screen, model, libraries) { searchFocused = it }
         if (items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading) EmptyState(stringResource(R.string.empty), Modifier.padding(horizontal = FocusGutter, vertical = 12.dp))
-        val focusId = screen.focusedId ?: screen.page.items.firstOrNull()?.id
+        val focusId = initialCardFocus(screen.focusedId, screen.page.items.firstOrNull()?.id, cardsTakeFocus)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(128.dp), state = grid, modifier = Modifier.fillMaxSize(),
@@ -107,3 +110,10 @@ fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: Li
 /** 1-based position of the focused title shown beside the total ("42/9394 titles"), or null when nothing is focused yet. */
 internal fun scrollPosition(focusedPosition: Int?, total: Int): Int? =
     focusedPosition?.takeIf { total > 0 && it >= 0 }?.let { (it + 1).coerceAtMost(total) }
+
+/**
+ * The card that takes the focus when a list is shown: the one left focused, else the first. None when the list was
+ * replaced while the search field held the focus, so that typing goes on with the keyboard open.
+ */
+internal fun initialCardFocus(focusedId: String?, firstId: String?, cardsTakeFocus: Boolean): String? =
+    if (cardsTakeFocus) focusedId ?: firstId else null
