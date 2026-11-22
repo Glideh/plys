@@ -4,10 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.cachedIn
-import fr.plys.tv.data.CatalogPagingSource
 import fr.plys.tv.data.personCatalogQuery
 import fr.plys.tv.data.CastMember
 import fr.plys.tv.PlysApplication
@@ -30,15 +26,11 @@ import fr.plys.tv.data.SearchResult
 import fr.plys.tv.data.PlaybackSelection
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.util.concurrent.ConcurrentHashMap
 
 sealed interface Screen {
     /** Shown at launch while a stored session is restored, so a signed-in user never sees the sign-in form. */
@@ -49,8 +41,9 @@ sealed interface Screen {
     data class Watchlist(val data: WatchlistResponse) : Screen
     /** The global search, opened from the rail: empty at first, back returns to where it was opened from. */
     data object Search : Screen
-    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val focusedId: String? = null, val focusedIndex: Int = 0,
-        val focusedPosition: Int? = null) : Screen
+    /** [list] holds the titles loaded for [query]: each catalog screen keeps its own while it stays in the history. */
+    data class Catalog(val library: Library, val page: ItemPage, val query: CatalogQuery, val list: CatalogList, val focusedId: String? = null,
+        val focusedIndex: Int = 0, val focusedPosition: Int? = null) : Screen
     // target is the episode a series or season plays next: its versions drive the audio and subtitle choices.
     // copies are the items every server holds for a playable title, the shown one included: their versions are
     // offered together, and picking one held by another server shows that server's copy.
@@ -109,7 +102,6 @@ data class CatalogState(
 private const val RECENT_ITEMS = 20
 private const val SEARCH_DEBOUNCE_MS = 350L
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class CatalogViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application) {
     val api = (application as PlysApplication).api
     val updater = (application as PlysApplication).updater
@@ -121,18 +113,13 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private var countsJob: Job? = null
     private var searchJob: Job? = null
     private var generation = 0
-    private data class PageRequest(val query: CatalogQuery, val seed: ItemPage, val revision: Int)
-    private val pageRequest = MutableStateFlow<PageRequest?>(null)
-    private val catalogPositions = ConcurrentHashMap<String, Int>()
-    val catalogPages = pageRequest.filterNotNull().flatMapLatest { request ->
-        Pager(PagingConfig(pageSize = 40, initialLoadSize = 40, prefetchDistance = 12, enablePlaceholders = false), initialKey = request.query.offset) {
-            CatalogPagingSource(api, request.query, request.seed) { offset, cards ->
-                cards.forEachIndexed { index, card -> catalogPositions[card.id] = offset + index }
-            }
-        }.flow
-    }.cachedIn(viewModelScope)
+    /** Every catalog list created and not closed yet; one is closed as soon as no screen reachable with back holds it. */
+    private val openLists = mutableSetOf<CatalogList>()
 
-    init { perform { restore() } }
+    init {
+        perform { restore() }
+        viewModelScope.launch { state.collect { releaseCatalogLists() } }
+    }
 
     private suspend fun restore() {
         if (!api.signedIn && !api.restore()) {
@@ -146,9 +133,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
                 val position = savedState.get<Int>("focusedPosition") ?: stored.offset
                 val query = stored.copy(offset = position / 40 * 40)
                 val page = api.catalog(query)
-                navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, savedState["focusedItem"], position - query.offset,
-                    position.takeIf { savedState.get<String>("focusedItem") != null }))
-                preparePaging(query, page)
+                navigate(Screen.Catalog(Library(query.kind.value, query.kind.value, query.kind.value), page, query, catalogList(query, page),
+                    savedState["focusedItem"], position - query.offset, position.takeIf { savedState.get<String>("focusedItem") != null }))
             }
         }
     }
@@ -274,8 +260,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private fun openCatalog(query: CatalogQuery) = perform {
         val kind = query.kind
         val page = api.catalog(query)
-        navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), page, query))
-        preparePaging(query, page)
+        navigate(Screen.Catalog(Library(kind.value, kind.value, kind.value), page, query, catalogList(query, page)))
         savedState["catalogQuery"] = Json.encodeToString(query)
     }
 
@@ -298,15 +283,15 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun openLibrary(library: Library) = perform {
         val query = CatalogQuery(CatalogKind.entries.first { it.value == library.kind }, libraryId = library.id)
         val page = api.catalog(query)
-        navigate(Screen.Catalog(library, page, query))
-        preparePaging(query, page)
+        navigate(Screen.Catalog(library, page, query, catalogList(query, page)))
     }
 
     fun changeQuery(query: CatalogQuery) = perform(replace = true) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return@perform
         val page = api.catalog(query)
-        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = page, focusedId = null, focusedIndex = 0, focusedPosition = null))
-        preparePaging(query, page)
+        // The listing left is not reachable with back: its list is closed once replaced.
+        mutableState.value = mutableState.value.copy(screen = screen.copy(query = query, page = page, list = catalogList(query, page),
+            focusedId = null, focusedIndex = 0, focusedPosition = null))
         savedState["catalogQuery"] = Json.encodeToString(query)
         savedState.remove<String>("focusedItem")
         savedState.remove<Int>("focusedPosition")
@@ -315,7 +300,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     fun rememberFocus(id: String, index: Int = 0) {
         val screen = mutableState.value.screen as? Screen.Catalog ?: return
         if (screen.focusedId == id) return
-        val position = catalogPositions[id] ?: (screen.query.offset + index)
+        val position = screen.list.positions[id] ?: (screen.query.offset + index)
         mutableState.value = mutableState.value.copy(screen = screen.copy(focusedId = id, focusedIndex = index, focusedPosition = position))
         savedState["focusedItem"] = id
         savedState["focusedPosition"] = position
@@ -502,6 +487,8 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         if (mutableState.value.screen == Screen.Search) clearSearch()
         val screen = history.removeAt(history.lastIndex)
         if (screen is Screen.Home) clearCatalogState()
+        // Back to a catalog shows it as it was left, with its own query, titles and focus.
+        if (screen is Screen.Catalog) saveCatalogState(screen)
         mutableState.value = mutableState.value.copy(screen = screen, error = null)
         perform {
             val refreshed = when (screen) {
@@ -523,12 +510,28 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
         savedState.remove<String>("catalogQuery")
         savedState.remove<String>("focusedItem")
         savedState.remove<Int>("focusedPosition")
-        catalogPositions.clear()
     }
 
-    private fun preparePaging(query: CatalogQuery, page: ItemPage) {
-        catalogPositions.clear()
-        pageRequest.value = PageRequest(query, page, generation)
+    private fun saveCatalogState(screen: Screen.Catalog) {
+        savedState["catalogQuery"] = Json.encodeToString(screen.query)
+        if (screen.focusedId != null && screen.focusedPosition != null) {
+            savedState["focusedItem"] = screen.focusedId
+            savedState["focusedPosition"] = screen.focusedPosition
+        } else {
+            savedState.remove<String>("focusedItem")
+            savedState.remove<Int>("focusedPosition")
+        }
+    }
+
+    private fun catalogList(query: CatalogQuery, page: ItemPage): CatalogList =
+        CatalogList(viewModelScope, api, query, page).also { openLists += it }
+
+    /** Closes the lists of the catalog screens back no longer leads to, freeing their loaded titles. */
+    private fun releaseCatalogLists() {
+        val inUse = catalogListsInUse(history, mutableState.value.screen)
+        val unused = openLists.filterNot { it in inUse }
+        unused.forEach { it.close() }
+        openLists -= unused.toSet()
     }
 
     private fun navigate(screen: Screen) {

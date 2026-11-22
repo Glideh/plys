@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,10 +44,11 @@ import fr.plys.tv.data.Library
 
 @Composable
 fun CatalogScreen(screen: Screen.Catalog, model: CatalogViewModel, libraries: List<Library>) {
-    val items = model.catalogPages.collectAsLazyPagingItems()
-    val grid = rememberLazyGridState(initialFirstVisibleItemIndex = screen.focusedIndex)
-    var restored by remember { mutableStateOf(false) }
-    LaunchedEffect(items.itemCount) {
+    // Each listing has its own pages and scroll: back to a catalog shows its titles where they were left, a new filter starts at the top.
+    val items = screen.list.pages.collectAsLazyPagingItems()
+    val grid = remember(screen.list) { LazyGridState(screen.focusedIndex) }
+    var restored by remember(screen.list) { mutableStateOf(false) }
+    LaunchedEffect(screen.list, items.itemCount) {
         if (!restored && items.itemCount > screen.focusedIndex) {
             grid.scrollToItem(screen.focusedIndex)
             restored = true
