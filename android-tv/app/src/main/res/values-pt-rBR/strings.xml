@@ -149,6 +149,16 @@
     <string name="error_subtitles_quota">O limite diário de downloads do OpenSubtitles foi atingido. Tente novamente mais tarde.</string>
     <string name="error_subtitles_online">As legendas online estão indisponíveis neste servidor no momento.</string>
     <string name="subtitles_search">Buscar online…</string>
+    <string name="subtitle_size">Tamanho do texto</string>
+    <string name="subtitle_size_value">Tamanho do texto: %1$s</string>
+    <string name="subtitle_size_small">Pequeno</string>
+    <string name="subtitle_size_medium">Médio</string>
+    <string name="subtitle_size_large">Grande</string>
+    <string name="subtitle_size_extra_large">Muito grande</string>
+    <string name="subtitle_background">Fundo</string>
+    <string name="subtitle_background_value">Fundo: %1$s</string>
+    <string name="subtitle_background_outline">Contorno preto</string>
+    <string name="subtitle_background_box">Retângulo escuro</string>
     <string name="subtitles_search_title">Buscar legendas</string>
     <string name="subtitles_search_empty">Nenhuma legenda encontrada neste idioma.</string>
     <string name="subtitles_language">Idioma da legenda</string>

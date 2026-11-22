@@ -103,6 +103,10 @@ export default {
     autoplay: 'Enchaîner',
     autoplayHelp: 'Lancer automatiquement la suite à la fin de la lecture',
     endsAt: 'fin à {time}',
+    subtitleSize: 'Taille du texte',
+    subtitleSizes: { small: 'Petite', medium: 'Moyenne', large: 'Grande', xlarge: 'Très grande' },
+    subtitleBackground: 'Fond',
+    subtitleBackgrounds: { outline: 'Contour noir', box: 'Rectangle sombre' },
   },
   catalog: {
     search: 'Rechercher…',

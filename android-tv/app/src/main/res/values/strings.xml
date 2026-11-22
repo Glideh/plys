@@ -149,6 +149,16 @@
     <string name="error_subtitles_quota">The daily OpenSubtitles download limit is reached. Try again later.</string>
     <string name="error_subtitles_online">Online subtitles are unavailable on this server right now.</string>
     <string name="subtitles_search">Search online…</string>
+    <string name="subtitle_size">Text size</string>
+    <string name="subtitle_size_value">Text size: %1$s</string>
+    <string name="subtitle_size_small">Small</string>
+    <string name="subtitle_size_medium">Medium</string>
+    <string name="subtitle_size_large">Large</string>
+    <string name="subtitle_size_extra_large">Extra large</string>
+    <string name="subtitle_background">Background</string>
+    <string name="subtitle_background_value">Background: %1$s</string>
+    <string name="subtitle_background_outline">Black border</string>
+    <string name="subtitle_background_box">Dark box</string>
     <string name="subtitles_search_title">Search subtitles</string>
     <string name="subtitles_search_empty">No subtitles found in this language.</string>
     <string name="subtitles_language">Subtitle language</string>

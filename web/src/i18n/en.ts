@@ -105,6 +105,10 @@ export default {
     autoplay: 'Autoplay',
     autoplayHelp: 'Start the next one automatically when this one ends',
     endsAt: 'ends at {time}',
+    subtitleSize: 'Text size',
+    subtitleSizes: { small: 'Small', medium: 'Medium', large: 'Large', xlarge: 'Extra large' },
+    subtitleBackground: 'Background',
+    subtitleBackgrounds: { outline: 'Black border', box: 'Dark box' },
   },
   catalog: {
     search: 'Search…',

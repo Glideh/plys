@@ -149,6 +149,16 @@
     <string name="error_subtitles_quota">La limite quotidienne de téléchargements OpenSubtitles est atteinte. Réessayez plus tard.</string>
     <string name="error_subtitles_online">Les sous-titres en ligne sont indisponibles sur ce serveur pour le moment.</string>
     <string name="subtitles_search">Rechercher en ligne…</string>
+    <string name="subtitle_size">Taille du texte</string>
+    <string name="subtitle_size_value">Taille du texte : %1$s</string>
+    <string name="subtitle_size_small">Petite</string>
+    <string name="subtitle_size_medium">Moyenne</string>
+    <string name="subtitle_size_large">Grande</string>
+    <string name="subtitle_size_extra_large">Très grande</string>
+    <string name="subtitle_background">Fond</string>
+    <string name="subtitle_background_value">Fond : %1$s</string>
+    <string name="subtitle_background_outline">Contour noir</string>
+    <string name="subtitle_background_box">Rectangle sombre</string>
     <string name="subtitles_search_title">Rechercher des sous-titres</string>
     <string name="subtitles_search_empty">Aucun sous-titre trouvé dans cette langue.</string>
     <string name="subtitles_language">Langue des sous-titres</string>

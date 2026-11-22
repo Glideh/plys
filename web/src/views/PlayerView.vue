@@ -13,6 +13,14 @@ import { usePlayback } from '@/composables/usePlayback'
 import { useAuthStore } from '@/stores/auth'
 import { channelLayout, languageName } from '@/utils/format'
 import { formatClock } from '@/utils/player'
+import {
+  loadSubtitleStyle,
+  saveSubtitleStyle,
+  SUBTITLE_BACKGROUNDS,
+  SUBTITLE_SIZES,
+  subtitleClasses,
+  type SubtitleStyle,
+} from '@/utils/subtitleStyle'
 
 const props = defineProps<{ id: string }>()
 const { t, locale } = useI18n()
@@ -334,6 +342,15 @@ const failure = computed(() => (loadError.value || (status.value === 'error' ? e
 
 const showLogo = computed(() => !!logoUrl.value && paused.value && status.value === 'ready' && !ended.value && !failure.value)
 
+// --- subtitle rendering ---------------------------------------------------------------------------
+
+const subtitleStyle = ref<SubtitleStyle>(loadSubtitleStyle())
+// The menu stays open so that the change shows on the current subtitle.
+function setSubtitleStyle(patch: Partial<SubtitleStyle>) {
+  subtitleStyle.value = { ...subtitleStyle.value, ...patch }
+  saveSubtitleStyle(subtitleStyle.value)
+}
+
 function pick(kind: 'audio' | 'subtitles', index: number | null) {
   menu.value = null
   if (kind === 'audio') player.setAudio(index as number)
@@ -349,7 +366,7 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
     @mousemove="wake"
     @touchstart.passive="wake"
   >
-    <video ref="video" class="size-full object-contain" playsinline @click="player.togglePlay" @dblclick="toggleFullscreen" />
+    <video ref="video" class="size-full object-contain" :class="subtitleClasses(subtitleStyle)" playsinline @click="player.togglePlay" @dblclick="toggleFullscreen" />
 
     <div v-if="!failure && (status === 'loading' || waiting)" class="pointer-events-none absolute inset-0 grid place-items-center">
       <span class="size-14 animate-spin rounded-full border-4 border-white/20 border-t-accent-400" role="status" />
@@ -519,6 +536,40 @@ function pick(kind: 'audio' | 'subtitles', index: number | null) {
                   <svg viewBox="0 0 20 20" fill="currentColor" class="size-4" aria-hidden="true"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.45 4.39l3.08 3.08a.75.75 0 1 1-1.06 1.06l-3.08-3.08A7 7 0 0 1 2 9Z" clip-rule="evenodd" /></svg>
                   {{ t('subtitleSearch.open') }}
                 </button>
+              </li>
+              <li role="none" class="mt-1 border-t border-white/10 px-3 pt-2 pb-1">
+                <p class="mb-1.5 text-xs text-slate-400">{{ t('player.subtitleSize') }}</p>
+                <div class="grid grid-cols-2 gap-1" role="group" :aria-label="t('player.subtitleSize')">
+                  <button
+                    v-for="size in SUBTITLE_SIZES"
+                    :key="size"
+                    type="button"
+                    role="menuitemradio"
+                    :aria-checked="subtitleStyle.size === size"
+                    class="flex-1 rounded-lg px-1 py-1.5 text-xs"
+                    :class="subtitleStyle.size === size ? 'bg-accent-500 font-semibold text-surface-950' : 'bg-white/5 hover:bg-white/15'"
+                    @click="setSubtitleStyle({ size })"
+                  >
+                    {{ t(`player.subtitleSizes.${size}`) }}
+                  </button>
+                </div>
+              </li>
+              <li role="none" class="px-3 pt-1 pb-2">
+                <p class="mb-1.5 text-xs text-slate-400">{{ t('player.subtitleBackground') }}</p>
+                <div class="flex gap-1" role="group" :aria-label="t('player.subtitleBackground')">
+                  <button
+                    v-for="background in SUBTITLE_BACKGROUNDS"
+                    :key="background"
+                    type="button"
+                    role="menuitemradio"
+                    :aria-checked="subtitleStyle.background === background"
+                    class="flex-1 rounded-lg px-1 py-1.5 text-xs"
+                    :class="subtitleStyle.background === background ? 'bg-accent-500 font-semibold text-surface-950' : 'bg-white/5 hover:bg-white/15'"
+                    @click="setSubtitleStyle({ background })"
+                  >
+                    {{ t(`player.subtitleBackgrounds.${background}`) }}
+                  </button>
+                </div>
               </li>
             </ul>
           </div>

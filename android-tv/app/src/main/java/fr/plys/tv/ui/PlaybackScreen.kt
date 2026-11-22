@@ -1,7 +1,5 @@
 package fr.plys.tv.ui
 
-import android.graphics.Typeface
-import android.os.Build
 import android.text.format.DateFormat
 import android.util.TypedValue
 import android.view.KeyEvent
@@ -76,12 +74,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -99,12 +95,6 @@ import kotlinx.coroutines.launch
 import java.util.Date
 import fr.plys.tv.ui.PlysButton as Button
 
-/** Subtitle size, the same whatever the stream or the controls; meant to become a user setting. */
-const val SUBTITLE_TEXT_SIZE_SP = 30f
-
-/** Space kept under subtitles while the controls are hidden, as a fraction of the screen height. */
-private const val SUBTITLE_BOTTOM_MARGIN = 0.06f
-
 /** Seconds moved by one left or right press while the controls are hidden, or by the rewind and forward buttons. */
 private const val DPAD_SEEK_SECONDS = 10.0
 
@@ -118,6 +108,23 @@ private const val AUTO_NEXT_SECONDS = 10
 private const val DPAD_SEEK_DELAY_MS = 700L
 private const val SEEK_PREVIEW_FADE_MS = 250
 private data class SeekPreview(val offset: Double, val target: Double)
+
+/** What the subtitle view needs from the composition, read again each time the picture's frame is laid out. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+private class SubtitlePlacement {
+    /** Height of the controls while they show, null while they are hidden. */
+    var controlsHeight: Int? = null
+    var style: SubtitleStyle? = null
+
+    fun place(playerView: PlayerView) {
+        val view = playerView.subtitleView ?: return
+        val screen = IntArray(2).also(playerView::getLocationInWindow)
+        val frame = IntArray(2).also(view::getLocationInWindow)
+        val gap = (screen[1] + playerView.height) - (frame[1] + view.height)
+        val bottom = subtitleBottomPadding(playerView.height, gap, controlsHeight)
+        if (view.paddingBottom != bottom) view.setPadding(0, 0, 0, bottom)
+    }
+}
 internal fun playbackControlsVisible(requested: Boolean, loading: Boolean, seekInProgress: Boolean): Boolean =
     requested || (loading && !seekInProgress)
 
@@ -153,6 +160,15 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
     var controlsHeight by remember { mutableIntStateOf(0) }
     var interaction by remember { mutableIntStateOf(0) }
     var menu by remember { mutableStateOf("") }
+    val subtitleStore = remember { SubtitleStyleStore(context.applicationContext) }
+    var subtitleStyle by remember { mutableStateOf(subtitleStore.read()) }
+    fun setSubtitleStyle(style: SubtitleStyle) {
+        subtitleStyle = style
+        subtitleStore.save(style)
+        menu = ""
+    }
+    val placement = remember { SubtitlePlacement() }
+    val typeface = remember { subtitleTypeface(context) }
     val scope = rememberCoroutineScope()
     // The preference is the user's, shared with the web player; cancelling the countdown only skips this episode.
     var autoplay by remember { mutableStateOf(api.autoplayNext) }
@@ -255,20 +271,25 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
                 player = model.player
                 useController = false
                 isFocusable = false
+                val playerView = this
                 subtitleView?.apply {
-                    // A fixed size: cues and stream styles must not change it, nor the controls' padding.
+                    // Cues and stream styles must not change the chosen size, nor the controls' padding.
                     setApplyEmbeddedFontSizes(false)
-                    setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, SUBTITLE_TEXT_SIZE_SP)
-                    setStyle(CaptionStyleCompat(android.graphics.Color.WHITE, android.graphics.Color.TRANSPARENT,
-                        android.graphics.Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, android.graphics.Color.BLACK,
-                        boldSubtitleTypeface(it)))
+                    // The frame follows the picture's shape once the video size is known: the padding is computed again.
+                    addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ -> view.post { placement.place(playerView) } }
                 }
             } },
             update = {
                 it.player = model.player
+                if (placement.style != subtitleStyle) {
+                    placement.style = subtitleStyle
+                    it.subtitleView?.setFixedTextSize(TypedValue.COMPLEX_UNIT_SP, subtitleStyle.size.sp)
+                    it.subtitleView?.setStyle(captionStyle(subtitleStyle.background, typeface))
+                }
                 // WebVTT cues sit on the last line, which ignores the bottom padding fraction: a padding keeps them
                 // above the controls, or off the bottom edge that TVs may crop.
-                it.subtitleView?.setPadding(0, 0, 0, if (visible) controlsHeight else (it.height * SUBTITLE_BOTTOM_MARGIN).toInt())
+                placement.controlsHeight = if (visible) controlsHeight else null
+                placement.place(it)
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -367,6 +388,18 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             }
             if (state.item.subtitleSearch) item {
                 Choice(stringResource(R.string.subtitles_search), false) { menu = ""; model.searchSubtitles(defaultSubtitleLanguage()) }
+            }
+            item { Choice(stringResource(R.string.subtitle_size_value, stringResource(subtitleStyle.size.label)), false) { menu = "subtitle_size" } }
+            item { Choice(stringResource(R.string.subtitle_background_value, stringResource(subtitleStyle.background.label)), false) { menu = "subtitle_background" } }
+        }
+        "subtitle_size" -> ChoiceDialog(stringResource(R.string.subtitle_size), { menu = "subtitles" }) {
+            items(SubtitleSize.entries) { size ->
+                Choice(stringResource(size.label), size == subtitleStyle.size) { setSubtitleStyle(subtitleStyle.copy(size = size)) }
+            }
+        }
+        "subtitle_background" -> ChoiceDialog(stringResource(R.string.subtitle_background), { menu = "subtitles" }) {
+            items(SubtitleBackground.entries) { background ->
+                Choice(stringResource(background.label), background == subtitleStyle.background) { setSubtitleStyle(subtitleStyle.copy(background = background)) }
             }
         }
     }
@@ -480,10 +513,4 @@ private fun IconAction(icon: ImageVector, label: Int, modifier: Modifier = Modif
         contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)) {
         Icon(icon, contentDescription = stringResource(label), modifier = Modifier.size(28.dp), tint = androidx.tv.material3.LocalContentColor.current)
     }
-}
-
-private fun boldSubtitleTypeface(context: android.content.Context): Typeface {
-    val nunito = ResourcesCompat.getFont(context, R.font.nunito) ?: Typeface.DEFAULT
-    // Nunito is a variable font: pick its bold weight rather than a synthetic bold where the platform allows it.
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Typeface.create(nunito, 700, false) else Typeface.create(nunito, Typeface.BOLD)
 }
