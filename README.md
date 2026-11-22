@@ -2,21 +2,21 @@
 
 # Plys
 
-Plys is a self-hosted media library for personal video collections.
+Plys is a self-hosted media library for your own movies, series and other videos. Install it on a home server, then watch from a web browser or an Android TV.
 
-- **Libraries** of movies, series and other videos.
-- **Metadata** from TMDB: posters, synopses, cast.
-- **Advanced filters** for refining search results.
-- **Web playback**, with audio and subtitle selection.
-- **Online subtitles** searched and downloaded from OpenSubtitles in the web and Android TV players.
-- **Transcoding** using the CPU or GPU if present.
-- **User management** with administrator account creation.
-- **Server federation** for sharing libraries.
-- **Android TV client**: native Kotlin app for library browsing, playback.
+- **Libraries** of movies, series and other videos, organized from the folder and file names.
+- **Metadata** from TMDB: posters, synopses, cast and ratings, with manual editing and custom posters.
+- **Search and filters** by genre, year, person, rating and more, plus a watchlist and resume where you stopped.
+- **Playback** in the browser, with audio and subtitle selection, and online subtitles from OpenSubtitles.
+- **Transcoding** on the CPU, or on an Intel or AMD GPU when there is one.
+- **Several users**, invited with a link, a PIN code or a QR code.
+- **Federation**: pair two Plys servers to browse and play each other's libraries.
+- **Android TV app**, which updates itself from the GitHub releases.
+- **Languages**: English, French and Brazilian Portuguese.
 
 ## Installation
 
-Docker (with Docker Compose) is needed on the host.
+You need a machine with [Docker](https://docs.docker.com/engine/install/) and Docker Compose.
 
 ### Quick start
 
@@ -62,13 +62,15 @@ volumes:
   api-cache:
 ```
 
-Then start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account: do it before exposing the server (see [Exposing Plys to the internet](#exposing-plys-to-the-internet)).
+Start it with `docker compose up -d` and open `http://<this machine>:8096`. The first visitor creates the administrator account, so do it right away, before the server can be reached from the internet.
 
-This setup keeps the defaults simple: the database password is `plys`. The complete installation below adds a chosen password, hardening, options and hardware transcoding.
+This setup keeps things simple (the database password is `plys`). For a server you keep, use the complete installation below.
 
 ### Complete installation
 
-**1. Create a folder for Plys** and, inside it, a `compose.yaml` file with the content below.
+It adds a database password of your choice, hardened containers, options and hardware transcoding.
+
+**1. Create a folder for Plys** and, inside it, a `compose.yaml` file with the content below. Replace `/video/path` with the folder holding the videos.
 
 ```yaml
 name: plys
@@ -149,13 +151,27 @@ volumes:
 POSTGRES_PASSWORD=choose-a-long-random-password
 ```
 
-**3. Start it:**
+**3. Start it** with `docker compose up -d`.
+
+**4. Open `http://<this machine>:8096`** and create the administrator account.
+
+### First steps
+
+1. **TMDB key**: the setup offers to paste a free [TMDB API key](https://www.themoviedb.org/settings/api), which brings posters, synopses and cast. It can also be added later in *Administration → Settings*.
+2. **Libraries**: in *Administration → Libraries*, add a library for each folder (paths start at `/media`, the folder mounted in `compose.yaml`) and choose its kind and metadata language. The first scan starts right away.
+3. **Subtitles** (optional): with an [OpenSubtitles](https://www.opensubtitles.com/consumers) API key in *Administration → Settings*, viewers can search and download subtitles from the player.
+4. **Users**: in *Administration → Users*, create accounts or send invitation links.
+
+Files are easiest to recognize when named like `Movie Title (2020).mkv` and `Series Name/Season 01/Series Name S01E02.mkv`. A wrong match can be fixed from the title's page.
+
+### Updating
 
 ```sh
+docker compose pull
 docker compose up -d
 ```
 
-**4. Open `http://<this machine>:8096`** and create the administrator account before exposing the server (see [Exposing Plys to the internet](#exposing-plys-to-the-internet)). Then add the libraries from the administration screen, and paste a free [TMDB API key](https://www.themoviedb.org/settings/api) in the settings to get posters and synopses.
+The database is migrated automatically at startup. To stay on a given release, set `PLYS_VERSION` in `.env`. A major version can break the compatibility between paired servers: their versions are shown in *Administration → Servers*.
 
 ### Options
 
@@ -168,21 +184,32 @@ Set these in `.env` when needed (complete installation):
 | `PLYS_VERSION` | `latest` | Image version, e.g. `0.7.4` to stay on a release |
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
-| `TRUSTED_PROXIES` | compose network | Proxies allowed to set `X-Forwarded-For`, as comma-separated CIDRs or addresses (`none` trusts none). The API logs and rate-limits the right-most address outside them |
+| `TRUSTED_PROXIES` | compose network | Proxies allowed to set `X-Forwarded-For`, as comma-separated CIDRs or addresses (`none` trusts none) |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
-### Exposing Plys to the internet
+## Android TV
+
+The app runs on Android TV and Google TV, Android 8.0 or newer.
+
+1. Download `app-debug.apk` from the [latest release](https://github.com/Glideh/plys/releases/latest).
+2. Install it on the TV, for example with a file manager app or `adb install app-debug.apk`; Android asks to allow apps from unknown sources.
+3. Sign in with the server address, such as `http://192.168.1.10:8096`, and an account created on the web.
+
+The app then checks for new releases by itself: when one is available, an entry above *Sign out* in the side menu installs it. More details in the [Android TV README](android-tv/README.md).
+
+## Exposing Plys to the internet
 
 > **Warning:** Until the administrator account is created, the first visitor can claim the server and, with it, read the media folders and pair it with any server. Create the account on the local network before opening any port.
 
-Plys serves plain http only. Over the internet, passwords and session tokens would travel in clear text, so a TLS reverse proxy in front of it is mandatory:
+Plys serves plain http only. Over the internet, passwords and session tokens would travel in clear text, so put an HTTPS reverse proxy in front of it:
 
-- Put [Caddy](https://caddyserver.com) or [Traefik](https://traefik.io) in front of the `web` service, with a domain name and a certificate (Let's Encrypt).
-- Set `COOKIE_SECURE=true` in `.env`, so that browsers never send the session cookie over plain http.
+- Use [Caddy](https://caddyserver.com) or [Traefik](https://traefik.io) in front of the `web` service, with a domain name and a certificate (Let's Encrypt).
+- Set `COOKIE_SECURE=true` in `.env`.
 - Send `Strict-Transport-Security` (HSTS) from the proxy, so browsers never fall back to http.
-- Forward only ports 443 (and 80 for the certificate) on the router, to the proxy. Never forward `8096`, nor `8080` and `5432` of the development setup.
+- On the router, forward only ports 443 (and 80 for the certificate) to the proxy, never `8096`.
 - Keep `PLYS_FEDERATION_REQUIRE_HTTPS=true`, and set the server's public URL to `https://…` in the settings before pairing.
 
-With Caddy, add this service to the `compose.yaml` of the complete installation (and remove the `ports` of `web` if Plys must not be reached over plain http on the local network):
+With Caddy, add this service to `compose.yaml` (and remove the `ports` of `web` if Plys must not be reached over plain http on the local network):
 
 ```yaml
   caddy:
@@ -209,68 +236,14 @@ plys.example.com {
 }
 ```
 
-**Client addresses.** Login is limited to 20 attempts per minute per client address and 5 per minute per account, and each new block doubles the wait (up to 15 minutes). Failed attempts are logged as `login failed` with `client_ip`, which fail2ban or CrowdSec can act on. For these addresses to be right behind a proxy:
+**Login protection.** Login is limited to 20 attempts per minute per client address and 5 per minute per account, and each new block doubles the wait (up to 15 minutes). Failed attempts are logged as `login failed` with `client_ip`, which fail2ban or CrowdSec can act on. For these addresses to be right behind a proxy:
 
-- The `web` front-end trusts `X-Forwarded-For` from private addresses, which covers a proxy in the same compose project or on the Docker host. For a proxy reached through a public address, or to trust only yours, mount your own `/etc/nginx/snippets/real-ip.inc` (`set_real_ip_from` lines, see `web/nginx/real-ip.inc`).
-- The API trusts the compose network by default. Set `TRUSTED_PROXIES` only if the front-end reaches the API from another network.
+- The `web` service trusts `X-Forwarded-For` from private addresses, which covers a proxy in the same compose project or on the Docker host. For a proxy reached through a public address, or to trust only yours, mount your own `/etc/nginx/snippets/real-ip.inc` (`set_real_ip_from` lines, see `web/nginx/real-ip.inc`).
+- The API trusts the compose network by default. Set `TRUSTED_PROXIES` only if the `web` service reaches the API from another network.
 
-## Development
+## Contributing
 
-Only Docker (with Compose) is required on the host.
-
-> **Warning:** Do not expose it to the internet; run it only on a trusted local network.
-
-```sh
-cp .env.example .env   # set UID/GID to `id -u` / `id -g` if they are not 1000
-cp compose.override.example.yaml compose.override.yaml   # list the media folders (read-only)
-docker compose up
-```
-
-- Front-end: http://localhost:5173 (hot reload, proxies `/api` to the API)
-- API: http://localhost:8080 (hot reload with air, migrations applied at startup)
-- PostgreSQL: `localhost:5432`
-
-Android TV tooling is optional and does not start with the web stack. Build its image
-with `docker compose --profile android build android-build`, then generate the APK
-with `docker compose --profile android run --rm android-build :app:assembleDebug`.
-See the [Android TV README](android-tv/README.md) for tests and the optional emulator.
-
-### Everyday commands
-
-```sh
-docker compose exec api go test ./...         # API unit + integration tests (uses the toto_test database)
-docker compose exec api go vet ./...
-docker compose run --rm sqlc generate          # after editing api/db/queries or api/db/migrations
-docker compose exec web npm test               # front-end tests
-docker compose exec web npm run typecheck
-docker compose exec web npm install <package>  # add a front-end dependency
-```
-
-### Layout
-
-- `api/` — Go API (chi, pgx, sqlc, goose). Migrations in `api/db/migrations`, SQL queries in `api/db/queries`.
-- `web/` — Vue 3 + Vite + TypeScript + Pinia + Tailwind.
-- `android-tv/` — Android TV client.
-- `docs/openapi.yaml` — API contract, shared with future mobile clients.
-- `compose.minimal.yaml` and `compose.prod.yaml` — the two end-user compose files shown above; `release.sh` checks that the README copies are identical.
-
-## Publishing the images
-
-For maintainers. Log in to Docker Hub (`docker login`), then:
-
-```sh
-./bump.sh [patch|minor|major]   # sets the next version in VERSION and in the other files (minor by default)
-# commit the changes first: release.sh refuses uncommitted changes
-./release.sh           # builds both images at the version in VERSION and pushes the tags, after confirmation
-./release.sh --local   # builds :dev into the local Docker only
-NAMESPACE=myaccount ./release.sh   # publish under another Docker Hub account
-```
-
-Tags are `x.y.z`, `x.y` and `latest`, plus `x` from 1.0.0 on.
-
-Images are built for `linux/amd64` with `docker-bake.hcl`, with provenance and SBOM attestations. To try a local build, run `PLYS_VERSION=dev docker compose -f compose.prod.yaml up -d` with a `.env` as above.
-
-**Warning** Major version can break the compatibility between the federated servers. Paired server versions are visible on the server page.
+To run Plys from the sources, run the tests or publish a release, see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
