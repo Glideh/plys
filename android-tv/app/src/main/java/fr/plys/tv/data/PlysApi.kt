@@ -65,6 +65,7 @@ class PlysApi(
         // the next request then fails on a connection the server already closed.
         .connectionPool(ConnectionPool(5, 30, TimeUnit.SECONDS))
         .build(),
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -76,6 +77,7 @@ class PlysApi(
     private var localServerId: String? = null
     private val peerTokens = mutableMapOf<String, FederatedToken>()
     private val filterLabels = mutableMapOf<String, String>()
+    private val filterCache = mutableMapOf<String, Pair<Long, FilterOptions>>()
     val signedIn: Boolean get() = session != null
     val savedServer: String get() = store.server()
     /** The signed-in user's preference, as the server last returned it. */
@@ -96,6 +98,7 @@ class PlysApi(
     suspend fun login(server: String, username: String, password: String) = locked {
         peerTokens.clear()
         filterLabels.clear()
+        synchronized(filterCache) { filterCache.clear() }
         localServerId = null
         base = serverUrl(server)
         val setup = decode<SetupStatus>(request("setup/status", authenticated = false))
@@ -112,6 +115,7 @@ class PlysApi(
         session = null
         peerTokens.clear()
         filterLabels.clear()
+        synchronized(filterCache) { filterCache.clear() }
         localServerId = null
     }
 
@@ -199,9 +203,21 @@ class PlysApi(
             .addQueryParameter("query", query).addQueryParameter("locale", locale)
             .addQueryParameter("selected", selected.joinToString(","))
         library?.let { params.addQueryParameter("library", it) }
-        decode<FilterOptions>(request("kinds/${kind.value}/filters?${params.build().encodedQuery}")).also { result ->
-            result.options.forEach { (key, options) -> options.forEach { filterLabels["$key:${it.id}"] = it.label } }
+        val result = decode<FilterOptions>(request("kinds/${kind.value}/filters?${params.build().encodedQuery}"))
+        // Older servers and peers name withdrawn country codes with an empty label.
+        result.copy(options = result.options.mapValues { (_, options) -> namedFilterOptions(options) }).also { named ->
+            named.options.forEach { (key, options) -> options.forEach { filterLabels["$key:${it.id}"] = it.label } }
         }
+    }
+
+    /**
+     * The whole list of a short filter category, read through [load] and kept in memory for [FILTER_CACHE_MILLIS].
+     * A list missing unavailable servers is not kept, so the next opening asks again.
+     */
+    suspend fun cachedFilterOptions(kind: CatalogKind, category: String, library: String?, locale: String, load: suspend () -> FilterOptions): FilterOptions {
+        val key = listOf(kind.value, category, library.orEmpty(), locale).joinToString("\u0000")
+        synchronized(filterCache) { filterCache[key]?.takeIf { clock() - it.first < FILTER_CACHE_MILLIS }?.let { return it.second } }
+        return load().also { if (it.unavailableServers == 0) synchronized(filterCache) { filterCache[key] = clock() to it } }
     }
 
     fun filterOptionLabel(category: String, id: String): String = filterLabels["$category:$id"] ?: id

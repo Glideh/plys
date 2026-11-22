@@ -138,6 +138,29 @@ data class CatalogQuery(
 @Serializable
 data class FilterOption(val id: String, val label: String)
 
+/** Filter categories too long to list whole: their picker waits for a search of [MIN_SEARCH_LENGTH] characters. */
+val SEARCH_ONLY_FILTERS = setOf("actors", "creators", "countries")
+
+/** How long the whole list of a short filter category (genres, languages) is reused once read. */
+const val FILTER_CACHE_MILLIS = 24L * 60 * 60 * 1000
+
+/** Drops entries without an ID and names the unnamed ones by their ID, so no blank entry is ever listed. */
+fun namedFilterOptions(options: List<FilterOption>): List<FilterOption> =
+    options.filter { it.id.isNotBlank() }.map { if (it.label.isBlank()) it.copy(label = it.id) else it }
+
+private fun foldFilterText(text: String): String =
+    java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase()
+
+/**
+ * Searches a cached list like the server does (case and accent insensitive, on the label), keeping the selected
+ * values, which come first so that the focus lands on them.
+ */
+fun searchFilterOptions(options: List<FilterOption>, query: String, selected: List<String>): List<FilterOption> {
+    val term = foldFilterText(query.trim())
+    return options.filter { it.id in selected || term.isEmpty() || foldFilterText(it.label).contains(term) }
+        .sortedByDescending { it.id in selected }
+}
+
 @Serializable
 data class FilterOptions(val options: Map<String, List<FilterOption>> = emptyMap(), val unavailableServers: Int = 0, val unavailableServerNames: List<String> = emptyList())
 

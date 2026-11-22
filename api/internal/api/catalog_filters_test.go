@@ -167,3 +167,21 @@ func TestCatalogFilterSuggestionsRespectAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalizedFilterLabelsAreNeverBlank(t *testing.T) {
+	for _, test := range []struct{ category, id, stored, locale, want string }{
+		{"countries", "FR", "FR", "fr", "France"},
+		{"countries", "SU", "SU", "fr", "Union soviétique"},
+		{"countries", "XC", "XC", "en", "Czechoslovakia"},
+		{"countries", "YU", "YU", "pt-BR", "Iugoslávia"},
+		{"countries", "QQ", "QQ", "fr", "QQ"},
+		{"countries", "QQ", "", "fr", "QQ"},
+		{"languages", "en", "en", "fr", "anglais"},
+		{"languages", "xx", "xx", "fr", "xx"},
+		{"genres", "878", "Science-fiction", "fr", "Science-fiction"},
+	} {
+		if got := localizedFilterLabel(test.category, test.id, test.stored, test.locale); got != test.want {
+			t.Errorf("localizedFilterLabel(%q, %q, %q, %q) = %q, want %q", test.category, test.id, test.stored, test.locale, got, test.want)
+		}
+	}
+}

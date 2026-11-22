@@ -70,6 +70,9 @@ import fr.plys.tv.data.CatalogQuery
 import fr.plys.tv.data.ClientException
 import fr.plys.tv.data.FilterOption
 import fr.plys.tv.data.Library
+import fr.plys.tv.data.MIN_SEARCH_LENGTH
+import fr.plys.tv.data.SEARCH_ONLY_FILTERS
+import fr.plys.tv.data.searchFilterOptions
 import fr.plys.tv.data.PlysApi
 import kotlinx.coroutines.delay
 
@@ -451,16 +454,32 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
     val context = LocalContext.current
     val locale = filterLocale(LocalConfiguration.current.locales[0].language)
     val excluded = when (category) { "genres" -> filterSelection(draft, "excludeGenres"); "excludeGenres" -> filterSelection(draft, "genres"); else -> emptyList() }
+    val apiCategory = if (category == "excludeGenres") "genres" else category
+    val searchOnly = apiCategory in SEARCH_ONLY_FILTERS
+    // Long lists wait for a real search instead of showing a truncated start of the list.
+    val waiting = searchOnly && search.trim().let { it.codePointCount(0, it.length) } < MIN_SEARCH_LENGTH
     LaunchedEffect(search, locale) {
-        delay(300)
-        loading = true
         error = ""
-        val apiCategory = if (category == "excludeGenres") "genres" else category
+        if (waiting) {
+            loading = false
+            options = selected.map { FilterOption(it, api.filterOptionLabel(apiCategory, it)) }
+            return@LaunchedEffect
+        }
+        // Servers released before pt-BR support reject that locale: fall back to English names.
+        suspend fun fetch(term: String, selection: List<String>) =
+            try { api.filterOptions(query.kind, apiCategory, term, query.libraryId, selection, locale) }
+            catch (failure: ClientException) { if (locale == "pt-BR") api.filterOptions(query.kind, apiCategory, term, query.libraryId, selection, "en") else throw failure }
         try {
-            val page = try { api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, locale) }
-            // Servers released before pt-BR support reject that locale: fall back to English names.
-            catch (failure: ClientException) { if (locale == "pt-BR") api.filterOptions(query.kind, apiCategory, search, query.libraryId, selected, "en") else throw failure }
-            options = page.options[apiCategory].orEmpty()
+            options = if (searchOnly) {
+                delay(300)
+                loading = true
+                fetch(search, selected).options[apiCategory].orEmpty()
+            } else {
+                // Short lists are read whole once, then searched here.
+                if (options.isEmpty()) loading = true
+                val page = api.cachedFilterOptions(query.kind, apiCategory, query.libraryId, locale) { fetch("", emptyList()) }
+                searchFilterOptions(page.options[apiCategory].orEmpty(), search, selected)
+            }
         }
         catch (failure: ClientException) { error = context.errorMessage(failure) }
         finally { loading = false }
@@ -471,10 +490,11 @@ private fun FilterPickerDialog(query: CatalogQuery, category: String, draft: Cat
                 Text(filterLabel(category, query.kind), style = MaterialTheme.typography.titleLarge)
                 // With a current value, its entry takes the focus instead.
                 SearchField(search, { search = it }, stringResource(R.string.search), Modifier.fillMaxWidth().focusInitially(selected.isEmpty()))
+                if (waiting) Text(stringResource(R.string.search_hint, MIN_SEARCH_LENGTH), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (loading) Text(stringResource(R.string.loading))
                 if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)) {
-                    if (!loading && options.isEmpty()) item { Text(stringResource(R.string.empty)) }
+                    if (!waiting && !loading && options.isEmpty()) item { Text(stringResource(R.string.empty)) }
                     items(options, key = { it.id }) { option ->
                         Choice(option.label, option.id in selected, enabled = option.id !in excluded) { apply(listOf(option.id)) }
                     }

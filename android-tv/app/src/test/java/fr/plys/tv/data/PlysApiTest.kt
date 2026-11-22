@@ -264,6 +264,47 @@ class PlysApiTest {
         assertEquals("fr", url.queryParameter("locale"))
     }
 
+    @Test fun `filter suggestions never list blank entries`() = runBlocking {
+        login()
+        json("""{"options":{"countries":[{"id":"SU","label":""},{"id":"","label":""},{"id":"FR","label":"France"}]},"unavailableServers":0}""")
+        val options = api.filterOptions(CatalogKind.MOVIES, "countries", "", null, emptyList(), "fr").options["countries"]
+        assertEquals(listOf(FilterOption("SU", "SU"), FilterOption("FR", "France")), options)
+        assertEquals("SU", api.filterOptionLabel("countries", "SU"))
+    }
+
+    @Test fun `short filter lists are read once and reused for a day`() = runBlocking {
+        var now = 0L
+        api = PlysApi(store, clock = { now })
+        login()
+        val genres = """{"options":{"genres":[{"id":"878","label":"Science-fiction"}]},"unavailableServers":0}"""
+        var loads = 0
+        val load = suspend { loads++; api.filterOptions(CatalogKind.MOVIES, "genres", "", null, emptyList(), "fr") }
+        json(genres)
+        assertEquals("878", api.cachedFilterOptions(CatalogKind.MOVIES, "genres", null, "fr", load).options["genres"]?.single()?.id)
+        now = FILTER_CACHE_MILLIS - 1
+        api.cachedFilterOptions(CatalogKind.MOVIES, "genres", null, "fr", load)
+        assertEquals(1, loads)
+        // Another locale, library or kind is another list.
+        json(genres)
+        api.cachedFilterOptions(CatalogKind.MOVIES, "genres", null, "en", load)
+        assertEquals(2, loads)
+        now = FILTER_CACHE_MILLIS
+        json(genres)
+        api.cachedFilterOptions(CatalogKind.MOVIES, "genres", null, "fr", load)
+        assertEquals(3, loads)
+        // A list missing a peer is asked again on the next opening.
+        repeat(2) { json("""{"options":{"languages":[]},"unavailableServers":1}""") }
+        repeat(2) { api.cachedFilterOptions(CatalogKind.MOVIES, "languages", null, "fr") { loads++; api.filterOptions(CatalogKind.MOVIES, "languages", "", null, emptyList(), "fr") } }
+        assertEquals(5, loads)
+    }
+
+    @Test fun `cached filter lists are searched like the server, selection first`() {
+        val options = listOf(FilterOption("35", "Comédie"), FilterOption("878", "Science-fiction"), FilterOption("27", "Horreur"))
+        assertEquals(listOf("35"), searchFilterOptions(options, " COMEDIE ", emptyList()).map { it.id })
+        assertEquals(listOf("27", "35"), searchFilterOptions(options, "com", listOf("27")).map { it.id })
+        assertEquals(listOf("878", "35", "27"), searchFilterOptions(options, "", listOf("878")).map { it.id })
+    }
+
     @Test fun `peer transport renews only federated token and never exposes origin credentials`() = runBlocking {
         login()
         MockWebServer().use { peer ->

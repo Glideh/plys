@@ -121,15 +121,7 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 	}
 	response := catalogOptionsResponse{Options: make(map[string][]metadata.FilterOption), UnavailableServerNames: []string{}}
 	for _, row := range rows {
-		label := row.Label
-		if row.Category == "languages" {
-			label = display.Languages(language.Make(locale)).Name(language.Make(row.ID))
-		}
-		if row.Category == "countries" {
-			if region, err := language.ParseRegion(row.ID); err == nil {
-				label = display.Regions(language.Make(locale)).Name(region)
-			}
-		}
+		label := localizedFilterLabel(row.Category, row.ID, row.Label, locale)
 		if (row.Category == "languages" || row.Category == "countries") && !strings.Contains(foldSearch(label), foldSearch(query)) && !slices.Contains(selected, row.ID) {
 			continue
 		}
@@ -179,6 +171,41 @@ func (s *Server) catalogFilterOptions(w http.ResponseWriter, r *http.Request, fe
 		response.Options[key] = unique[:min(len(unique), limit)]
 	}
 	httpx.JSON(w, http.StatusOK, response)
+}
+
+// historicalRegions names the withdrawn country codes TMDB still uses, which x/text leaves unnamed.
+var historicalRegions = map[string]map[string]string{
+	"AN": {"en": "Netherlands Antilles", "fr": "Antilles néerlandaises", "pt-BR": "Antilhas Holandesas"},
+	"CS": {"en": "Serbia and Montenegro", "fr": "Serbie-et-Monténégro", "pt-BR": "Sérvia e Montenegro"},
+	"SU": {"en": "Soviet Union", "fr": "Union soviétique", "pt-BR": "União Soviética"},
+	"XC": {"en": "Czechoslovakia", "fr": "Tchécoslovaquie", "pt-BR": "Tchecoslováquia"},
+	"XG": {"en": "East Germany", "fr": "Allemagne de l'Est", "pt-BR": "Alemanha Oriental"},
+	"YU": {"en": "Yugoslavia", "fr": "Yougoslavie", "pt-BR": "Iugoslávia"},
+}
+
+// localizedFilterLabel names languages and countries in the locale. A code without a name keeps its stored label,
+// or the code itself: an empty label would be listed first, as a blank entry.
+func localizedFilterLabel(category, id, stored, locale string) string {
+	label := stored
+	switch category {
+	case "languages":
+		if tag, err := language.Parse(id); err == nil {
+			label = display.Languages(language.Make(locale)).Name(tag)
+		}
+	case "countries":
+		if names, ok := historicalRegions[strings.ToUpper(id)]; ok {
+			label = names[locale]
+		} else if region, err := language.ParseRegion(id); err == nil {
+			label = display.Regions(language.Make(locale)).Name(region)
+		}
+	}
+	if strings.TrimSpace(label) == "" {
+		label = stored
+	}
+	if strings.TrimSpace(label) == "" {
+		label = id
+	}
+	return label
 }
 
 // peerFilterOptions reads the filter suggestions of one peer for the user; callers go through callPeer.
