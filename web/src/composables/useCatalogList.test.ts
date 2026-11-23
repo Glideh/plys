@@ -5,7 +5,7 @@ import { serializeFilters } from '@/api/catalogFilters'
 import { useCatalogList, type CatalogPageRequest } from './useCatalogList'
 
 const hooks = vi.hoisted(() => ({ activated: [] as (() => void)[], deactivated: [] as (() => void)[] }))
-const route = vi.hoisted(() => ({ current: undefined as unknown as { query: Record<string, string | undefined> } }))
+const route = vi.hoisted(() => ({ current: undefined as unknown as { path: string; query: Record<string, string | undefined> } }))
 const replace = vi.hoisted(() => vi.fn())
 
 vi.mock('vue', async (original) => ({
@@ -29,7 +29,7 @@ describe('useCatalogList', () => {
     scope = effectScope()
     hooks.activated.length = 0
     hooks.deactivated.length = 0
-    route.current = reactive({ query: {} })
+    route.current = reactive({ path: '/kinds/movies', query: {} })
     fetchPage.mockReset().mockResolvedValue(page)
     replace.mockReset()
     vi.stubGlobal('IntersectionObserver', class { observe() {} disconnect() {} })
@@ -59,6 +59,31 @@ describe('useCatalogList', () => {
     expect(list.filters.value).toEqual({ actors: [31] })
     expect(fetchPage).toHaveBeenCalledTimes(1)
     expect(fetchPage.mock.calls[0][0]).toMatchObject({ offset: 0, filters: { actors: [31] } })
+  })
+
+  it('keeps its search, sort and filters when left for an item page', async () => {
+    const filters = { genres: [18] }
+    route.current.query = { q: 'alien', sort: 'year', filters: serializeFilters(filters) }
+    const list = setup()
+    list.items.value = [{ id: '1' } as never]
+    // The route changes to the item before the list is deactivated.
+    route.current.path = '/items/42'
+    route.current.query = {}
+    await nextTick()
+    hooks.deactivated.forEach((fn) => fn())
+    expect(fetchPage).not.toHaveBeenCalled()
+
+    // Back to the list: the cached pages are refreshed with the same search, sort and filters.
+    route.current.path = '/kinds/movies'
+    route.current.query = { q: 'alien', sort: 'year', filters: serializeFilters(filters) }
+    await nextTick()
+    hooks.activated.forEach((fn) => fn())
+    await nextTick()
+    expect(list.query.value).toBe('alien')
+    expect(list.sort.value).toBe('year')
+    expect(list.filters.value).toEqual(filters)
+    expect(fetchPage).toHaveBeenCalledTimes(1)
+    expect(fetchPage.mock.calls[0][0]).toMatchObject({ query: 'alien', sort: 'year', offset: 0, limit: 1, filters })
   })
 
   it('refreshes the cached list when the URL is unchanged', async () => {

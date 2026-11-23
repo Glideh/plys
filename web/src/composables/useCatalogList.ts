@@ -154,9 +154,13 @@ export function useCatalogList(fetchPage: (req: CatalogPageRequest, signal: Abor
     debounce = setTimeout(applySearch, SEARCH_DEBOUNCE_MS)
   })
 
+  // Each cached list belongs to one path (the KeepAlive key). Leaving it for an item changes the route
+  // before `onDeactivated` runs, so the path, not only `active`, keeps it from following the item's query:
+  // it would otherwise reset its search, sort and filters, and show the unfiltered list on return.
+  const ownPath = route.path
   watch(() => route.query, () => {
     // A hidden (cached) list must not follow the query of the page shown in its place.
-    if (active) followRoute()
+    if (active && route.path === ownPath) followRoute()
   })
 
   const observer = new IntersectionObserver(
