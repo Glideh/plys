@@ -195,6 +195,9 @@ function itemTitle(it: Pick<ItemDetail, 'kind' | 'title' | 'seasonNumber' | 'epi
   return it.title
 }
 
+const imdbScore = (rating: number) =>
+  new Intl.NumberFormat(locale.value, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(rating)
+
 const metaLine = computed(() => {
   const it = item.value
   if (!it) return []
@@ -382,6 +385,17 @@ async function onMatched(merged: boolean) {
                 <img src="/tmdb-logo-short.svg" alt="TMDB" class="h-3.5 w-auto" />
                 <span>{{ Math.round(item.rating * 10) }}%</span>
               </span>
+              <a
+                v-if="item.imdbRating"
+                :href="item.imdbId ? `https://www.imdb.com/title/${item.imdbId}/` : undefined"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1.5 hover:text-white"
+                :title="t('catalog.imdbRatingTitle', { rating: imdbScore(item.imdbRating), votes: new Intl.NumberFormat(locale).format(item.imdbVotes ?? 0) })"
+              >
+                <span class="rounded-sm bg-[#f5c518] px-1 text-[0.7rem] leading-4 font-black text-black">IMDb</span>
+                <span>{{ imdbScore(item.imdbRating) }}</span>
+              </a>
               <span v-for="g in item.genres" :key="g" class="rounded-full border border-white/15 px-2 py-0.5 text-xs">{{ g }}</span>
               <span v-if="auth.isAdmin && item.matchStatus === 'unmatched'" class="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
                 {{ t('catalog.unidentified') }}

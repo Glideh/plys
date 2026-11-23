@@ -27,7 +27,7 @@ const (
 	maxPageSize = 1000
 )
 
-var itemSorts = []string{"title", "year", "added", "rating", "watched"}
+var itemSorts = []string{"title", "year", "added", "rating", "imdbRating", "watched"}
 
 func (s *Server) canAccessLibrary(r *http.Request, libraryID uuid.UUID) (bool, error) {
 	p, _ := auth.PrincipalFrom(r.Context())
@@ -193,7 +193,7 @@ func parseItemListParams(w http.ResponseWriter, r *http.Request, maxLimit int) (
 		p.sort = "title"
 	}
 	if !slices.Contains(itemSorts, p.sort) {
-		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating, watched")
+		httpx.Error(w, http.StatusBadRequest, "validation", "sort must be one of: title, year, added, rating, imdbRating, watched")
 		return p, false
 	}
 	limit, err := intParam(qs.Get("limit"), defaultPageSize, 1, maxLimit)
@@ -310,6 +310,9 @@ type itemDetailDTO struct {
 	ReleaseDate      *time.Time    `json:"releaseDate"`
 	RuntimeMinutes   *int32        `json:"runtimeMinutes"`
 	Rating           *float32      `json:"rating"`
+	IMDbID           *string       `json:"imdbId"`
+	IMDbRating       *float32      `json:"imdbRating"`
+	IMDbVotes        *int32        `json:"imdbVotes"`
 	Genres           []string      `json:"genres"`
 	Directors        []string      `json:"directors"`
 	DirectorCredits  []castDTO     `json:"directorCredits"`
@@ -376,7 +379,8 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 	dto := itemDetailDTO{
 		ID: it.ID, Kind: it.Kind, LibraryID: it.LibraryID, Title: it.Title, OriginalTitle: it.OriginalTitle,
 		Year: it.Year, Overview: it.Overview, Tagline: it.Tagline, ReleaseDate: it.ReleaseDate,
-		RuntimeMinutes: it.RuntimeMinutes, Rating: it.Rating, Genres: it.Genres, Directors: it.Directors,
+		RuntimeMinutes: it.RuntimeMinutes, Rating: it.Rating, Genres: it.Genres,
+		IMDbID: it.ImdbID, IMDbRating: it.ImdbRating, IMDbVotes: it.ImdbVotes, Directors: it.Directors,
 		PosterURL: imageURL(it.PosterPath, "w500"), BackdropURL: imageURL(it.BackdropPath, "w1280"),
 		ThumbURL: imageURL(it.ThumbPath, "w500"), TMDBID: it.TmdbID, MatchStatus: it.MatchStatus,
 		SeasonNumber: it.SeasonNumber, EpisodeNumber: it.EpisodeNumber, EpisodeNumberEnd: it.EpisodeNumberEnd,

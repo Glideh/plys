@@ -72,6 +72,19 @@ func TestCatalogBrowsing(t *testing.T) {
 	if r = do(t, e.h, http.MethodGet, "/api/v1/libraries/"+films+"/items?limit=1&offset=1", admin, nil); len(r.body["items"].([]any)) != 1 || r.body["total"].(float64) != 3 {
 		t.Errorf("pagination: %v", r.body)
 	}
+	if _, err := e.srv.Pool.Exec(context.Background(), `UPDATE items SET imdb_id = 'tt0078748', imdb_rating = 8.5, imdb_votes = 1000000 WHERE library_id = $1 AND title = 'Alien'`, films); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/api/v1/libraries/" + films + "/items?sort=imdbRating", "/api/v1/kinds/movies/items?sort=imdbRating"} {
+		r = do(t, e.h, http.MethodGet, path, admin, nil)
+		if items := r.body["items"].([]any); r.status != http.StatusOK || items[0].(map[string]any)["title"] != "Alien" {
+			t.Errorf("%s must put the rated title first: %d %v", path, r.status, r.body)
+		}
+	}
+	alien := r.body["items"].([]any)[0].(map[string]any)["id"].(string)
+	if d := do(t, e.h, http.MethodGet, "/api/v1/items/"+alien, admin, nil).body; d["imdbId"] != "tt0078748" || d["imdbRating"] != 8.5 || d["imdbVotes"] != float64(1000000) {
+		t.Errorf("item detail must carry the IMDb rating: %v", d)
+	}
 	if r = do(t, e.h, http.MethodGet, "/api/v1/libraries/"+films+"/items?sort=drop", admin, nil); r.status != http.StatusBadRequest {
 		t.Errorf("invalid sort: expected 400, got %d", r.status)
 	}

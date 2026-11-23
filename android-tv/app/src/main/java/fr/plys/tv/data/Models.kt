@@ -302,6 +302,8 @@ data class ItemDetail(
     val tagline: String? = null,
     val runtimeMinutes: Int? = null,
     val rating: Double? = null,
+    /** IMDb public rating (0–10) from IMDb's daily dataset; absent from older servers. */
+    val imdbRating: Double? = null,
     val genres: List<String> = emptyList(),
     val backdropUrl: String? = null,
     /** Title logo shown while paused; episodes carry their series'. Absent from older servers. */

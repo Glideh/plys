@@ -2,7 +2,7 @@ import { api } from './client'
 import type { ItemKind, LibraryKind } from './libraries'
 import { serializeFilters, type CatalogFilters, type FilterCategory, type FilterOptionsPage } from './catalogFilters'
 
-export const itemSorts = ['title', 'year', 'added', 'rating', 'watched'] as const
+export const itemSorts = ['title', 'year', 'added', 'rating', 'imdbRating', 'watched'] as const
 export type ItemSort = (typeof itemSorts)[number]
 export type MatchStatus = 'pending' | 'matched' | 'unmatched' | 'manual' | 'skipped'
 
@@ -161,6 +161,10 @@ export interface ItemDetail {
   releaseDate: string | null
   runtimeMinutes: number | null
   rating: number | null
+  /** IMDb public rating (0–10) and vote count from IMDb's daily dataset; absent from older servers. */
+  imdbId?: string | null
+  imdbRating?: number | null
+  imdbVotes?: number | null
   genres: string[]
   directors: string[]
   /** Directors or creators with their picture; absent from older servers, empty until the metadata is refreshed. */

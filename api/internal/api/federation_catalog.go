@@ -42,6 +42,8 @@ type federatedCard struct {
 	AddedAt   time.Time `json:"addedAt"`
 	// WatchedOn is the last time the user played anything of the title; peers released before it leave it out.
 	WatchedOn *time.Time `json:"watchedOn,omitempty"`
+	// IMDbRating orders the "imdbRating" sort; peers released before it leave it out.
+	IMDbRating *float32 `json:"imdbRating,omitempty"`
 }
 
 // sourcedCard is a catalogue entry together with the server that holds it.
@@ -89,6 +91,7 @@ func (s *Server) kindCards(ctx context.Context, userID uuid.UUID, isAdmin bool, 
 				Watched: row.Watched || (row.Kind == "series" && row.UnwatchedCount == 0), UnwatchedCount: row.UnwatchedCount,
 			},
 			TMDBID: row.TmdbID, SortTitle: row.SortTitle, AddedAt: row.CreatedAt, WatchedOn: row.WatchedOn,
+			IMDbRating: row.ImdbRating,
 		})
 	}
 	return cards, total, nil
@@ -173,8 +176,8 @@ func (s *Server) fetchPeerCards(ctx context.Context, p store.Peer, userID uuid.U
 		return nil, err
 	}
 	// The origin sorts the merged cards itself, so a sort that older peers refuse is asked by title instead:
-	// the peer still reports watchedOn when it knows it.
-	if sort == "watched" {
+	// the peer still reports watchedOn and imdbRating when it knows them.
+	if sort == "watched" || sort == "imdbRating" {
 		sort = "title"
 	}
 	fetch := func(ctx context.Context, offset, limit int) (peerCardPage, error) {
@@ -266,6 +269,8 @@ func compareCards(a, b sourcedCard, sort string) int {
 		c = b.AddedAt.Compare(a.AddedAt)
 	case "rating":
 		c = compareDescNullsLast(a.Rating, b.Rating)
+	case "imdbRating":
+		c = compareDescNullsLast(a.IMDbRating, b.IMDbRating)
 	case "watched":
 		c = compareTimesDescNullsLast(a.WatchedOn, b.WatchedOn)
 	}

@@ -172,3 +172,17 @@ func TestCompareCardsByWatchedPutsRecentFirstAndUnwatchedLast(t *testing.T) {
 		t.Fatalf("expected Casablanca, Brazil, Alien, got %s, %s, %s", cards[0].Title, cards[1].Title, cards[2].Title)
 	}
 }
+
+func TestCompareCardsByIMDbRatingPutsUnratedLast(t *testing.T) {
+	s := uuid.New()
+	low, high := float32(6.1), float32(8.4)
+	a := sourced("movie", nil, "Alien", s)
+	b := sourced("movie", nil, "Brazil", s)
+	c := sourced("movie", nil, "Casablanca", s)
+	b.IMDbRating, c.IMDbRating = &low, &high
+	cards := []sourcedCard{a, b, c}
+	slices.SortStableFunc(cards, func(x, y sourcedCard) int { return compareCards(x, y, "imdbRating") })
+	if cards[0].Title != "Casablanca" || cards[1].Title != "Brazil" || cards[2].Title != "Alien" {
+		t.Fatalf("expected Casablanca, Brazil, Alien, got %s, %s, %s", cards[0].Title, cards[1].Title, cards[2].Title)
+	}
+}

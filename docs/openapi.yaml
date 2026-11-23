@@ -583,7 +583,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title or an episode), never played last" }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, imdbRating, watched], default: title }, description: "rating: TMDB rating; imdbRating: IMDb public rating, unrated last; watched: most recently played first (the title or an episode), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
@@ -612,7 +612,7 @@ paths:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: library, in: query, required: false, schema: { type: string, format: uuid }, description: Restrict to one library of this kind }
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title or an episode), never played last" }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, imdbRating, watched], default: title }, description: "rating: TMDB rating; imdbRating: IMDb public rating, unrated last; watched: most recently played first (the title or an episode), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 60 } }
       responses:
@@ -700,7 +700,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/CatalogFilters"
         - { name: query, in: query, required: false, schema: { type: string }, description: Substring of the title or original title, ignoring case and accents }
-        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, watched], default: title }, description: "watched: most recently played first (the title or an episode), never played last" }
+        - { name: sort, in: query, required: false, schema: { type: string, enum: [title, year, added, rating, imdbRating, watched], default: title }, description: "rating: TMDB rating; imdbRating: IMDb public rating, unrated last; watched: most recently played first (the title or an episode), never played last" }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 20000, default: 60 } }
       responses:
@@ -723,6 +723,7 @@ paths:
                             sortTitle: { type: string }
                             addedAt: { type: string, format: date-time }
                             watchedOn: { type: string, format: date-time, description: Last time the user played the title or one of its episodes; absent when never played }
+                            imdbRating: { type: number, description: IMDb public rating (0–10), used by the imdbRating sort; absent when unrated }
                   total: { type: integer }
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
@@ -1944,7 +1945,10 @@ components:
         tagline: { type: [string, "null"] }
         releaseDate: { type: [string, "null"], format: date-time }
         runtimeMinutes: { type: [integer, "null"] }
-        rating: { type: [number, "null"] }
+        rating: { type: [number, "null"], description: TMDB rating (0–10) }
+        imdbId: { type: [string, "null"] }
+        imdbRating: { type: [number, "null"], description: "IMDb public rating (0–10), refreshed daily from IMDb's free dataset (title.ratings.tsv.gz)" }
+        imdbVotes: { type: [integer, "null"], description: Number of IMDb votes behind imdbRating }
         genres: { type: array, items: { type: string } }
         directors: { type: array, items: { type: string }, description: Directors of a movie or creators of a series }
         directorCredits:

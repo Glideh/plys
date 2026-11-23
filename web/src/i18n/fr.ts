@@ -111,7 +111,8 @@ export default {
   catalog: {
     search: 'Rechercher…',
     sort: 'Trier par',
-    sorts: { title: 'Titre', year: 'Année', added: 'Ajout récent', rating: 'Note', watched: 'Vu récemment' },
+    sorts: { title: 'Titre', year: 'Année', added: 'Ajout récent', rating: 'Note TMDB', imdbRating: 'Note IMDb', watched: 'Vu récemment' },
+    imdbRatingTitle: 'Note IMDb : {rating}/10 ({votes} votes)',
     empty: 'Aucun élément pour l’instant.',
     noResults: 'Aucun résultat.',
     count: '{n} élément | {n} éléments',

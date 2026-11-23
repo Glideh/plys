@@ -365,7 +365,7 @@ last_seen AS (
     WHERE pr.user_id = $1
     GROUP BY 1
 )
-SELECT i.id, i.kind, i.title, i.sort_title, i.year, i.poster_path, i.thumb_path, i.rating, i.match_status,
+SELECT i.id, i.kind, i.title, i.sort_title, i.year, i.poster_path, i.thumb_path, i.rating, i.imdb_rating, i.match_status,
        i.tmdb_id, i.created_at, ls.at AS watched_on,
        (SELECT count(*) FROM items e JOIN items s ON e.parent_id = s.id WHERE s.parent_id = i.id)::int AS episode_count,
        COALESCE(u.n, 0)::int AS unwatched_count,
@@ -396,6 +396,7 @@ ORDER BY
     CASE WHEN $4::text = 'year' THEN i.year END DESC NULLS LAST,
     CASE WHEN $4::text = 'added' THEN i.created_at END DESC,
     CASE WHEN $4::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $4::text = 'imdbRating' THEN i.imdb_rating END DESC NULLS LAST,
     CASE WHEN $4::text = 'watched' THEN ls.at END DESC NULLS LAST,
     i.sort_title, i.id
 LIMIT $6 OFFSET $5
@@ -422,6 +423,7 @@ type ListKindItemsRow struct {
 	PosterPath     *string
 	ThumbPath      *string
 	Rating         *float32
+	ImdbRating     *float32
 	MatchStatus    string
 	TmdbID         *int32
 	CreatedAt      time.Time
@@ -462,6 +464,7 @@ func (q *Queries) ListKindItems(ctx context.Context, arg ListKindItemsParams) ([
 			&i.PosterPath,
 			&i.ThumbPath,
 			&i.Rating,
+			&i.ImdbRating,
 			&i.MatchStatus,
 			&i.TmdbID,
 			&i.CreatedAt,
@@ -561,6 +564,7 @@ ORDER BY
     CASE WHEN $5::text = 'year' THEN i.year END DESC NULLS LAST,
     CASE WHEN $5::text = 'added' THEN i.created_at END DESC,
     CASE WHEN $5::text = 'rating' THEN i.rating END DESC NULLS LAST,
+    CASE WHEN $5::text = 'imdbRating' THEN i.imdb_rating END DESC NULLS LAST,
     CASE WHEN $5::text = 'watched' THEN ls.at END DESC NULLS LAST,
     i.sort_title, i.id
 LIMIT $7 OFFSET $6

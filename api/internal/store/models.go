@@ -78,6 +78,8 @@ type Item struct {
 	LogoPath          *string
 	LockedFields      []string
 	CollectionID      *uuid.UUID
+	ImdbRating        *float32
+	ImdbVotes         *int32
 }
 
 type Library struct {

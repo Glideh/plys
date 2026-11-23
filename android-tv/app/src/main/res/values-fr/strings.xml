@@ -31,6 +31,7 @@
     <string name="sort_year">Année</string>
     <string name="sort_added">Ajouts récents</string>
     <string name="sort_rating">Note TMDB</string>
+    <string name="sort_imdb_rating">Note IMDb</string>
     <string name="sort_watched">Vus récemment</string>
     <string name="all_libraries">Toutes les bibliothèques</string>
     <string name="advanced_filters">Filtres avancés</string>

@@ -44,6 +44,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import fr.plys.tv.R
 import fr.plys.tv.data.PlysApi
+import java.util.Locale
 import kotlin.math.roundToInt
 import fr.plys.tv.data.ServerRef
 
@@ -115,5 +116,16 @@ fun TmdbRating(rating: Double, modifier: Modifier = Modifier) {
         Image(painterResource(R.drawable.tmdb_logo_short), contentDescription = "TMDB", modifier = Modifier.width(20.dp).height(9.dp))
         Spacer(Modifier.width(5.dp))
         Text("${(rating.coerceIn(0.0, 10.0) * 10).roundToInt()}%", style = MaterialTheme.typography.bodySmall, color = Plys.Text)
+    }
+}
+
+/** IMDb's public rating out of 10, behind a yellow IMDb mark like the web's. */
+@Composable
+fun ImdbRating(rating: Double, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text("IMDb", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color.Black,
+            modifier = Modifier.background(Color(0xFFF5C518), RoundedCornerShape(2.dp)).padding(horizontal = 4.dp))
+        Spacer(Modifier.width(5.dp))
+        Text(String.format(Locale.getDefault(), "%.1f", rating.coerceIn(0.0, 10.0)), style = MaterialTheme.typography.bodySmall, color = Plys.Text)
     }
 }

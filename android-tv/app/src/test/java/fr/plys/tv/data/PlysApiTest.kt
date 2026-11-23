@@ -426,10 +426,11 @@ class PlysApiTest {
 
     @Test fun `details decode cast directors and media tracks`() = runBlocking {
         login()
-        json("""{"id":"film","kind":"movie","title":"Alien","cast":[{"name":"Sigourney Weaver","character":"Ripley","photoUrl":null}],"directors":["Ridley Scott"],"versions":[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","default":true},{"index":7,"language":"fr"}],"subtitles":[{"index":9,"language":"fr","codec":"subrip"}]}],"children":[]}""")
+        json("""{"id":"film","kind":"movie","title":"Alien","imdbRating":8.5,"cast":[{"name":"Sigourney Weaver","character":"Ripley","photoUrl":null}],"directors":["Ridley Scott"],"versions":[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","default":true},{"index":7,"language":"fr"}],"subtitles":[{"index":9,"language":"fr","codec":"subrip"}]}],"children":[]}""")
         val item = api.item("film")
         assertEquals("Sigourney Weaver", item.cast.single().name)
         assertEquals(listOf("Ridley Scott"), item.directors)
+        assertEquals(8.5, item.imdbRating!!, 0.0)
         assertEquals(7, item.versions.single().audio[1].index)
         assertEquals(9, item.versions.single().subtitles.single().index)
     }

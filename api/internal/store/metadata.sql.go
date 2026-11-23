@@ -160,7 +160,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path, locked_fields, collection_id FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path, locked_fields, collection_id, imdb_rating, imdb_votes FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -210,6 +210,8 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.LogoPath,
 		&i.LockedFields,
 		&i.CollectionID,
+		&i.ImdbRating,
+		&i.ImdbVotes,
 	)
 	return i, err
 }

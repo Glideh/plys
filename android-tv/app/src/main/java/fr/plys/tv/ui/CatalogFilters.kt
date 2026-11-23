@@ -270,7 +270,7 @@ fun CatalogToolbar(screen: Screen.Catalog, model: CatalogViewModel, libraries: L
             }
         }
         "sort" -> ChoiceDialog(stringResource(R.string.sort), { dialog = "" }) {
-            items(listOf("title", "year", "added", "rating", "watched")) { value ->
+            items(listOf("title", "year", "added", "rating", "imdbRating", "watched")) { value ->
                 Choice(stringResource(sortLabel(value)), value == screen.query.sort) { model.changeQuery(screen.query.copy(sort = value, offset = 0)); dialog = "" }
             }
         }
@@ -284,6 +284,7 @@ private fun sortLabel(sort: String): Int = when (sort) {
     "year" -> R.string.sort_year
     "added" -> R.string.sort_added
     "rating" -> R.string.sort_rating
+    "imdbRating" -> R.string.sort_imdb_rating
     "watched" -> R.string.sort_watched
     else -> R.string.sort_title
 }

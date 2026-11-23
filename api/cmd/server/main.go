@@ -14,6 +14,7 @@ import (
 	"toto/api/internal/auth"
 	"toto/api/internal/config"
 	"toto/api/internal/database"
+	"toto/api/internal/imdb"
 	"toto/api/internal/mediafs"
 	"toto/api/internal/metadata"
 	"toto/api/internal/opensubtitles"
@@ -78,6 +79,7 @@ func run() error {
 	scan := scanner.New(pool, scanner.FFProbe{Binary: "ffprobe"}, meta, cfg.ScanInterval)
 	go scan.Run(ctx)
 	go meta.BackfillFilters(ctx)
+	go imdb.New(q, cfg.CacheDir, imdb.DatasetURL).Run(ctx)
 
 	player, err := playback.NewManager("ffmpeg", "ffprobe", playback.DetectEncoder(ctx, "ffmpeg", cfg.HWAccel), cfg.CacheDir, cfg.MaxTranscodes)
 	if err != nil {

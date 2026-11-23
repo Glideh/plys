@@ -113,7 +113,8 @@ export default {
   catalog: {
     search: 'Buscar…',
     sort: 'Ordenar por',
-    sorts: { title: 'Título', year: 'Ano', added: 'Adicionados recentemente', rating: 'Nota', watched: 'Vistos recentemente' },
+    sorts: { title: 'Título', year: 'Ano', added: 'Adicionados recentemente', rating: 'Nota no TMDB', imdbRating: 'Nota no IMDb', watched: 'Vistos recentemente' },
+    imdbRatingTitle: 'Nota no IMDb: {rating}/10 ({votes} votos)',
     empty: 'Nenhum item por enquanto.',
     noResults: 'Nenhum resultado.',
     count: '{n} item | {n} itens',
