@@ -377,7 +377,7 @@ fun PlaybackScreen(item: ItemDetail, initialPosition: Double, api: PlysApi, onCl
             val off = state.selection.subtitleIndex == null && state.selection.externalSubtitleId == null
             item { Choice(stringResource(R.string.no_subtitles), off) { model.select(state.selection.copy(subtitleIndex = null, externalSubtitleId = null)); menu = "" } }
             items(version.subtitles, key = { it.index }) { track ->
-                Choice(track.trackLabel(), track.index == state.selection.subtitleIndex) {
+                Choice(track.subtitleLabel(), track.index == state.selection.subtitleIndex) {
                     model.select(state.selection.copy(subtitleIndex = track.index, externalSubtitleId = null)); menu = ""
                 }
             }

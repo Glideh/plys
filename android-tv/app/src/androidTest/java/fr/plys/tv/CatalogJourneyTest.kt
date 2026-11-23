@@ -560,9 +560,9 @@ class CatalogJourneyTest {
             rule.onNodeWithContentDescription(text(R.string.version)).activate()
             rule.onNodeWithText("720p").activate()
             rule.onNodeWithContentDescription(text(R.string.audio)).activate()
-            rule.onNodeWithText("fr · AAC · 2.0").activate()
+            rule.onNodeWithText("${fr.plys.tv.ui.languageName("fr")} · AAC · 2.0").activate()
             rule.onNodeWithContentDescription(text(R.string.subtitles)).activate()
-            rule.onNodeWithText("fr · SUBRIP").activate()
+            rule.onNodeWithText("${fr.plys.tv.ui.languageName("fr")} · SUBRIP").activate()
             screenshot("detail")
             rule.onNodeWithText(text(R.string.play)).activate()
             rule.waitUntil(10000) { playbackRequest.get() != null }

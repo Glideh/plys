@@ -5,6 +5,8 @@
     <string name="audio">Audio</string>
     <string name="subtitles">Sous-titres</string>
     <string name="no_subtitles">Sans sous-titres</string>
+    <string name="none">Aucun</string>
+    <string name="forced">forcés</string>
     <string name="cast">Acteurs</string>
     <string name="error_home_unavailable">Ce serveur ne fournit pas l’API de l’accueil. Vérifiez son adresse et mettez à jour le serveur Plys. Les catalogues restent accessibles.</string>
     <string name="title_count_pending">Titres : —</string>

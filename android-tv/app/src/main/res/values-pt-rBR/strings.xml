@@ -6,6 +6,8 @@
     <string name="audio">Áudio</string>
     <string name="subtitles">Legendas</string>
     <string name="no_subtitles">Desativadas</string>
+    <string name="none">Nenhum</string>
+    <string name="forced">forçada</string>
     <string name="cast">Elenco</string>
     <string name="error_home_unavailable">Este servidor não oferece a API da tela inicial. Verifique o endereço e atualize o Plys Server. Os catálogos continuam disponíveis.</string>
     <string name="title_count_pending">Títulos: —</string>

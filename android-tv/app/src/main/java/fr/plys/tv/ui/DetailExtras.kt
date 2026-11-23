@@ -17,11 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.window.Dialog
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Audiotrack
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material.icons.outlined.HighQuality
-import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.Icon
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -29,8 +25,6 @@ import androidx.tv.material3.Surface
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -58,6 +52,8 @@ import fr.plys.tv.R
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import fr.plys.tv.data.CastMember
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.MediaTrack
@@ -67,19 +63,25 @@ import fr.plys.tv.data.ServerRef
 import fr.plys.tv.data.VersionChoice
 import java.util.Locale
 
-fun MediaTrack.trackLabel(): String = listOfNotNull(
-    language.takeIf { it.isNotBlank() }, title.takeIf { it.isNotBlank() },
-    "#${index + 1}".takeIf { language.isBlank() && title.isBlank() },
+/**
+ * The track as the web names it: its language in full, in the language of the device, or else its title, then its
+ * formats ("Français · EAC3 · 5.1", "VFF · AC3 · 5.1", "? · HDMV_PGS_SUBTITLE").
+ */
+fun MediaTrack.trackLabel(locale: Locale = Locale.getDefault()): String = listOfNotNull(
+    languageName(language, locale) ?: title.takeIf { it.isNotBlank() } ?: "?",
     codec.uppercase().takeIf { it.isNotBlank() }, channelLayout(channels),
 ).joinToString(" · ")
 
 /**
- * The track as named on the detail screen's button, which has little room: its short language code and title,
- * without the formats that the version summary and the dialog already show. Falls back to the full label when both
- * are blank.
+ * A track language named in [locale], capitalized ("fre" → "Français", "eng" → "English", "fr-CA" → "Français (Canada)").
+ * Codes the device does not know are kept as they are. Null when the language is blank or undetermined ("und").
  */
-fun MediaTrack.shortLabel(): String =
-    listOfNotNull(shortLanguage(language), title.takeIf { it.isNotBlank() }).joinToString(" · ").ifEmpty { trackLabel() }
+fun languageName(code: String, locale: Locale = Locale.getDefault()): String? {
+    val tag = shortLanguage(code) ?: return null
+    val name = Locale.forLanguageTag(tag).getDisplayName(locale).takeIf { it.isNotBlank() && !it.equals(tag, ignoreCase = true) }
+        ?: return code.trim()
+    return name.replaceFirstChar { it.titlecase(locale) }
+}
 
 /** ISO 639-2 codes (bibliographic, as ffprobe reports them, and terminology) to their ISO 639-1 code. */
 private val iso6392to1: Map<String, String> by lazy {
@@ -125,12 +127,6 @@ fun versionSummary(item: ItemDetail, selection: PlaybackSelection): String {
         version.videoCodec.uppercase().takeIf { it.isNotBlank() },
         audio?.let { listOfNotNull(it.codec.uppercase().takeIf { codec -> codec.isNotBlank() }, channelLayout(it.channels)).joinToString(" ") }?.takeIf { it.isNotBlank() },
     ).joinToString(" · ")
-}
-
-@Composable
-fun VersionSummary(item: ItemDetail, selection: PlaybackSelection) {
-    val summary = versionSummary(item, selection)
-    if (summary.isNotEmpty()) Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** The overview, shortened; selecting it shows the whole text. */
@@ -194,11 +190,15 @@ fun versionChoiceLabel(choice: VersionChoice, withServer: Boolean): String {
     ).joinToString(" · ")
 }
 
+/** A subtitle track's label, marked when it is forced (it only covers the lines spoken in another language). */
+@Composable
+fun MediaTrack.subtitleLabel(): String = if (forced) "${trackLabel()} (${stringResource(R.string.forced)})" else trackLabel()
+
 /**
- * The version, audio and subtitle pickers of the detail screen. Versions gather every server holding the title,
- * like the web's item page; a series or season, which has no version of its own, picks its server instead.
+ * The version, audio and subtitle of the detail screen, one per line like on the web's item page: each line is always
+ * shown, as a button opening its choices when there are several, as plain text otherwise. Versions gather every server
+ * holding the title; a series or season, which has no version of its own, picks its server instead.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
     val item = screen.playable
@@ -206,26 +206,29 @@ fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
     val version = chosen.version(item)
     val choices = screen.versionChoices
     val servers = screen.serverChoices
+    if (version == null && servers.isEmpty()) return
     val withServer = choices.distinctBy { it.copy.source?.serverId }.size > 1
     val audio = version?.audio.orEmpty()
     val subtitles = version?.subtitles.orEmpty()
-    if (choices.size <= 1 && servers.isEmpty() && audio.size <= 1 && subtitles.isEmpty()) return
     var menu by remember { mutableStateOf("") }
     val current = choices.firstOrNull { it.copy.source?.serverId == screen.source?.serverId && it.copy.item.id == item.id && it.version.id == version?.id }
-    val subtitle = subtitles.firstOrNull { it.index == chosen.subtitleIndex }
-    // Wraps onto several lines rather than scrolling, so every choice stays visible and the focused button,
-    // slightly enlarged, is never cut off. The icon names the picker, the button only shows the current choice.
-    FlowRow(Modifier.fillMaxWidth().padding(FocusGutter), horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (servers.isNotEmpty()) TrackButton(Icons.Outlined.Dns, stringResource(R.string.server_name), screen.source?.serverName.orEmpty()) { menu = "server" }
-        if (choices.size > 1) {
-            val label = current?.let { versionChoiceLabel(it, withServer) } ?: version?.label.orEmpty()
-            TrackButton(Icons.Outlined.HighQuality, stringResource(R.string.version), label) { menu = "version" }
+    // Once one line holds a button, every line takes its height so the values line up; without any, the lines are compact.
+    val selectable = servers.isNotEmpty() || choices.size > 1 || audio.size > 1 || subtitles.isNotEmpty()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val none = stringResource(R.string.none)
+    Column(Modifier.fillMaxWidth().padding(FocusGutter), verticalArrangement = Arrangement.spacedBy(if (selectable) 8.dp else 4.dp)) {
+        if (servers.isNotEmpty()) SelectionLine(stringResource(R.string.server_name), screen.source?.serverName.orEmpty(), selectable) { menu = "server" }
+        if (version != null) {
+            val versionLabel = current?.let { versionChoiceLabel(it, withServer) } ?: listOfNotNull(
+                version.label.takeIf { it.isNotBlank() },
+                version.size.takeIf { it > 0 }?.let { android.text.format.Formatter.formatFileSize(context, it) },
+            ).joinToString(" · ")
+            SelectionLine(stringResource(R.string.version), versionLabel, selectable, onClick = if (choices.size > 1) ({ menu = "version" }) else null)
+            SelectionLine(stringResource(R.string.audio), audio.firstOrNull { it.index == chosen.audioIndex }?.trackLabel() ?: audio.firstOrNull()?.trackLabel() ?: none,
+                selectable, onClick = if (audio.size > 1) ({ menu = "audio" }) else null)
+            SelectionLine(stringResource(R.string.subtitles), subtitles.firstOrNull { it.index == chosen.subtitleIndex }?.subtitleLabel() ?: none,
+                selectable, onClick = if (subtitles.isNotEmpty()) ({ menu = "subtitles" }) else null)
         }
-        if (audio.size > 1) TrackButton(Icons.Outlined.Audiotrack, stringResource(R.string.audio),
-            audio.firstOrNull { it.index == chosen.audioIndex }?.shortLabel().orEmpty()) { menu = "audio" }
-        if (subtitles.isNotEmpty()) TrackButton(Icons.Outlined.Subtitles, stringResource(R.string.subtitles),
-            subtitle?.shortLabel() ?: stringResource(R.string.no_subtitles)) { menu = "subtitles" }
     }
     when (menu) {
         "server" -> ChoiceDialog(stringResource(R.string.server_name), { menu = "" }) {
@@ -246,21 +249,30 @@ fun PlaybackSelectionControls(screen: Screen.Detail, model: CatalogViewModel) {
             }
         }
         "subtitles" -> ChoiceDialog(stringResource(R.string.subtitles), { menu = "" }) {
-            item { Choice(stringResource(R.string.no_subtitles), chosen.subtitleIndex == null) { model.selectPlayback(chosen.copy(subtitleIndex = null)); menu = "" } }
+            item { Choice(none, chosen.subtitleIndex == null) { model.selectPlayback(chosen.copy(subtitleIndex = null)); menu = "" } }
             items(subtitles, key = { it.index }) { track ->
-                Choice(track.trackLabel(), track.index == chosen.subtitleIndex) { model.selectPlayback(chosen.copy(subtitleIndex = track.index)); menu = "" }
+                Choice(track.subtitleLabel(), track.index == chosen.subtitleIndex) { model.selectPlayback(chosen.copy(subtitleIndex = track.index)); menu = "" }
             }
         }
     }
 }
 
+/**
+ * One line of the detail screen's selection: its name, then the value, a button when [onClick] is set. With [tall],
+ * plain values take the button's height and padding so every line has the same height and the values line up.
+ */
 @Composable
-private fun TrackButton(icon: androidx.compose.ui.graphics.vector.ImageVector, name: String, label: String, onClick: () -> Unit) {
-    PlysButton(onClick = onClick, modifier = Modifier.widthIn(max = 340.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-        Icon(icon, contentDescription = name, modifier = Modifier.size(18.dp), tint = androidx.tv.material3.LocalContentColor.current)
-        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
-        Text(label.ifEmpty { name }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+private fun SelectionLine(name: String, value: String, tall: Boolean, onClick: (() -> Unit)? = null) {
+    val height = if (tall) 40.dp else 24.dp
+    androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().height(height), verticalAlignment = Alignment.CenterVertically) {
+        Text(name, modifier = Modifier.width(120.dp), style = MaterialTheme.typography.bodyMedium, color = Plys.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The button is named after its line, for accessibility and the UI tests.
+        if (onClick != null) PlysButton(onClick = onClick, modifier = Modifier.height(height).widthIn(max = 520.dp).semantics { contentDescription = name },
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 0.dp)) {
+            Text(value, modifier = Modifier.align(Alignment.CenterVertically), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+        }
+        else Text(value, modifier = Modifier.widthIn(max = 520.dp).padding(horizontal = if (tall) 15.dp else 0.dp),
+            maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, color = Plys.Text)
     }
 }
 

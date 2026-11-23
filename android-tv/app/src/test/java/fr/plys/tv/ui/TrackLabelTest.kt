@@ -4,28 +4,35 @@ import fr.plys.tv.data.MediaTrack
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.util.Locale
 
 class TrackLabelTest {
     @Test
-    fun shortLabelKeepsShortLanguageAndTitleOnly() {
+    fun trackLabelNamesTheLanguageInFullLikeTheWeb() {
         val track = MediaTrack(index = 1, language = "fre", title = "VFF", codec = "eac3", channels = 6)
-        assertEquals("fre · VFF · EAC3 · 5.1", track.trackLabel())
-        assertEquals("FR · VFF", track.shortLabel())
+        assertEquals("Français · EAC3 · 5.1", track.trackLabel(Locale.FRENCH))
+        assertEquals("French · EAC3 · 5.1", track.trackLabel(Locale.ENGLISH))
+        assertEquals("Anglais · DTS · 5.1", MediaTrack(index = 0, language = "eng", codec = "dts", channels = 6).trackLabel(Locale.FRENCH))
     }
 
     @Test
-    fun shortLabelUsesLanguageAlone() {
-        assertEquals("EN", MediaTrack(index = 0, language = "eng", codec = "aac", channels = 2).shortLabel())
+    fun trackLabelFallsBackToTitleThenQuestionMark() {
+        assertEquals("VFF · AC3 · 5.1", MediaTrack(index = 0, language = "und", title = "VFF", codec = "ac3", channels = 6).trackLabel(Locale.FRENCH))
+        assertEquals("? · HDMV_PGS_SUBTITLE", MediaTrack(index = 2, codec = "hdmv_pgs_subtitle").trackLabel(Locale.FRENCH))
     }
 
     @Test
-    fun shortLabelUsesTitleAloneWhenLanguageUndetermined() {
-        assertEquals("Commentary", MediaTrack(index = 0, language = "und", title = "Commentary", codec = "aac", channels = 2).shortLabel())
+    fun languageNameUsesTheDeviceLanguage() {
+        assertEquals("Allemand", languageName("ger", Locale.FRENCH))
+        assertEquals("Japanese", languageName("jpn", Locale.ENGLISH))
+        assertEquals("Français (Canada)", languageName("fr-CA", Locale.FRENCH))
     }
 
     @Test
-    fun shortLabelFallsBackToFullLabelWhenUnnamed() {
-        assertEquals("#3 · AAC · 2.0", MediaTrack(index = 2, codec = "aac", channels = 2).shortLabel())
+    fun languageNameKeepsUnknownCodesAndSkipsUndetermined() {
+        assertEquals("qaa", languageName("qaa", Locale.FRENCH))
+        assertNull(languageName("und", Locale.FRENCH))
+        assertNull(languageName(" ", Locale.FRENCH))
     }
 
     @Test

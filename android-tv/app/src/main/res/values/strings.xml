@@ -5,6 +5,8 @@
     <string name="audio">Audio</string>
     <string name="subtitles">Subtitles</string>
     <string name="no_subtitles">Off</string>
+    <string name="none">None</string>
+    <string name="forced">forced</string>
     <string name="cast">Cast</string>
     <string name="error_home_unavailable">This server does not provide the home screen API. Check its address and update Plys Server. Catalogs remain available.</string>
     <string name="title_count_pending">Titles: —</string>

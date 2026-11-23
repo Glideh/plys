@@ -95,7 +95,7 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                             Modifier.width(172.dp).height(if (item.posterUrl == null && item.thumbUrl != null) 97.dp else 258.dp)
                                 .shadow(20.dp, Plys.Card).clip(Plys.Card).border(1.dp, Plys.Hairline, Plys.Card), source)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Header(item, screen) { model.openItem(it.id, source) }
+                            Header(item) { model.openItem(it.id, source) }
                             item.overview?.takeIf { it.isNotBlank() }?.let { Synopsis(it) { synopsis = true } }
                             // One line whatever the actions: once a title is started the play button turns into "Resume at…"
                             // and a restart button joins it, which squeezed the last buttons until their labels wrapped and
@@ -152,7 +152,7 @@ private fun Backdrop(path: String?, model: CatalogViewModel, screen: Screen.Deta
 }
 
 @Composable
-private fun Header(item: ItemDetail, screen: Screen.Detail, openAncestor: (Ancestor) -> Unit) {
+private fun Header(item: ItemDetail, openAncestor: (Ancestor) -> Unit) {
     if (item.ancestors.isNotEmpty()) Breadcrumb(item.ancestors, openAncestor)
     Text(detailTitle(item), style = MaterialTheme.typography.displaySmall, color = Plys.TextStrong, maxLines = 2, overflow = TextOverflow.Ellipsis)
     item.originalTitle?.takeIf { it.isNotBlank() && it != item.title }?.let {
@@ -176,7 +176,6 @@ private fun Header(item: ItemDetail, screen: Screen.Detail, openAncestor: (Ances
     item.tagline?.takeIf { it.isNotBlank() }?.let {
         Text(it, style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = Plys.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-    VersionSummary(screen.playable, screen.selection)
 }
 
 /**
