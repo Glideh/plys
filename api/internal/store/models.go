@@ -77,6 +77,7 @@ type Item struct {
 	DirectorMembers   []byte
 	LogoPath          *string
 	LockedFields      []string
+	CollectionID      *uuid.UUID
 }
 
 type Library struct {

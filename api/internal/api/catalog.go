@@ -342,6 +342,8 @@ type itemDetailDTO struct {
 	SubtitleSearch bool `json:"subtitleSearch"`
 	// Folder is the deepest directory holding every file of the item and its children, only sent to local admins.
 	Folder string `json:"folder,omitempty"`
+	// Collection lists the other titles an administrator grouped with this movie or video that the caller can read.
+	Collection []itemCardDTO `json:"collection"`
 	// EditedFields lists the fields an administrator edited, which metadata refreshes keep; only sent to local admins.
 	EditedFields []string `json:"editedFields,omitempty"`
 }
@@ -401,6 +403,10 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if dto.Children, err = s.children(r, it.ID); err != nil {
+		httpx.InternalError(w, r, err)
+		return
+	}
+	if dto.Collection, err = s.collectionCards(ctx, it); err != nil {
 		httpx.InternalError(w, r, err)
 		return
 	}

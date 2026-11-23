@@ -9,6 +9,7 @@ import { loadLocalServer, localServerId, serverApi, serverFromQuery, serverQuery
 import { watchlistApi } from '@/api/watchlist'
 import BaseButton from '@/components/BaseButton.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
+import CollectionDialog from '@/components/CollectionDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ItemEditDialog from '@/components/ItemEditDialog.vue'
 import ItemInfoDialog from '@/components/ItemInfoDialog.vue'
@@ -40,6 +41,7 @@ const choices = ref<VersionChoice[]>([])
 const versionId = ref<string>('')
 const matchOpen = ref(false)
 const editOpen = ref(false)
+const collectionOpen = ref(false)
 const revertOpen = ref(false)
 const infoOpen = ref(false)
 const refreshing = ref(false)
@@ -179,6 +181,8 @@ const multiServer = computed(() => new Set(choices.value.map((c) => c.server.ser
 // Directors or creators, with their TMDB ID when known; older servers only send the names.
 const directorPeople = computed(() => (item.value?.directorCredits?.length ? item.value.directorCredits : (item.value?.directors ?? []).map((name) => ({ name, id: undefined }))))
 const hasOwnMetadata = computed(() => ['movie', 'series', 'video'].includes(item.value?.kind ?? ''))
+// Movies and videos can be grouped with other titles in a collection.
+const collectable = computed(() => item.value?.kind === 'movie' || item.value?.kind === 'video')
 const backdrop = computed(() => item.value?.backdropUrl ?? (item.value?.kind === 'episode' ? item.value.thumbUrl : null))
 // Seasons and episodes have no backdrop of their own: the series' one is not loaded to keep a single request.
 const poster = computed(() => (item.value?.kind === 'episode' || item.value?.kind === 'video' ? null : item.value?.posterUrl))
@@ -461,6 +465,9 @@ async function onMatched(merged: boolean) {
                   <button type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="editOpen = true">
                     {{ t('catalog.editMetadata') }}
                   </button>
+                  <button v-if="collectable" type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="collectionOpen = true">
+                    {{ t('catalog.collection') }}
+                  </button>
                   <button v-if="item.kind !== 'video'" type="button" role="menuitem" class="block w-full rounded-md px-3 py-2 text-left text-sm text-slate-300 transition hover:bg-white/5 hover:text-slate-100" @click="matchOpen = true">
                     {{ t('catalog.fixMatch') }}
                   </button>
@@ -585,6 +592,22 @@ async function onMatched(merged: boolean) {
             </li>
           </ul>
         </section>
+
+        <section v-if="item.collection?.length">
+          <h2 class="mb-4 text-xl font-semibold">{{ t('catalog.collection') }}</h2>
+          <ul class="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4 lg:grid-cols-6">
+            <li v-for="c in item.collection" :key="c.id">
+              <PosterCard
+                :to="{ name: 'item', params: { id: c.id }, query: serverQuery(server) }"
+                :title="c.title"
+                :subtitle="c.year ? String(c.year) : null"
+                :image-url="c.posterUrl"
+                :landscape="c.kind === 'video'"
+                :watched="c.watched"
+              />
+            </li>
+          </ul>
+        </section>
       </div>
 
       <MatchDialog
@@ -599,6 +622,7 @@ async function onMatched(merged: boolean) {
       />
       <template v-if="auth.isAdmin && !server && hasOwnMetadata">
         <ItemEditDialog v-model:open="editOpen" :item="item" @saved="load" @revert="askRevert" />
+        <CollectionDialog v-if="collectable" v-model:open="collectionOpen" :item-id="item.id" :title="item.title" @saved="load" />
         <ConfirmDialog
           v-model:open="revertOpen"
           :title="t('catalog.editRevert')"

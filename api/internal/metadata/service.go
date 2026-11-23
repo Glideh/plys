@@ -737,6 +737,9 @@ func mergeInto(ctx context.Context, q *store.Queries, winner, loser uuid.UUID) e
 	if err := q.MoveItemFiles(ctx, store.MoveItemFilesParams{FromItem: &loser, ToItem: &winner}); err != nil {
 		return err
 	}
+	if err := q.InheritCollection(ctx, store.InheritCollectionParams{Winner: winner, Loser: loser}); err != nil {
+		return err
+	}
 	return q.DeleteItem(ctx, loser)
 }
 

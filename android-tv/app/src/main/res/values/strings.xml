@@ -127,6 +127,7 @@
     <string name="mark_unwatched">Mark as unwatched</string>
     <string name="ends_at">Ends at %1$s</string>
     <string name="directors_title">Directed by</string>
+    <string name="collection">Collection</string>
     <string name="creators_title">Created by</string>
     <string name="seek_by">%1$s s</string>
     <string name="brand">Plys</string>

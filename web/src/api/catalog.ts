@@ -195,6 +195,17 @@ export interface ItemDetail {
   folder?: string
   /** Fields an administrator edited by hand, only sent to admins. */
   editedFields?: EditedField[]
+  /** Other titles grouped with this movie or video that the user can read, in release order. Absent from older servers. */
+  collection?: ItemCard[]
+}
+
+/** A title of a collection, as the administrator editing it sees it. */
+export interface CollectionMember {
+  id: string
+  kind: ItemKind
+  title: string
+  year: number | null
+  posterUrl: string | null
 }
 
 export interface PlayTarget {
@@ -255,6 +266,14 @@ export const catalogApi = {
   editMetadata: (id: string, changes: MetadataEdit) => api<unknown>(`/items/${id}/metadata`, { method: 'PATCH', body: changes }),
   /** Unlocks the edited fields and fetches the metadata again. */
   revertMetadata: (id: string) => api<{ merged?: boolean }>(`/items/${id}/metadata`, { method: 'DELETE' }),
+  /** Every other title of the item's collection, for an administrator. */
+  collection: (id: string) => api<{ items: CollectionMember[] }>(`/items/${id}/collection`).then((r) => r.items),
+  /** Movies and videos of every library that can join the item's collection. */
+  searchCollection: (id: string, query: string, signal?: AbortSignal) =>
+    api<{ items: CollectionMember[] }>(`/items/${id}/collection/search?${new URLSearchParams({ query })}`, { signal }).then((r) => r.items),
+  /** Groups the item with these titles; an empty list takes the item out of its collection. */
+  setCollection: (id: string, itemIds: string[]) =>
+    api<{ items: CollectionMember[] }>(`/items/${id}/collection`, { method: 'PUT', body: { itemIds } }).then((r) => r.items),
   /** Uploads a JPEG or PNG poster for a movie or series. */
   setPoster: (id: string, file: Blob) => api<unknown>(`/items/${id}/poster`, { method: 'PUT', body: file }),
 }

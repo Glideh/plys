@@ -133,6 +133,7 @@ fun DetailScreen(screen: Screen.Detail, model: CatalogViewModel) {
                         model.openPerson(item, "creators", it)
                     }
                 }
+                if (item.collection.isNotEmpty()) item("collection") { CollectionRow(item, model, source) }
             }
         }
     }
@@ -233,6 +234,25 @@ private fun ChildrenRow(item: ItemDetail, model: CatalogViewModel, source: Serve
                         onPlay = { model.playItem(child.id, source) },
                     ) { model.openItem(child.id, source) }
                 }
+            }
+        }
+    }
+}
+
+/** The other titles of the movie's or video's collection, like the web's section at the bottom of the page. */
+@Composable
+private fun CollectionRow(item: ItemDetail, model: CatalogViewModel, source: ServerRef?) {
+    Column {
+        RailTitle(R.string.collection)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
+            items(item.collection, key = { it.id }) { card ->
+                val landscape = card.kind == "video"
+                PosterTile(
+                    title = card.title, image = card.posterUrl, api = model.api, source = source,
+                    modifier = Modifier.width(if (landscape) 248.dp else 132.dp), landscape = landscape,
+                    subtitle = card.year?.toString(), watched = card.watched,
+                    onPlay = { model.playItem(card.id, source) },
+                ) { model.openItem(card.id, source) }
             }
         }
     }

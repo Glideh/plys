@@ -1295,6 +1295,77 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /items/{id}/collection:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getItemCollection
+      summary: List every other title of a movie's or video's collection (admin)
+      description: Unlike `ItemDetail.collection`, titles of every library are listed, even when their files are missing.
+      responses:
+        "200":
+          description: The other titles of the collection, in release order; empty when the item has none
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CollectionMember" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setItemCollection
+      summary: Group a movie or video with other titles in a collection (admin)
+      description: |
+        The item and `itemIds` become one collection, whose titles list one another on their page. Titles of the
+        item's collection that are not listed leave it, listed titles that belonged to another collection move to
+        this one, and a collection left with a single title is dissolved. An empty `itemIds` takes only the item
+        out of its collection. Only top-level movies and videos can be grouped (`400 validation` otherwise).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [itemIds]
+              properties:
+                itemIds: { type: array, maxItems: 99, items: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The other titles of the collection, as `getItemCollection` returns them
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CollectionMember" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /items/{id}/collection/search:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: searchItemCollectionCandidates
+      summary: Find the movies and videos of every library that can join a title's collection (admin)
+      parameters:
+        - { name: query, in: query, required: true, schema: { type: string, minLength: 2 }, description: Part of the title or original title }
+      responses:
+        "200":
+          description: Up to 20 matching titles, the item itself excluded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/CollectionMember" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
   /items/{id}/poster:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1781,6 +1852,15 @@ components:
     ItemKind:
       type: string
       enum: [movie, series, season, episode, video]
+    CollectionMember:
+      type: object
+      required: [id, kind, title, year, posterUrl]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [movie, video] }
+        title: { type: string }
+        year: { type: [integer, "null"] }
+        posterUrl: { type: [string, "null"], description: Poster, or thumbnail of a video }
     ItemCard:
       type: object
       required: [id, kind, title, year, posterUrl, rating, matchStatus]
@@ -1919,6 +1999,10 @@ components:
         folder:
           type: string
           description: Deepest folder on the server (inside its media mount) holding every file of the item and of the items below it (seasons, episodes). Only sent to local admins, never to regular users nor to federated peers; omitted when the item has no file.
+        collection:
+          type: array
+          items: { $ref: "#/components/schemas/ItemCard" }
+          description: Other titles an administrator grouped with this movie or video (`setItemCollection`) that the caller can read and that have a file, in release order. Absent from older servers.
         editedFields:
           type: array
           items: { type: string, enum: [title, originalTitle, releaseDate, tagline, overview, directors, cast, poster] }

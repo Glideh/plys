@@ -320,6 +320,8 @@ data class ItemDetail(
     val sources: List<ServerRef> = emptyList(),
     /** Subtitles can be searched online for the versions of this item. */
     val subtitleSearch: Boolean = false,
+    /** Other titles an administrator grouped with this movie or video, in release order; absent from older servers. */
+    val collection: List<ItemCard> = emptyList(),
 ) {
     /** Movies, series and videos can be watchlisted; seasons, episodes and parts cannot. */
     val canWatchlist: Boolean get() = ancestors.isEmpty() && kind in setOf("movie", "series", "video")
