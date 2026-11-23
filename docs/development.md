@@ -85,3 +85,7 @@ NAMESPACE=myaccount ./scripts/release.sh   # publish under another Docker Hub ac
 To try a local build, run `PLYS_VERSION=dev docker compose -f deploy/compose/compose.prod.yaml up -d` with a `.env` as in the README.
 
 A major version can break the compatibility between paired servers; paired server versions are shown on the servers page.
+
+## Database
+
+- [Database schema](database-schema.md)
