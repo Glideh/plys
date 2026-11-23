@@ -1,5 +1,5 @@
-# Docker: builds glide/plys-api and glide/plys-web with docker-bake.hcl (same tags, labels, SBOM and
-# provenance as release.sh) and pushes them to Docker Hub.
+# Docker: builds glide/plys-api and glide/plys-web with docker/bake.hcl (same tags, labels, SBOM and
+# provenance as scripts/release.sh) and pushes them to Docker Hub.
 # Called by the Release workflow. Docker Hub credentials are the DOCKERHUB_USERNAME and DOCKERHUB_TOKEN
 # secrets of the `release` environment.
 name: Docker
@@ -33,7 +33,7 @@ jobs:
           REVISION: ${{ github.sha }}
         with:
           source: .
-          files: docker-bake.hcl
+          files: docker/bake.hcl
           push: true
           set: |
             api.cache-from=type=gha,scope=api

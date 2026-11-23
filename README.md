@@ -14,6 +14,10 @@ Plys is a self-hosted media library for your own movies, series and other videos
 - **Android TV app**, which updates itself from the GitHub releases.
 - **Languages**: English, French and Brazilian Portuguese.
 
+## Documentation
+
+- [Database schema](docs/database-schema.md)
+
 ## Installation
 
 You need a machine with [Docker](https://docs.docker.com/engine/install/) and Docker Compose.
@@ -243,7 +247,7 @@ plys.example.com {
 
 ## Contributing
 
-To run Plys from the sources, run the tests or publish a release, see [DEVELOPMENT.md](DEVELOPMENT.md).
+To run Plys from the sources, run the tests or publish a release, see [docs/development.md](docs/development.md).
 
 ## License
 

@@ -1,5 +1,5 @@
 # Release: publishes the version in VERSION from master.
-#   - started by the Tests workflow once it has promoted a develop commit with a new VERSION (bump.sh) to
+#   - started by the Tests workflow after a develop commit with a new VERSION has been promoted to master;
 #     master, or manually on master to re-run the current VERSION;
 #   - the tests already passed on that exact commit, so it builds the APK and pushes the Docker images, then
 #     creates or moves the x.y.z tag to this commit, then creates or updates the GitHub release (notes =

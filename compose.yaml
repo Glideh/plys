@@ -1,4 +1,4 @@
-# Development environment: `docker compose up`. Production: compose.prod.yaml.
+# Development environment: `docker compose up`. Production: deploy/compose/compose.prod.yaml.
 # Distinct project name keeps dev images and volumes apart from production ones.
 name: toto-dev
 

@@ -1,6 +1,6 @@
 # Developing Plys
 
-This page is for contributors and maintainers. To install Plys, see the [README](README.md).
+This page is for contributors and maintainers. To install Plys, see the [README](../README.md).
 
 ## Development setup
 
@@ -46,11 +46,11 @@ docker compose --profile android run --rm android-build :app:assembleDebug
 docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
 ```
 
-See the [Android TV README](android-tv/README.md) for the emulator, installing on a TV and signing.
+See the [Android TV README](../android-tv/README.md) for the emulator, installing on a TV and signing.
 
 ### Federation
 
-`docker compose -f compose.peer.yaml up -d` starts a second, independent instance on the same machine (front-end :5175, API :8081) to test server pairing.
+`docker compose -f deploy/compose/compose.peer.yaml up -d` starts a second, independent instance on the same machine (front-end :5175, API :8081) to test server pairing.
 
 ## Layout
 
@@ -58,30 +58,30 @@ See the [Android TV README](android-tv/README.md) for the emulator, installing o
 - `web/`: Vue 3, Vite, TypeScript, Pinia, Tailwind and vue-i18n. Translations in `web/src/i18n` (`en`, `fr`, `pt-BR`).
 - `android-tv/`: Android TV client (Kotlin, Compose for TV, Media3).
 - `docs/openapi.yaml`: the API contract shared by the web and Android clients.
-- `compose.minimal.yaml` and `compose.prod.yaml`: the two end-user compose files, embedded verbatim in the README as its first and second `yaml` blocks. Update the README when editing them: the release checks refuse to publish if they differ.
+- `deploy/compose/compose.minimal.yaml` and `deploy/compose/compose.prod.yaml`: the two end-user compose files, embedded verbatim in the README as its first and second `yaml` blocks. Update the README when editing them: the release checks refuse to publish if they differ.
 
 ## Releasing
 
 Commit messages follow `Area - Summary` (for example `Release - 0.7.4`).
 
-1. On `develop`, run `./bump.sh [patch|minor|major]` (minor by default). It writes the version to `VERSION` and to the files that repeat it (web package, OpenAPI, `.env.example`, README, Android `versionName`/`versionCode`).
+1. On `develop`, run `./scripts/bump.sh [patch|minor|major]` (minor by default). It writes the version to `VERSION` and to the files that repeat it (web package, OpenAPI, `.env.example`, README, Android `versionName`/`versionCode`).
 2. Commit and push to `develop`.
 3. The **Tests** workflow runs. When it passes and `VERSION` differs from `master`'s, it fast-forwards `master` to that commit and starts the **Release** workflow, which builds the Android TV APK and the Docker images, tags `x.y.z` and creates the GitHub release with the APK and notes grouped by area.
 
 Never commit to `master` directly. The Release workflow can also be started by hand on `master` to re-run the current version.
 
-Docker tags are `x.y.z`, `x.y` and `latest`, plus `x` from 1.0.0 on. Images are built for `linux/amd64` with `docker-bake.hcl`, with provenance and SBOM attestations.
+Docker tags are `x.y.z`, `x.y` and `latest`, plus `x` from 1.0.0 on. Images are built for `linux/amd64` with `docker/bake.hcl`, with provenance and SBOM attestations.
 
 ### Manual fallback
 
 Log in to Docker Hub (`docker login`), then, from a clean working tree:
 
 ```sh
-./release.sh           # builds both images at the version in VERSION and pushes the tags, after confirmation
-./release.sh --local   # builds :dev into the local Docker only
-NAMESPACE=myaccount ./release.sh   # publish under another Docker Hub account
+./scripts/release.sh           # builds both images at the version in VERSION and pushes the tags, after confirmation
+./scripts/release.sh --local   # builds :dev into the local Docker only
+NAMESPACE=myaccount ./scripts/release.sh   # publish under another Docker Hub account
 ```
 
-To try a local build, run `PLYS_VERSION=dev docker compose -f compose.prod.yaml up -d` with a `.env` as in the README.
+To try a local build, run `PLYS_VERSION=dev docker compose -f deploy/compose/compose.prod.yaml up -d` with a `.env` as in the README.
 
 A major version can break the compatibility between paired servers; paired server versions are shown on the servers page.

@@ -1,6 +1,7 @@
 # Builds the production images.
-#   docker buildx bake --load                          local build, tagged :dev
-#   VERSION=1.2.3 docker buildx bake --push            publish (after `docker login`), see release.sh
+#   docker buildx bake -f docker/bake.hcl --load       local build, tagged :dev
+#   VERSION=1.2.3 docker buildx bake -f docker/bake.hcl --push
+#   Publish after `docker login`; see scripts/release.sh.
 variable "NAMESPACE" {
   default = "glide"
 }

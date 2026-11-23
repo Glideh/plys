@@ -1,5 +1,5 @@
 # Second dev instance on the same machine, for federation tests.
-# Usage: docker compose -f compose.peer.yaml up -d
+# Usage: docker compose -f deploy/compose/compose.peer.yaml up -d
 # Front: http://<LAN-IP>:5175, API: http://<LAN-IP>:8081. Own database, own identity.
 name: toto-peer
 
@@ -12,7 +12,7 @@ services:
       POSTGRES_DB: toto
     volumes:
       - peer-db-data:/var/lib/postgresql/data
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ../../docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U toto -d toto"]
       interval: 2s
@@ -22,7 +22,7 @@ services:
   api:
     image: toto-peer-api:dev
     build:
-      context: ./api
+      context: ../../api
       target: dev
     user: "${UID:-1000}:${GID:-1000}"
     command: air -c .air.toml
@@ -33,8 +33,8 @@ services:
       PLYS_FEDERATION_REQUIRE_HTTPS: "false"
       LOG_LEVEL: debug
     volumes:
-      - ./api:/src
-      - ./VERSION:/version:ro
+      - ../../api:/src
+      - ../../VERSION:/version:ro
       - peer-go-cache:/go-cache
       - peer-api-cache:/cache
       - /media/volume2:/media:ro
@@ -47,14 +47,14 @@ services:
   web:
     image: toto-peer-web:dev
     build:
-      context: ./web
+      context: ../../web
       target: dev
     user: "${UID:-1000}:${GID:-1000}"
     command: sh -c "npm install && npm run dev"
     environment:
       API_PROXY_TARGET: http://api:8080
     volumes:
-      - ./web:/app
+      - ../../web:/app
       - peer-web-node-modules:/app/node_modules
     ports:
       - "5175:5173"

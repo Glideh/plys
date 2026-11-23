@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Bumps the version in VERSION and in every file that repeats it, following semver.
-#   ./bump.sh [patch|minor|major]   default: minor
+#   ./scripts/bump.sh [patch|minor|major]   default: minor
 # Does not commit. Warns when README.md and the end-user compose files differ.
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 
 part="${1:-minor}"
 case "$part" in
@@ -41,11 +41,11 @@ sed -i "s/versionName = \"[^\"]*\"/versionName = \"$new\"/; s/versionCode = $cod
 echo "$new" > VERSION
 
 readme_block() { awk -v n="$1" '/^```yaml$/{c++; f=(c==n); next} /^```$/{f=0} f' README.md; }
-for pair in "1:compose.minimal.yaml" "2:compose.prod.yaml"; do
+for pair in "1:deploy/compose/compose.minimal.yaml" "2:deploy/compose/compose.prod.yaml"; do
   if [[ "$(readme_block "${pair%%:*}")" != "$(cat "${pair#*:}")" ]]; then
-    echo "WARNING: README.md differs from ${pair#*:}. release.sh will refuse to publish until they match." >&2
+    echo "WARNING: README.md differs from ${pair#*:}. scripts/release.sh will refuse to publish until they match." >&2
   fi
 done
 
 echo "Version $current -> $new"
-echo "Next: review with git diff, commit, then ./release.sh"
+echo "Next: review with git diff, commit, then ./scripts/release.sh"
