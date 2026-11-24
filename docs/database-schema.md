@@ -18,9 +18,10 @@ erDiagram
     USERS o|--o{ EXTERNAL_SUBTITLES : downloads
     MEDIA_FILES ||--o{ EXTERNAL_SUBTITLES : has
     USERS o|--o{ INVITATIONS : creates
+    USERS o|--o{ DEVICE_LOGINS : approves
     LIBRARIES ||--o{ LIBRARY_PATHS : includes
     LIBRARIES ||--o{ ITEMS : owns
-    ITEMS ||--o{ ITEMS : parents
+    ITEMS o|--o{ ITEMS : parents
     LIBRARIES ||--o{ MEDIA_FILES : owns
     ITEMS o|--o{ MEDIA_FILES : identifies
 
@@ -70,6 +71,8 @@ erDiagram
         text imdb_id
         real rating
         real imdb_rating
+        integer imdb_votes
+        uuid collection_id
         text match_status
         integer enrichment_version
     }
@@ -131,6 +134,16 @@ erDiagram
         integer failed_attempts
         timestamp expires_at
     }
+    DEVICE_LOGINS {
+        uuid id PK
+        bytea device_code_hash UK
+        text user_code UK
+        text device_name
+        uuid user_id FK
+        timestamp approved_at
+        timestamp created_at
+        timestamp expires_at
+    }
 ```
 
 `PK` means primary key, `FK` means foreign key, and `UK` means a unique key or index.
@@ -160,6 +173,8 @@ Maps a library to one or more resolved filesystem paths. A path can belong to on
 ### `items`
 
 The catalogue tree. A single table represents movies, series, seasons, episodes, and personal videos. `parent_id` forms the series-to-season-to-episode hierarchy. The `library_id`, sibling identity, kind, and `match_key` prevent duplicate nodes during rescans.
+
+Items with the same `collection_id` belong to the same collection; the identifier does not reference a separate table.
 
 This table also stores enriched metadata from TMDB, including identifiers, titles, overview, release data, runtime, rating, cast, crew, artwork paths, genres, and filter dimensions. `locked_fields` preserves administrator edits when metadata is refreshed. `enrichment_version` records the latest completed metadata migration for the item. `imdb_rating` and `imdb_votes` hold the IMDb public rating, refreshed daily from IMDb's free `title.ratings.tsv.gz` dataset through `imdb_id`.
 
@@ -197,9 +212,13 @@ Stores downloaded online subtitles for a media file. The WebVTT payload is kept 
 
 Stores short-lived account invitations. Only hashes of the invitation token and PIN are persisted. Failed attempts are tracked, and `expires_at` controls validity. Deleting the administrator who created an invitation keeps the invitation but sets `created_by` to null.
 
+### `device_logins`
+
+Stores temporary sign-in requests initiated by a TV and approved by a user on another device. Only the hash of the TV's secret device code is stored. The user and approval time are optional until approval; the request expires or is deleted when the TV retrieves its session. Deleting the approving user deletes the request.
+
 ## Supporting Database Features
 
-- UUID primary keys use `gen_random_uuid()`.
+- Most UUID primary keys default to `gen_random_uuid()`; `peers.id` is supplied by the paired server.
 - Destructive catalogue relationships generally use `ON DELETE CASCADE` so a deleted library or parent item cannot leave orphan records.
 - `search_fold(text)` provides accent-insensitive text search through PostgreSQL `unaccent`.
 - `media_resolution(jsonb)` and `media_audio_formats(jsonb)` derive technical filters from probed stream metadata.
