@@ -33,6 +33,8 @@ export type ApiErrorCode =
   | 'public_url_required'
   | 'invitation_invalid'
   | 'invalid_pin'
+  | 'device_login_invalid'
+  | 'authorization_pending'
   | 'internal'
   | 'network'
 

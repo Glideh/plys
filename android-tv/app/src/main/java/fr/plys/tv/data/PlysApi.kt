@@ -27,7 +27,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 enum class Failure {
-    URL, NETWORK, CREDENTIALS, SESSION, SETUP, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, SUBTITLES_QUOTA,
+    URL, NETWORK, CREDENTIALS, SESSION, SETUP, DEVICE_LOGIN, BUSY, RATE_LIMITED, NOT_FOUND, HOME_UNAVAILABLE, SUBTITLES, SUBTITLES_QUOTA,
     SUBTITLES_ONLINE, STORAGE, RESPONSE, SERVER,
 }
 
@@ -96,6 +96,14 @@ class PlysApi(
     }
 
     suspend fun login(server: String, username: String, password: String) = locked {
+        connect(server)
+        apply(decode<Session>(request(
+            "auth/login", "POST", json.encodeToString(LoginRequest(username, password)), false,
+        )))
+    }
+
+    /** Points the client at [server], forgetting what belonged to the previous one, and checks it is set up. */
+    private suspend fun connect(server: String) {
         peerTokens.clear()
         filterLabels.clear()
         synchronized(filterCache) { filterCache.clear() }
@@ -103,9 +111,42 @@ class PlysApi(
         base = serverUrl(server)
         val setup = decode<SetupStatus>(request("setup/status", authenticated = false))
         if (setup.needsSetup) throw ClientException(Failure.SETUP)
-        apply(decode<Session>(request(
-            "auth/login", "POST", json.encodeToString(LoginRequest(username, password)), false,
-        )))
+    }
+
+    /** Starts a sign-in approved from a phone; [pollDeviceLogin] then waits for the approval. */
+    suspend fun startDeviceLogin(server: String): DeviceLogin = locked {
+        connect(server)
+        val start = decode<DeviceLoginStart>(request("auth/device", "POST", json.encodeToString(DeviceLoginRequest()), false))
+        val origin = checkNotNull(base)
+        // Without a public URL the phone opens the address the TV uses, which reaches the same server.
+        val verification = start.verificationUrl.takeIf { it.isNotBlank() }?.toHttpUrlOrNull()
+            ?: origin.newBuilder().addPathSegment("link").addQueryParameter("code", start.userCode).build()
+        DeviceLogin(
+            deviceCode = start.deviceCode,
+            userCode = start.userCode,
+            verificationUrl = verification.toString(),
+            manualUrl = verification.newBuilder().query(null).build().toString(),
+            intervalMillis = start.interval.coerceIn(1, 60) * 1000L,
+        )
+    }
+
+    /**
+     * Asks once whether the phone approved [login]: true once signed in, false while waiting.
+     * Throws [Failure.DEVICE_LOGIN] when the request expired, was declined or already used: the server tells, so the
+     * TV's own clock, often wrong, never decides.
+     */
+    suspend fun pollDeviceLogin(login: DeviceLogin): Boolean = locked {
+        val body = try {
+            request("auth/device/token", "POST", json.encodeToString(DeviceTokenRequest(login.deviceCode)), false)
+        } catch (error: ClientException) {
+            when (error.status) {
+                409 -> return@locked false
+                404 -> throw ClientException(Failure.DEVICE_LOGIN, error.status, error)
+                else -> throw error
+            }
+        }
+        apply(decode<Session>(body))
+        true
     }
 
     suspend fun logout() = locked {

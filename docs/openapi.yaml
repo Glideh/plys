@@ -140,6 +140,139 @@ paths:
       responses:
         "204": { description: Logged out }
 
+  /auth/device:
+    post:
+      operationId: startDeviceLogin
+      summary: Start a sign-in approved from a phone (TV)
+      description: >
+        The TV shows `userCode` and a QR code of `verificationUrl`, then polls `deviceLoginToken` with `deviceCode`
+        every `interval` seconds. The request expires after 10 minutes and opens at most one session. Limited to 10
+        requests per minute and client address.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceName: { type: string, maxLength: 100 }
+      responses:
+        "201":
+          description: Request started
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deviceCode, userCode, verificationUrl, expiresAt, interval]
+                properties:
+                  deviceCode: { type: string, description: Secret kept by the TV; only it can collect the session }
+                  userCode: { type: string, example: BCDF-GHJK, description: Shown on the TV and checked on the phone }
+                  verificationUrl:
+                    type: string
+                    description: >
+                      `<public URL>/link?code=<userCode>`; empty when the server has no public URL, in which case the
+                      client builds it from the address it uses.
+                  expiresAt: { type: string, format: date-time }
+                  interval: { type: integer, description: Seconds between two polls }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /auth/device/token:
+    post:
+      operationId: deviceLoginToken
+      summary: Poll a phone sign-in and collect its session once approved
+      description: The refresh token is always returned in the body.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deviceCode]
+              properties:
+                deviceCode: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Session" }
+        "409":
+          description: Not approved yet (`authorization_pending`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown, expired, declined or already used (`device_login_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /device-logins/lookup:
+    post:
+      operationId: lookupDeviceLogin
+      summary: Show which device waits for approval
+      description: >
+        The code is accepted in any case, with or without its dash. The lookup, approve and deny calls share a limit of
+        10 per minute and user (doubling blocks up to 15 minutes).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceLoginCode" }
+      responses:
+        "200":
+          description: The request waits for approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [userCode, deviceName, expiresAt]
+                properties:
+                  userCode: { type: string }
+                  deviceName: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        "404":
+          description: Invalid, expired or already used (`device_login_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /device-logins/approve:
+    post:
+      operationId: approveDeviceLogin
+      summary: Sign the waiting device in as the current user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceLoginCode" }
+      responses:
+        "204": { description: Approved; the device receives its session on its next poll }
+        "404":
+          description: Invalid, expired or already used (`device_login_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /device-logins/deny:
+    post:
+      operationId: denyDeviceLogin
+      summary: Decline the waiting device; its next poll answers `device_login_invalid`
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceLoginCode" }
+      responses:
+        "204": { description: Declined }
+        "404":
+          description: Invalid, expired or already used (`device_login_invalid`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
   /me:
     get:
       operationId: getMe
@@ -2189,6 +2322,11 @@ components:
             properties:
               name: { type: string }
               path: { type: string }
+    DeviceLoginCode:
+      type: object
+      required: [userCode]
+      properties:
+        userCode: { type: string, example: BCDF-GHJK }
     Error:
       type: object
       required: [error]

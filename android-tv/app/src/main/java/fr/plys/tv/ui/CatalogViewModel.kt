@@ -8,6 +8,8 @@ import fr.plys.tv.data.personCatalogQuery
 import fr.plys.tv.data.CastMember
 import fr.plys.tv.PlysApplication
 import fr.plys.tv.data.ClientException
+import fr.plys.tv.data.DeviceLogin
+import fr.plys.tv.data.Failure
 import fr.plys.tv.data.ItemDetail
 import fr.plys.tv.data.ItemPage
 import fr.plys.tv.data.Library
@@ -97,6 +99,8 @@ data class CatalogState(
     val searchFocusRequested: Boolean = false,
     /** Version of the signed-in server, empty until it answered. */
     val serverVersion: String = "",
+    /** A sign-in waiting for a phone to approve it: the sign-in screen shows its code and QR code. */
+    val phoneLogin: DeviceLogin? = null,
 )
 
 private const val RECENT_ITEMS = 20
@@ -113,6 +117,7 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     private var activeJob: Job? = null
     private var countsJob: Job? = null
     private var searchJob: Job? = null
+    private var phoneLoginJob: Job? = null
     private var generation = 0
     /** Every catalog list created and not closed yet; one is closed as soon as no screen reachable with back holds it. */
     private val openLists = mutableSetOf<CatalogList>()
@@ -141,12 +146,54 @@ class CatalogViewModel(application: Application, private val savedState: SavedSt
     }
 
     fun login(server: String, username: String, password: String) = perform(retryable = false) {
+        cancelPhoneLogin()
+        resetForSignIn()
+        api.login(server, username, password)
+        loadHome()
+    }
+
+    /** Shows a code and a QR code, then waits for a signed-in phone to approve the sign-in. */
+    fun loginWithPhone(server: String) = perform(retryable = false) {
+        cancelPhoneLogin()
+        resetForSignIn()
+        val login = api.startDeviceLogin(server)
+        mutableState.value = mutableState.value.copy(phoneLogin = login)
+        phoneLoginJob = viewModelScope.launch { waitForPhone(login) }
+    }
+
+    /** Back to the password form; the pending request simply expires on the server. */
+    fun cancelPhoneLogin() {
+        phoneLoginJob?.cancel()
+        phoneLoginJob = null
+        if (mutableState.value.phoneLogin != null) mutableState.value = mutableState.value.copy(phoneLogin = null)
+    }
+
+    private suspend fun waitForPhone(login: DeviceLogin) {
+        try {
+            do {
+                delay(login.intervalMillis)
+                val approved = try {
+                    api.pollDeviceLogin(login)
+                } catch (error: ClientException) {
+                    // A dropped connection is retried at the next poll: only the server ends the request.
+                    if (error.failure != Failure.NETWORK && error.failure != Failure.BUSY) throw error
+                    false
+                }
+            } while (!approved)
+        } catch (error: ClientException) {
+            mutableState.value = mutableState.value.copy(phoneLogin = null, error = error)
+            return
+        }
+        phoneLoginJob = null
+        mutableState.value = mutableState.value.copy(phoneLogin = null)
+        perform(retryable = false) { loadHome() }
+    }
+
+    private fun resetForSignIn() {
         countsJob?.cancel()
         clearSearch()
         mutableState.value = mutableState.value.copy(catalogCounts = emptyMap(), recent = emptyMap(), serverVersion = "")
         clearCatalogState()
-        api.login(server, username, password)
-        loadHome()
     }
 
     private suspend fun loadHome() {

@@ -10,6 +10,17 @@ import (
 	"github.com/google/uuid"
 )
 
+type DeviceLogin struct {
+	ID             uuid.UUID
+	DeviceCodeHash []byte
+	UserCode       string
+	DeviceName     string
+	UserID         *uuid.UUID
+	ApprovedAt     *time.Time
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+}
+
 type ExternalSubtitle struct {
 	ID              uuid.UUID
 	FileID          uuid.UUID

@@ -18,6 +18,7 @@ export const router = createRouter({
     { path: '/setup', name: 'setup', component: () => import('@/views/SetupView.vue'), meta: { public: true } },
     { path: '/invite', name: 'invite', component: () => import('@/views/InviteView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
+    { path: '/link', name: 'link', component: () => import('@/views/LinkDeviceView.vue') },
     { path: '/setup/metadata', name: 'setup-metadata', component: () => import('@/views/SetupMetadataView.vue'), meta: { admin: true } },
     { path: '/watch/:id', name: 'watch', component: () => import('@/views/PlayerView.vue'), props: true },
     {

@@ -58,6 +58,9 @@ type Server struct {
 	loginUsers *backoffLimiter
 	// Public invitation endpoints, counted per client address.
 	invitationIPs *backoffLimiter
+	// Phone sign-in: requests started per client address, codes checked per signed-in user.
+	deviceLoginIPs   *fixedWindowLimiter
+	deviceLoginUsers *backoffLimiter
 	// Recent peer answers, so that paging through an aggregated listing does not ask every peer again.
 	peerCatalogs *peerCache[[]sourcedCard]
 	peerFilters  *peerCache[catalogOptionsResponse]
@@ -69,15 +72,17 @@ func New(d Deps) *Server {
 		d.HTTPClient = newPeerHTTPClient()
 	}
 	return &Server{
-		Deps:          d,
-		q:             store.New(d.Pool),
-		handshakes:    newFixedWindowLimiter(handshakeLimit, handshakeWindow),
-		loginIPs:      newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
-		loginUsers:    newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
-		invitationIPs: newBackoffLimiter(invitationIPLimit, loginWindow, loginMaxBlock),
-		peerCatalogs:  newPeerCache[[]sourcedCard](peerCatalogCacheTTL, d.PeerCacheTTL, peerCatalogCacheSize),
-		peerFilters:   newPeerCache[catalogOptionsResponse](peerFilterCacheTTL, d.PeerCacheTTL, peerFilterCacheSize),
-		peerHomes:     newPeerCache[homeResponse](peerHomeCacheTTL, d.PeerCacheTTL, peerHomeCacheSize),
+		Deps:             d,
+		q:                store.New(d.Pool),
+		handshakes:       newFixedWindowLimiter(handshakeLimit, handshakeWindow),
+		loginIPs:         newBackoffLimiter(loginIPLimit, loginWindow, loginMaxBlock),
+		loginUsers:       newBackoffLimiter(loginUserLimit, loginWindow, loginMaxBlock),
+		invitationIPs:    newBackoffLimiter(invitationIPLimit, loginWindow, loginMaxBlock),
+		deviceLoginIPs:   newFixedWindowLimiter(deviceLoginStartLimit, time.Minute),
+		deviceLoginUsers: newBackoffLimiter(deviceLoginCheckLimit, loginWindow, loginMaxBlock),
+		peerCatalogs:     newPeerCache[[]sourcedCard](peerCatalogCacheTTL, d.PeerCacheTTL, peerCatalogCacheSize),
+		peerFilters:      newPeerCache[catalogOptionsResponse](peerFilterCacheTTL, d.PeerCacheTTL, peerFilterCacheSize),
+		peerHomes:        newPeerCache[homeResponse](peerHomeCacheTTL, d.PeerCacheTTL, peerHomeCacheSize),
 	}
 }
 
@@ -102,6 +107,8 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/login", s.login)
 		r.Post("/auth/refresh", s.refresh)
 		r.Post("/auth/logout", s.logout)
+		r.Post("/auth/device", s.startDeviceLogin)
+		r.Post("/auth/device/token", s.deviceLoginToken)
 
 		// The token travels in the body, never in the path, so that it stays out of access logs.
 		r.Post("/invitations/lookup", s.lookupInvitation)
@@ -155,6 +162,9 @@ func (s *Server) Routes() http.Handler {
 			r.Put("/me/avatar", s.putAvatar)
 			r.Delete("/me/avatar", s.deleteAvatar)
 			r.Post("/me/federation-token", s.federationToken)
+			r.Post("/device-logins/lookup", s.lookupDeviceLogin)
+			r.Post("/device-logins/approve", s.approveDeviceLogin)
+			r.Post("/device-logins/deny", s.denyDeviceLogin)
 			r.Get("/libraries", s.listLibraries)
 			r.Get("/libraries/{id}", s.getLibrary)
 			r.Get("/libraries/{id}/items", s.listLibraryItems)

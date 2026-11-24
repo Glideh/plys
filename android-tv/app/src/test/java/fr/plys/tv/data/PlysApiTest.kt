@@ -67,6 +67,43 @@ class PlysApiTest {
         assertEquals(StoredSession(server.url("/").toString(), "refresh-1"), store.value)
     }
 
+    @Test fun `phone sign-in polls until approved, then keeps the session`() = runBlocking {
+        json("""{"needsSetup":false}""")
+        json("""{"deviceCode":"secret","userCode":"BCDF-GHJK","verificationUrl":"","expiresAt":"2030-01-01T00:00:00Z","interval":5}""", 201)
+        val login = api.startDeviceLogin(server.url("/").toString())
+        server.takeRequest()
+        val start = server.takeRequest()
+        assertEquals("/api/v1/auth/device", start.path)
+        assertNull(start.getHeader("Authorization"))
+        // Without a public URL the phone is sent to the address the TV uses.
+        assertEquals(server.url("/link?code=BCDF-GHJK").toString(), login.verificationUrl)
+        assertEquals(server.url("/link").toString(), login.manualUrl)
+        assertEquals(5_000L, login.intervalMillis)
+
+        json("""{"error":{"code":"authorization_pending","message":"waiting"}}""", 409)
+        assertFalse(api.pollDeviceLogin(login))
+        assertFalse(api.signedIn)
+        json(session)
+        assertTrue(api.pollDeviceLogin(login))
+        val poll = List(2) { server.takeRequest() }.last()
+        assertEquals("/api/v1/auth/device/token", poll.path)
+        assertEquals("""{"deviceCode":"secret"}""", poll.body.readUtf8())
+        assertTrue(api.signedIn)
+        assertEquals(StoredSession(server.url("/").toString(), "refresh-1"), store.value)
+    }
+
+    @Test fun `phone sign-in uses the public URL and ends when the server forgets the request`() = runBlocking {
+        json("""{"needsSetup":false}""")
+        json("""{"deviceCode":"secret","userCode":"BCDF-GHJK","verificationUrl":"https://plys.example/link?code=BCDF-GHJK","expiresAt":"2030-01-01T00:00:00Z","interval":5}""", 201)
+        val login = api.startDeviceLogin(server.url("/").toString())
+        assertEquals("https://plys.example/link?code=BCDF-GHJK", login.verificationUrl)
+        assertEquals("https://plys.example/link", login.manualUrl)
+        json("""{"error":{"code":"device_login_invalid","message":"expired"}}""", 404)
+        assertEquals(Failure.DEVICE_LOGIN, assertThrows(ClientException::class.java) { runBlocking { api.pollDeviceLogin(login) } }.failure)
+        assertFalse(api.signedIn)
+        assertNull(store.value)
+    }
+
     @Test fun `auto next preference is read from the session and saved on the server`() = runBlocking {
         login()
         assertFalse(api.autoplayNext)

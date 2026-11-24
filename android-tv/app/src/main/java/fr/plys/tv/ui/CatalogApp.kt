@@ -32,8 +32,10 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RemoveDone
 import androidx.compose.material.icons.outlined.Replay
@@ -64,13 +66,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import fr.plys.tv.R
+import fr.plys.tv.data.DeviceLogin
 import fr.plys.tv.data.ItemCard
 import fr.plys.tv.data.PlysApi
 import fr.plys.tv.data.ServerRef
@@ -92,7 +97,7 @@ private fun CatalogAppContent(model: CatalogViewModel, state: CatalogState, modi
     BackHandler(model.canGoBack || state.loading) { model.back() }
     if (state.screen == Screen.Login) {
         Box(modifier) {
-            Login(model, state)
+            state.phoneLogin?.let { PhoneLogin(model, it) } ?: Login(model, state)
             if (state.loading) BusyIndicator(Modifier.align(Alignment.TopEnd))
         }
         return
@@ -222,6 +227,47 @@ private fun Login(model: CatalogViewModel, state: CatalogState) {
             }, primary = true, modifier = Modifier.fillMaxWidth(),
                 enabled = !loading && server.isNotBlank() && username.isNotBlank() && password.isNotEmpty()) {
                 Text(stringResource(R.string.sign_in), modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            // Typing a password with the remote is slow: a signed-in phone can approve the TV instead.
+            Button(onClick = { model.loginWithPhone(server) }, modifier = Modifier.fillMaxWidth(), enabled = !loading && server.isNotBlank()) {
+                Icon(Icons.Outlined.QrCode2, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.sign_in_with_phone), maxLines = 1, softWrap = false)
+            }
+        }
+    }
+}
+
+/** The code and QR code of a sign-in waiting for a phone; it signs in on its own once approved. */
+@Composable
+private fun PhoneLogin(model: CatalogViewModel, login: DeviceLogin) {
+    BackHandler { model.cancelPhoneLogin() }
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.radialGradient(
+        listOf(Plys.Accent600.copy(alpha = 0.18f), Plys.Surface950), radius = 1400f)), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.width(820.dp).background(Plys.Surface900.copy(alpha = 0.85f), Plys.Large).border(1.dp, Plys.Hairline, Plys.Large)
+                .padding(horizontal = 40.dp, vertical = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Brand()
+            Text(stringResource(R.string.phone_sign_in_title), style = MaterialTheme.typography.headlineSmall, color = Plys.TextStrong)
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                QrCode(login.verificationUrl, stringResource(R.string.phone_sign_in_qr), Modifier.size(260.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(stringResource(R.string.phone_sign_in_scan), style = MaterialTheme.typography.bodyLarge)
+                    Text(stringResource(R.string.phone_sign_in_manual, login.manualUrl), style = MaterialTheme.typography.bodyMedium, color = Plys.Muted)
+                    Text(login.userCode, style = MaterialTheme.typography.displaySmall, color = Plys.TextStrong,
+                        fontFamily = FontFamily.Monospace, letterSpacing = 4.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(16.dp), color = Plys.Accent400, strokeWidth = 2.dp)
+                        Text(stringResource(R.string.phone_sign_in_waiting), style = MaterialTheme.typography.bodyMedium, color = Plys.Muted)
+                    }
+                }
+            }
+            Button(onClick = model::cancelPhoneLogin, modifier = Modifier.focusInitially()) {
+                Icon(Icons.Outlined.Password, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.phone_sign_in_back), maxLines = 1, softWrap = false)
             }
         }
     }

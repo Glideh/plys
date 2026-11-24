@@ -183,4 +183,12 @@
     <string name="update_download_failed">O download falhou. Selecione a atualização para tentar de novo.</string>
     <string name="update_install_failed">A instalação falhou. Selecione a atualização para tentar de novo.</string>
     <string name="update_signature">Esta cópia do Plys foi assinada com outra chave: desinstale-a e instale a nova versão manualmente uma vez.</string>
+    <string name="sign_in_with_phone">Entrar com um celular</string>
+    <string name="phone_sign_in_title">Entrar com o seu celular</string>
+    <string name="phone_sign_in_scan">Escaneie este QR code com um celular conectado ao Plys e autorize a conexão.</string>
+    <string name="phone_sign_in_manual">Ou abra %1$s e digite este código:</string>
+    <string name="phone_sign_in_waiting">Aguardando autorização…</string>
+    <string name="phone_sign_in_back">Usar uma senha</string>
+    <string name="error_device_login">A solicitação de conexão expirou ou foi recusada. Tente novamente.</string>
+    <string name="phone_sign_in_qr">QR code para entrar pelo celular</string>
 </resources>

@@ -372,4 +372,29 @@ data class LoginRequest(
 data class RefreshRequest(val refreshToken: String)
 
 @Serializable
+data class DeviceLoginRequest(val deviceName: String = "Android TV")
+
+@Serializable
+data class DeviceLoginStart(
+    val deviceCode: String,
+    val userCode: String,
+    /** Empty when the server has no public URL: the TV then points the phone to the address it signed in with. */
+    val verificationUrl: String = "",
+    val interval: Int = 5,
+)
+
+@Serializable
+data class DeviceTokenRequest(val deviceCode: String)
+
+/** A sign-in waiting for a phone: the TV shows [userCode] and a QR code of [verificationUrl]. */
+data class DeviceLogin(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUrl: String,
+    /** Address shown under the QR code, for a phone that types it: the verification URL without its code. */
+    val manualUrl: String,
+    val intervalMillis: Long,
+)
+
+@Serializable
 data class SetupStatus(val needsSetup: Boolean)
