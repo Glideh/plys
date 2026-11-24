@@ -1,9 +1,8 @@
-# Android TV: builds the debug APK in the android-build image and uploads it as the `android-tv-apk` artifact.
+# Android TV: builds the signed release APK and uploads it as the `android-tv-apk` artifact.
 # Called by the Release workflow, which attaches the APK to the GitHub release.
 # The app updates itself from these releases, and Android only accepts an update signed with the installed app's
 # key: the APK is signed with the pinned keystore of the `release` environment (ANDROID_KEYSTORE_BASE64,
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD). Without it, the build falls back to a
-# throwaway debug key and installed apps cannot update to it.
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD). All are required.
 name: Android TV
 
 on:
@@ -28,25 +27,22 @@ jobs:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE" ]; then
-            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set: the APK is signed with a throwaway debug key and installed apps cannot update to it."
-            exit 0
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set."
+            exit 1
           fi
+          umask 077
           printf '%s' "$KEYSTORE" | base64 --decode > android-tv/release.keystore
-          echo "PLYS_KEYSTORE=/workspace/release.keystore" >> "$GITHUB_ENV"
       - name: Build
         env:
           PLYS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           PLYS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           PLYS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          docker compose --profile android run --rm \
-            -e PLYS_KEYSTORE="${PLYS_KEYSTORE:-}" -e PLYS_KEYSTORE_PASSWORD -e PLYS_KEY_ALIAS -e PLYS_KEY_PASSWORD \
-            android-build :app:assembleDebug
+        run: ./scripts/build-android-signed.sh
       - name: Remove the keystore
         if: always()
         run: rm -f android-tv/release.keystore
       - uses: actions/upload-artifact@v7
         with:
           name: android-tv-apk
-          path: android-tv/app/build/outputs/apk/debug/app-debug.apk
+          path: android-tv/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

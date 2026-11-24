@@ -38,6 +38,8 @@ class ReleaseFeedTest {
     @Test fun onlyNewerStableReleasesWithAnApkAreOffered() {
         assertEquals(AvailableUpdate("0.7.5", "https://example.test/app-debug.apk", 1234),
             availableUpdate(release("0.7.5", "notes.txt", "app-debug.apk"), "0.7.4"))
+        assertEquals(AvailableUpdate("0.7.5", "https://example.test/app-release.apk", 1234),
+            availableUpdate(release("0.7.5", "notes.txt", "app-release.apk"), "0.7.4"))
         assertNull(availableUpdate(release("0.7.4", "app-debug.apk"), "0.7.4"))
         assertNull(availableUpdate(release("0.7.5", "notes.txt"), "0.7.4"))
         assertNull(availableUpdate(release("0.7.5", "app-debug.apk", draft = true), "0.7.4"))

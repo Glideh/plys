@@ -73,14 +73,18 @@ jobs:
             echo
             echo "**Docker images**: \`glide/plys-api:$VERSION\`, \`glide/plys-web:$VERSION\`"
             echo
-            echo "**Android TV**: \`app-debug.apk\` below."
+            echo "**Android TV**: \`app-release.apk\` below."
           } > notes.md
           cat notes.md
       - name: Create or update the GitHub release
         run: |
           if gh release view "$VERSION" > /dev/null 2>&1; then
             gh release edit "$VERSION" --title "$VERSION" --notes-file notes.md
-            gh release upload "$VERSION" apk/app-debug.apk --clobber
+            gh release upload "$VERSION" apk/app-release.apk --clobber
+            assets="$(gh release view "$VERSION" --json assets --jq '.assets[].name')"
+            if grep -Fxq 'app-debug.apk' <<< "$assets"; then
+              gh release delete-asset "$VERSION" app-debug.apk --yes
+            fi
           else
-            gh release create "$VERSION" apk/app-debug.apk --verify-tag --title "$VERSION" --notes-file notes.md
+            gh release create "$VERSION" apk/app-release.apk --verify-tag --title "$VERSION" --notes-file notes.md
           fi

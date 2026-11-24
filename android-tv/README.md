@@ -24,10 +24,32 @@ restrict the architectures supported by the APK.
 For native builds, use the same tool versions, SDK build-tools 35.0.0 and set
 `ANDROID_HOME` or `sdk.dir` in `local.properties`. No Gradle wrapper is included.
 
+### Signed APK
+
+From the repository root, place the signing keystore at
+`android-tv/release.keystore` and run:
+
+```sh
+./scripts/build-android-signed.sh
+```
+
+The command prompts for the key alias and both passwords without echoing the
+passwords. For non-interactive use, set `PLYS_KEY_ALIAS`,
+`PLYS_KEYSTORE_PASSWORD` and `PLYS_KEY_PASSWORD` in the environment. Set
+`PLYS_KEYSTORE_FILE` to use a different local keystore path. Never commit the
+keystore or credentials.
+
+This builds the same non-debuggable **release variant** as the release
+workflow, signed with the specified key, at
+`android-tv/app/build/outputs/apk/release/app-release.apk`. To update an
+existing installation, use the same keystore and key as the installed APK,
+including APKs from earlier releases built with the debug variant. Android
+does not allow installing a lower version code over a newer version.
+
 ## Tests
 
 ```sh
-docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
+docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease
 # Optional headless TV emulator (Linux x86_64 with /dev/kvm):
 docker compose --profile android-test build android-build android-emulator
 docker compose --profile android-test run --rm android-test
@@ -69,10 +91,11 @@ install unknown apps.
 Android only accepts an update signed with the installed app's key. Release APKs
 are signed with the keystore pinned in the `release` environment of the
 repository (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). Local builds keep their own debug
-key unless `PLYS_KEYSTORE` and the matching variables are passed to
-`android-build`. An app installed from a build signed with another key must be
-uninstalled and reinstalled by hand once.
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). Ordinary local debug builds keep
+their own debug key; use the signed APK command above with the matching
+keystore and credentials to build an update-compatible APK. An app installed
+from a build signed with another key must be uninstalled and reinstalled by
+hand once.
 
 ## Code Layout
 

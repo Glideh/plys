@@ -191,8 +191,8 @@ Set these in `.env` when needed (complete installation):
 
 The app runs on Android TV and Google TV, Android 8.0 or newer.
 
-1. Download `app-debug.apk` from the [latest release](https://github.com/Glideh/plys/releases/latest).
-2. Install it on the TV, for example with a file manager app or `adb install app-debug.apk`; Android asks to allow apps from unknown sources.
+1. Download `app-release.apk` from the [latest release](https://github.com/Glideh/plys/releases/latest) (older releases use `app-debug.apk`).
+2. Install it on the TV, for example with a file manager app or `adb install app-release.apk`; Android asks to allow apps from unknown sources.
 3. Sign in with the server address, such as `http://192.168.1.10:8096`, and an account created on the web.
 
 The app then checks for new releases by itself: when one is available, an entry above *Sign out* in the side menu installs it. More details in the [Android TV README](android-tv/README.md).

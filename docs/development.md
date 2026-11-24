@@ -43,7 +43,8 @@ Android TV tooling is optional and does not start with `docker compose up`:
 ```sh
 docker compose --profile android build android-build
 docker compose --profile android run --rm android-build :app:assembleDebug
-docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
+./scripts/build-android-signed.sh              # release APK signed with the specified keystore
+docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease
 ```
 
 See the [Android TV README](../android-tv/README.md) for the emulator, installing on a TV and signing.

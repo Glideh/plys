@@ -83,7 +83,7 @@ jobs:
       - name: Run as the runner user
         run: printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
       - run: docker compose --profile android build android-build
-      - run: docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:lintDebug
+      - run: docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease
       - name: Upload reports
         if: failure()
         uses: actions/upload-artifact@v7

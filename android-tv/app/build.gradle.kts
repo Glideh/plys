@@ -19,16 +19,19 @@ android {
         buildConfigField("String", "UPDATE_REPO", "\"${providers.gradleProperty("plys.updateRepo").getOrElse("Glideh/plys")}\"")
     }
     signingConfigs {
-        // Android only installs an update signed with the same key as the installed app. The release pipeline pins
-        // that key through these variables; without them, builds keep the machine's own debug key.
-        getByName("debug") {
+        create("release") {
             val keystore = System.getenv("PLYS_KEYSTORE")?.takeIf { it.isNotBlank() }
             if (keystore != null) {
                 storeFile = file(keystore)
-                storePassword = System.getenv("PLYS_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("PLYS_KEY_ALIAS")
-                keyPassword = System.getenv("PLYS_KEY_PASSWORD")
             }
+            storePassword = System.getenv("PLYS_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("PLYS_KEY_ALIAS")
+            keyPassword = System.getenv("PLYS_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     buildFeatures {
