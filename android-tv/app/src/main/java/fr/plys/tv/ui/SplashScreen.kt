@@ -1,6 +1,7 @@
 package fr.plys.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,9 +18,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -43,9 +52,72 @@ fun SplashScreen(modifier: Modifier = Modifier) {
             listOf(Color(0xFF1B5A83).copy(alpha = 0.72f), Color(0xFF0B2A47).copy(alpha = 0.18f), Color.Transparent),
             radius = 1500f,
         )))
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(250.dp).background(
-            Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF1474A8).copy(alpha = 0.12f))),
+        Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(250.dp).background(
+            Brush.verticalGradient(listOf(Color(0xFF1474A8).copy(alpha = 0.12f), Color.Transparent)),
         ))
+        Image(
+            painterResource(R.drawable.splash_wave_glow),
+            contentDescription = null,
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(maxHeight * 0.32f)
+                .graphicsLayer {
+                    scaleY = -1f
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.White.copy(alpha = 0.08f), Color.White, Color.White.copy(alpha = 0.08f)),
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                },
+        )
+        Canvas(Modifier.fillMaxSize().graphicsLayer { scaleY = -1f }) {
+            val w = size.width
+            val h = size.height
+            drawRect(
+                Brush.radialGradient(
+                    listOf(Color(0xFF159FE6).copy(alpha = 0.38f), Color(0xFF0B578E).copy(alpha = 0.14f), Color.Transparent),
+                    center = Offset(w * 0.52f, h * 0.98f),
+                    radius = w * 0.38f,
+                ),
+            )
+            val wave = Path().apply {
+                moveTo(0f, h * 0.88f)
+                cubicTo(w * 0.22f, h * 0.90f, w * 0.35f, h * 0.98f, w * 0.62f, h * 0.98f)
+                cubicTo(w * 0.78f, h * 0.98f, w * 0.89f, h * 0.95f, w, h * 0.94f)
+            }
+            val waveFill = Path().apply {
+                addPath(wave)
+                lineTo(w, h)
+                lineTo(0f, h)
+                close()
+            }
+            drawPath(
+                waveFill,
+                Brush.verticalGradient(
+                    listOf(Color(0xFF0C4F80).copy(alpha = 0.28f), Color(0xFF031426).copy(alpha = 0.38f)),
+                    startY = h * 0.88f,
+                    endY = h,
+                ),
+            )
+            drawPath(
+                wave,
+                Brush.horizontalGradient(
+                    listOf(Color(0xFF37A9E8).copy(alpha = 0.08f), Color(0xFF70D2FF).copy(alpha = 0.8f), Color(0xFF1F8CCB).copy(alpha = 0.12f)),
+                    startX = 0f,
+                    endX = w,
+                ),
+                style = Stroke(width = 1.5.dp.toPx()),
+            )
+        }
+        Box(
+            Modifier.align(Alignment.Center).offset(y = logoTipOffset).size(180.dp)
+                .graphicsLayer { scaleY = 0.16f }
+                .background(Brush.radialGradient(listOf(Color(0xFF62C9FA).copy(alpha = 0.7f), Color(0xFF1787C3).copy(alpha = 0.25f), Color.Transparent))),
+        )
         Box(
             Modifier.align(Alignment.Center).offset(y = logoTipOffset).width(92.dp).height(3.dp)
                 .background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xFF5EB3DA), Color.Transparent)), RoundedCornerShape(2.dp))
