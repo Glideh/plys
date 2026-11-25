@@ -2,6 +2,7 @@
 -- Series are revisited while any of their seasons or episodes is still pending (new episodes).
 SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = @library_id AND i.kind IN ('movie', 'series', 'video')
+  AND i.fankai_id IS NULL
   AND (
     i.match_status = 'pending'
     OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 4)
@@ -27,6 +28,7 @@ SELECT l.* FROM libraries l WHERE EXISTS (
 -- Fields listed in locked_fields were edited by an administrator and keep their value.
 UPDATE items SET
     tmdb_id             = @tmdb_id,
+    fankai_id           = NULL,
     imdb_id             = @imdb_id,
     title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif(@title::text, ''), title) END,
     sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif(@sort_title::text, ''), sort_title) END,
@@ -47,6 +49,44 @@ UPDATE items SET
     thumb_path          = coalesce(@thumb_path, thumb_path),
     match_status        = @match_status,
     metadata_language   = @metadata_language,
+    metadata_updated_at = now(),
+    updated_at          = now()
+WHERE id = @id;
+
+-- A manually selected FanKai series stays identified by its own provider ID.
+-- FanKai IDs must never be treated as TMDB IDs for grouping, watchlists or subtitles.
+-- name: SetFanKaiMetadata :exec
+UPDATE items SET
+    fankai_id           = @fankai_id,
+    tmdb_id             = NULL,
+    imdb_id             = NULL,
+    title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif(@title::text, ''), title) END,
+    sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif(@sort_title::text, ''), sort_title) END,
+    original_title      = CASE WHEN 'originalTitle' = ANY(locked_fields) THEN original_title ELSE @original_title END,
+    year                = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN year ELSE coalesce(@year, year) END,
+    overview            = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE @overview END,
+    tagline             = @tagline,
+    release_date        = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN release_date ELSE @release_date END,
+    runtime_minutes     = NULL,
+    rating              = @rating,
+    genres              = coalesce(@genres::text[], '{}'),
+    cast_members        = '[]',
+    directors           = '{}',
+    director_members    = '[]',
+    poster_path         = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE coalesce(@poster_path, poster_path) END,
+    backdrop_path       = @backdrop_path,
+    logo_path           = NULL,
+    genre_ids           = '{}',
+    actor_ids           = '{}',
+    creator_ids         = '{}',
+    keyword_ids         = '{}',
+    original_language   = NULL,
+    countries           = '{}',
+    vote_count          = NULL,
+    filter_labels       = '{}',
+    enrichment_version  = 4,
+    match_status        = 'manual',
+    metadata_language   = NULL,
     metadata_updated_at = now(),
     updated_at          = now()
 WHERE id = @id;

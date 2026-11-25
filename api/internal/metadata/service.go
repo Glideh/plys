@@ -45,10 +45,15 @@ type Service struct {
 	ffmpeg   string
 	baseURL  string
 
-	mu        sync.Mutex
-	refreshMu sync.Mutex
-	client    *TMDB
-	clientKey string
+	mu                sync.Mutex
+	refreshMu         sync.Mutex
+	client            *TMDB
+	clientKey         string
+	fankaiBaseURL     string
+	fankaiClient      *fanKaiClient
+	fankaiMu          sync.Mutex
+	fankaiList        []FanKaiSeries
+	fankaiListExpires time.Time
 
 	images  *ImageCache
 	warming atomic.Bool
@@ -79,8 +84,15 @@ func (s *Service) WarmImages(ctx context.Context) {
 	}
 }
 
-func NewService(pool *pgxpool.Pool, st *settings.Store, cacheDir, ffmpeg, tmdbBaseURL string) *Service {
-	return &Service{pool: pool, q: store.New(pool), settings: st, cacheDir: cacheDir, ffmpeg: ffmpeg, baseURL: tmdbBaseURL}
+func NewService(pool *pgxpool.Pool, st *settings.Store, cacheDir, ffmpeg, tmdbBaseURL string, fankaiBaseURL ...string) *Service {
+	base := ""
+	if len(fankaiBaseURL) > 0 {
+		base = fankaiBaseURL[0]
+	}
+	return &Service{
+		pool: pool, q: store.New(pool), settings: st, cacheDir: cacheDir, ffmpeg: ffmpeg,
+		baseURL: tmdbBaseURL, fankaiBaseURL: base,
+	}
 }
 
 // Client returns a TMDB client for the configured key, or ErrNoAPIKey.
@@ -188,6 +200,8 @@ func (s *Service) BackfillFilters(ctx context.Context) {
 
 // RefreshItem refreshes one movie or series now. A non-nil tmdbID is an admin choice and locks the match.
 func (s *Service) RefreshItem(ctx context.Context, itemID uuid.UUID, tmdbID *int) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	it, err := s.q.GetItem(ctx, itemID)
 	if err != nil {
 		return err
@@ -198,6 +212,9 @@ func (s *Service) RefreshItem(ctx context.Context, itemID uuid.UUID, tmdbID *int
 	}
 	if it.Kind == "video" {
 		return s.thumbnail(ctx, it.ID)
+	}
+	if it.Kind == "series" && it.FankaiID != nil && tmdbID == nil {
+		return s.refreshFanKai(ctx, it.ID, int(*it.FankaiID))
 	}
 	client, lang, err := s.Client(ctx)
 	if err != nil {
@@ -211,6 +228,23 @@ func (s *Service) RefreshItem(ctx context.Context, itemID uuid.UUID, tmdbID *int
 		return s.refreshSeries(ctx, client, lang, lib, it.ID, tmdbID)
 	}
 	return fmt.Errorf("items of kind %q have no metadata of their own", it.Kind)
+}
+
+// SetFanKaiMatch applies a manually selected FanKai entry to one series.
+func (s *Service) SetFanKaiMatch(ctx context.Context, itemID uuid.UUID, fanKaiID int) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	it, err := s.q.GetItem(ctx, itemID)
+	if err != nil {
+		return err
+	}
+	if it.Kind != "series" {
+		return fmt.Errorf("FanKai metadata can only be applied to series")
+	}
+	if fanKaiID <= 0 || fanKaiID > 2_147_483_647 {
+		return fmt.Errorf("FanKai ID must be a positive 32-bit integer")
+	}
+	return s.refreshFanKai(ctx, itemID, fanKaiID)
 }
 
 // Search lists TMDB candidates for the manual matching screen, in the language of the item's library.

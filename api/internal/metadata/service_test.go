@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/google/uuid"
@@ -365,6 +366,77 @@ func TestManualMatchIsLocked(t *testing.T) {
 	if err != nil || it.MatchStatus != "manual" || *it.TmdbID != 348 {
 		t.Fatalf("manual match must be stored and locked: %+v (%v)", it, err)
 	}
+}
+
+func TestFanKaiMatchStaysSeparateAndOnlyManualTMDBSelectionReplacesIt(t *testing.T) {
+	e := newEnv(t, "good-key")
+	ctx := context.Background()
+	lib := e.library(t, "series", "Unknown.Series.S01E01.mkv")
+	var id uuid.UUID
+	if err := e.pool.QueryRow(ctx, `SELECT id FROM items WHERE library_id = $1 AND kind = 'series'`, lib).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+
+	var detailRequests atomic.Int32
+	fankai := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/series/77" {
+			t.Errorf("unexpected FanKai request: %s", r.URL.Path)
+		}
+		detailRequests.Add(1)
+		_ = json.NewEncoder(w).Encode(FanKaiSeries{
+			ID: 77, Title: "Unknown Series Henshū", OriginalTitle: "Original Series",
+			Year: 2001, Plot: "FanKai synopsis", Genres: "Anime,Action", RatingValue: 8.1,
+		})
+	}))
+	defer fankai.Close()
+	e.svc.fankaiBaseURL = fankai.URL
+
+	if err := e.svc.SetFanKaiMatch(ctx, id, 77); err != nil {
+		t.Fatal(err)
+	}
+	item, err := e.q.GetItem(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.FankaiID == nil || *item.FankaiID != 77 || item.TmdbID != nil {
+		t.Fatalf("FanKai identity must remain separate from TMDB: %+v", item)
+	}
+	if item.Title != "Unknown Series Henshū" || item.Overview == nil || *item.Overview != "FanKai synopsis" {
+		t.Fatalf("FanKai metadata not applied: %+v", item)
+	}
+
+	if err := e.svc.RefreshLibrary(ctx, mustLibrary(t, e.q, lib), func(int, int) {}); err != nil {
+		t.Fatal(err)
+	}
+	item, err = e.q.GetItem(ctx, id)
+	if err != nil || item.FankaiID == nil || *item.FankaiID != 77 {
+		t.Fatalf("automatic TMDB refresh replaced FanKai: %+v (%v)", item, err)
+	}
+
+	// A normal refresh stays on FanKai; only a selected TMDB ID switches providers.
+	if err := e.svc.RefreshItem(ctx, id, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := detailRequests.Load(); got != 2 {
+		t.Fatalf("expected FanKai refreshes only, got %d", got)
+	}
+	tmdbID := 1429
+	if err := e.svc.RefreshItem(ctx, id, &tmdbID); err != nil {
+		t.Fatal(err)
+	}
+	item, err = e.q.GetItem(ctx, id)
+	if err != nil || item.FankaiID != nil || item.TmdbID == nil || *item.TmdbID != 1429 {
+		t.Fatalf("manual TMDB selection must replace FanKai: %+v (%v)", item, err)
+	}
+}
+
+func mustLibrary(t *testing.T, q *store.Queries, id uuid.UUID) store.Library {
+	t.Helper()
+	lib, err := q.GetLibrary(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return lib
 }
 
 func pick(results []SearchResult, title string, year int) (int, bool) {

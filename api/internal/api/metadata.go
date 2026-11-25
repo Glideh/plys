@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -33,6 +34,7 @@ const (
 )
 
 var localThumbRe = regexp.MustCompile(`^[0-9a-f-]{36}\.jpg$`)
+var fanKaiImageRe = regexp.MustCompile(`^[0-9a-f-]{36}-(?:poster|backdrop)\.(?:jpg|png|webp)$`)
 
 func (s *Server) serverInfo(w http.ResponseWriter, r *http.Request) {
 	name, err := s.Settings.ServerName(r.Context())
@@ -284,6 +286,82 @@ func (s *Server) searchMatch(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
+type fanKaiMatchCandidateDTO struct {
+	FanKaiID      int    `json:"fankaiId"`
+	Title         string `json:"title"`
+	OriginalTitle string `json:"originalTitle,omitempty"`
+	Year          int    `json:"year,omitempty"`
+	Overview      string `json:"overview,omitempty"`
+}
+
+func (s *Server) searchFanKaiMatch(w http.ResponseWriter, r *http.Request) {
+	it, ok := s.loadMatchableItem(w, r)
+	if !ok {
+		return
+	}
+	if it.Kind != "series" {
+		httpx.Error(w, http.StatusBadRequest, "not_matchable", "FanKai metadata is available for series only")
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if query == "" {
+		query = it.Title
+	}
+	if utf8.RuneCountInString(query) > 200 {
+		httpx.Error(w, http.StatusBadRequest, "validation", "query must be at most 200 characters")
+		return
+	}
+	year, _ := strconv.Atoi(r.URL.Query().Get("year"))
+	results, err := s.Metadata.SearchFanKai(r.Context(), query, year)
+	if err != nil {
+		httpx.Error(w, http.StatusBadGateway, "fankai_unreachable", "FanKai could not be reached to search series")
+		return
+	}
+	out := make([]fanKaiMatchCandidateDTO, 0, len(results))
+	for _, result := range results {
+		out = append(out, fanKaiMatchCandidateDTO{
+			FanKaiID: result.ID, Title: result.Title, OriginalTitle: result.OriginalTitle,
+			Year: result.Year, Overview: result.Overview,
+		})
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+type setFanKaiMatchRequest struct {
+	FanKaiID int `json:"fankaiId"`
+}
+
+func (s *Server) setFanKaiMatch(w http.ResponseWriter, r *http.Request) {
+	it, ok := s.loadMatchableItem(w, r)
+	if !ok {
+		return
+	}
+	if it.Kind != "series" {
+		httpx.Error(w, http.StatusBadRequest, "not_matchable", "FanKai metadata is available for series only")
+		return
+	}
+	var req setFanKaiMatchRequest
+	if !httpx.DecodeRequired(w, r, &req) {
+		return
+	}
+	if req.FanKaiID <= 0 || req.FanKaiID > 2_147_483_647 {
+		httpx.Error(w, http.StatusBadRequest, "validation", "fankaiId must be a positive 32-bit integer")
+		return
+	}
+	if err := s.Metadata.SetFanKaiMatch(r.Context(), it.ID, req.FanKaiID); err != nil {
+		switch {
+		case errors.Is(err, metadata.ErrFanKaiNotFound):
+			httpx.Error(w, http.StatusNotFound, "fankai_not_found", "no such series on FanKai")
+		case errors.Is(err, metadata.ErrFanKaiUnavailable):
+			httpx.Error(w, http.StatusBadGateway, "fankai_unreachable", "FanKai could not be reached to retrieve the series")
+		default:
+			httpx.InternalError(w, r, err)
+		}
+		return
+	}
+	s.respondItemSummary(w, r, it.ID)
+}
+
 type setMatchRequest struct {
 	TMDBID int `json:"tmdbId"`
 }
@@ -351,6 +429,10 @@ func (s *Server) writeMetadataError(w http.ResponseWriter, r *http.Request, err 
 		httpx.Error(w, http.StatusConflict, "invalid_tmdb_key", "TMDB rejected the configured API key")
 	case errors.Is(err, metadata.ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "tmdb_not_found", "no such title on TMDB")
+	case errors.Is(err, metadata.ErrFanKaiNotFound):
+		httpx.Error(w, http.StatusNotFound, "fankai_not_found", "no such series on FanKai")
+	case errors.Is(err, metadata.ErrFanKaiUnavailable):
+		httpx.Error(w, http.StatusBadGateway, "fankai_unreachable", "FanKai could not be reached")
 	default:
 		httpx.InternalError(w, r, err)
 	}
@@ -380,12 +462,36 @@ func imageURL(path *string, size string) *string {
 		return nil
 	}
 	var u string
-	if strings.HasPrefix(*path, "local/") {
+	if strings.HasPrefix(*path, "fankai/") {
+		u = "/api/v1/images/" + *path
+	} else if strings.HasPrefix(*path, "local/") {
 		u = "/api/v1/images/" + *path
 	} else {
 		u = "/api/v1/images/tmdb/" + size + *path
 	}
 	return &u
+}
+
+func (s *Server) fanKaiImage(w http.ResponseWriter, r *http.Request) {
+	file := chi.URLParam(r, "file")
+	if !fanKaiImageRe.MatchString(file) {
+		httpx.Error(w, http.StatusNotFound, "not_found", "image not found")
+		return
+	}
+	if s.Images == nil {
+		httpx.Error(w, http.StatusServiceUnavailable, "image_cache_unavailable", "image cache is unavailable")
+		return
+	}
+	path := s.Images.FanKaiLocal(file)
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			httpx.Error(w, http.StatusNotFound, "not_found", "image not found")
+			return
+		}
+		httpx.InternalError(w, r, err)
+		return
+	}
+	serveImage(w, r, path)
 }
 
 func (s *Server) tmdbImage(w http.ResponseWriter, r *http.Request) {

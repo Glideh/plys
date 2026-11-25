@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { catalogApi, type MatchCandidate } from '@/api/catalog'
+import type { ItemKind } from '@/api/libraries'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import BaseButton from './BaseButton.vue'
 import BaseDialog from './BaseDialog.vue'
@@ -9,7 +10,7 @@ import ErrorAlert from './ErrorAlert.vue'
 import ItemLocation from './ItemLocation.vue'
 
 // folder and paths show where the files sit, to help find what to search for.
-const props = defineProps<{ itemId: string; title: string; year: number | null; folder?: string; paths?: string[] }>()
+const props = defineProps<{ itemId: string; kind: ItemKind; title: string; year: number | null; folder?: string; paths?: string[] }>()
 const emit = defineEmits<{ matched: [merged: boolean] }>()
 const open = defineModel<boolean>('open', { required: true })
 const { t } = useI18n()
@@ -17,6 +18,7 @@ const errorMessage = useErrorMessage()
 
 const query = ref('')
 const year = ref('')
+const provider = ref<'tmdb' | 'fankai'>('tmdb')
 const results = ref<MatchCandidate[] | null>(null)
 const searching = ref(false)
 const choosing = ref<number | null>(null)
@@ -26,7 +28,11 @@ async function search() {
   searching.value = true
   error.value = ''
   try {
-    results.value = await catalogApi.searchMatch(props.itemId, query.value.trim(), Number(year.value) || undefined)
+    const searchYear = Number(year.value) || undefined
+    results.value =
+      provider.value === 'fankai'
+        ? await catalogApi.searchFanKaiMatch(props.itemId, query.value.trim(), searchYear)
+        : await catalogApi.searchMatch(props.itemId, query.value.trim(), searchYear)
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -35,10 +41,13 @@ async function search() {
 }
 
 async function choose(c: MatchCandidate) {
-  choosing.value = c.tmdbId
+  choosing.value = 'tmdbId' in c ? c.tmdbId : c.fankaiId
   error.value = ''
   try {
-    const res = await catalogApi.setMatch(props.itemId, c.tmdbId)
+    const res =
+      'tmdbId' in c
+        ? await catalogApi.setMatch(props.itemId, c.tmdbId)
+        : await catalogApi.setFanKaiMatch(props.itemId, c.fankaiId)
     open.value = false
     emit('matched', !!res.merged)
   } catch (err) {
@@ -50,6 +59,7 @@ async function choose(c: MatchCandidate) {
 
 watch(open, (isOpen) => {
   if (!isOpen) return
+  provider.value = 'tmdb'
   query.value = props.title
   year.value = props.year ? String(props.year) : ''
   results.value = null
@@ -61,6 +71,29 @@ watch(open, (isOpen) => {
 <template>
   <BaseDialog v-model:open="open" :title="t('catalog.fixMatch')" wide>
     <p class="mb-4 text-sm text-slate-400">{{ t('catalog.matchHelp') }}</p>
+    <div v-if="kind === 'series'" class="mb-4 flex gap-2">
+      <button
+        type="button"
+        class="rounded-lg border px-3 py-1.5 text-sm"
+        :class="provider === 'tmdb' ? 'border-accent-500 bg-accent-500/10 text-accent-300' : 'border-white/10 text-slate-400 hover:text-slate-200'"
+        :aria-pressed="provider === 'tmdb'"
+        :disabled="searching || choosing !== null"
+        @click="provider = 'tmdb'; results = null; error = ''"
+      >
+        {{ t('catalog.matchProviderTmdb') }}
+      </button>
+      <button
+        type="button"
+        class="rounded-lg border px-3 py-1.5 text-sm"
+        :class="provider === 'fankai' ? 'border-accent-500 bg-accent-500/10 text-accent-300' : 'border-white/10 text-slate-400 hover:text-slate-200'"
+        :aria-pressed="provider === 'fankai'"
+        :disabled="searching || choosing !== null"
+        @click="provider = 'fankai'; results = null; error = ''"
+      >
+        {{ t('catalog.matchProviderFanKai') }}
+      </button>
+    </div>
+    <p v-if="provider === 'fankai'" class="mb-4 text-sm text-slate-400">{{ t('catalog.matchFanKaiHelp') }}</p>
     <ItemLocation v-if="folder || paths?.length" class="mb-4 rounded-xl border border-white/5 bg-surface-800/40 p-3" :folder="folder" :paths="paths ?? []" />
     <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="search">
       <input
@@ -82,16 +115,18 @@ watch(open, (isOpen) => {
 
     <ErrorAlert v-if="error" class="mt-4" :message="error" />
 
-    <p v-if="results && results.length === 0" class="mt-6 text-center text-sm text-slate-500">{{ t('catalog.matchNoResults') }}</p>
+    <p v-if="results && results.length === 0" class="mt-6 text-center text-sm text-slate-500">
+      {{ t(provider === 'fankai' ? 'catalog.matchNoResultsFanKai' : 'catalog.matchNoResults') }}
+    </p>
     <ul v-if="results?.length" class="mt-4 space-y-2">
-      <li v-for="c in results" :key="c.tmdbId">
+      <li v-for="c in results" :key="'tmdbId' in c ? `tmdb-${c.tmdbId}` : `fankai-${c.fankaiId}`">
         <button
           type="button"
           :disabled="choosing !== null"
           class="flex w-full gap-4 rounded-xl border border-white/5 bg-surface-800/60 p-3 text-left transition hover:border-accent-500/60 hover:bg-surface-800 disabled:opacity-50"
           @click="choose(c)"
         >
-          <img v-if="c.posterUrl" :src="c.posterUrl" alt="" loading="lazy" referrerpolicy="no-referrer" class="h-24 w-16 shrink-0 rounded-md object-cover" />
+          <img v-if="'posterUrl' in c && c.posterUrl" :src="c.posterUrl" alt="" loading="lazy" referrerpolicy="no-referrer" class="h-24 w-16 shrink-0 rounded-md object-cover" />
           <div v-else class="h-24 w-16 shrink-0 rounded-md bg-surface-700" />
           <div class="min-w-0">
             <p class="font-semibold">

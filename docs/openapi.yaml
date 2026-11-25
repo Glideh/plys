@@ -1370,6 +1370,59 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /items/{id}/match/fankai/search:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: searchItemFanKaiMatch
+      summary: Search FanKai series candidates (admin; explicit request only)
+      parameters:
+        - { name: query, in: query, required: false, schema: { type: string }, description: Defaults to the item title }
+        - { name: year, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: Candidates; results are cached server-side to limit calls to FanKai
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [fankaiId, title]
+                      properties:
+                        fankaiId: { type: integer }
+                        title: { type: string }
+                        originalTitle: { type: string }
+                        year: { type: integer }
+                        overview: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { description: FanKai could not be reached }
+
+  /items/{id}/match/fankai:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: setItemFanKaiMatch
+      summary: Apply a manually selected FanKai entry to a series (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fankaiId]
+              properties:
+                fankaiId: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: Updated series; FanKai identity remains separate from TMDB }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { description: Item or FanKai series not found }
+        "502": { description: FanKai could not be reached }
+
   /items/{id}/refresh:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2113,6 +2166,7 @@ components:
           description: TMDB title logo (PNG with transparency), shown by the players while paused. Seasons and episodes carry the logo of their series. Absent from older servers.
         thumbUrl: { type: [string, "null"] }
         tmdbId: { type: [integer, "null"] }
+        fankaiId: { type: [integer, "null"], description: FanKai series identity; never used as a TMDB ID }
         matchStatus: { type: string, enum: [pending, matched, unmatched, manual, skipped] }
         seasonNumber: { type: integer }
         episodeNumber: { type: integer }

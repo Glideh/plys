@@ -116,6 +116,7 @@ func (s *Server) Routes() http.Handler {
 
 		// Public so that <img> tags work without a bearer token; only referenced images are served.
 		r.Get("/images/tmdb/{size}/{file}", s.tmdbImage)
+		r.Get("/images/fankai/{file}", s.fanKaiImage)
 		r.Get("/images/local/{file}", s.localImage)
 		r.Get("/images/avatars/{id}", s.userAvatar)
 		r.Post("/federation/handshake", s.handshake)
@@ -209,6 +210,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/admin/system/transcoding", s.transcodingInfo)
 
 				r.Get("/items/{id}/match/search", s.searchMatch)
+				r.Get("/items/{id}/match/fankai/search", s.searchFanKaiMatch)
+				r.Post("/items/{id}/match/fankai", s.setFanKaiMatch)
 				r.Post("/items/{id}/match", s.setMatch)
 				r.Post("/items/{id}/refresh", s.refreshItem)
 				r.Patch("/items/{id}/metadata", s.editItem)

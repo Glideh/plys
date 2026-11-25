@@ -628,6 +628,7 @@ async function onMatched(merged: boolean) {
         v-if="auth.isAdmin && !server"
         v-model:open="matchOpen"
         :item-id="item.id"
+        :kind="item.kind"
         :title="item.title"
         :year="item.year"
         :folder="item.folder"

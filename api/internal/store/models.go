@@ -91,6 +91,7 @@ type Item struct {
 	CollectionID      *uuid.UUID
 	ImdbRating        *float32
 	ImdbVotes         *int32
+	FankaiID          *int32
 }
 
 type Library struct {

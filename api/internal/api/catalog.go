@@ -322,6 +322,7 @@ type itemDetailDTO struct {
 	LogoURL          *string       `json:"logoUrl"`
 	ThumbURL         *string       `json:"thumbUrl"`
 	TMDBID           *int32        `json:"tmdbId"`
+	FanKaiID         *int32        `json:"fankaiId,omitempty"`
 	MatchStatus      string        `json:"matchStatus"`
 	SeasonNumber     *int32        `json:"seasonNumber,omitempty"`
 	EpisodeNumber    *int32        `json:"episodeNumber,omitempty"`
@@ -382,7 +383,7 @@ func (s *Server) getItem(w http.ResponseWriter, r *http.Request) {
 		RuntimeMinutes: it.RuntimeMinutes, Rating: it.Rating, Genres: it.Genres,
 		IMDbID: it.ImdbID, IMDbRating: it.ImdbRating, IMDbVotes: it.ImdbVotes, Directors: it.Directors,
 		PosterURL: imageURL(it.PosterPath, "w500"), BackdropURL: imageURL(it.BackdropPath, "w1280"),
-		ThumbURL: imageURL(it.ThumbPath, "w500"), TMDBID: it.TmdbID, MatchStatus: it.MatchStatus,
+		ThumbURL: imageURL(it.ThumbPath, "w500"), TMDBID: it.TmdbID, FanKaiID: it.FankaiID, MatchStatus: it.MatchStatus,
 		SeasonNumber: it.SeasonNumber, EpisodeNumber: it.EpisodeNumber, EpisodeNumberEnd: it.EpisodeNumberEnd,
 		Ancestors: []ancestorDTO{}, Cast: []castDTO{}, Sources: []cardSourceDTO{},
 	}

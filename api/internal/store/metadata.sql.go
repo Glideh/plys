@@ -160,7 +160,7 @@ func (q *Queries) FindOtherItemByTmdb(ctx context.Context, arg FindOtherItemByTm
 }
 
 const getItem = `-- name: GetItem :one
-SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path, locked_fields, collection_id, imdb_rating, imdb_votes FROM items WHERE id = $1
+SELECT id, library_id, parent_id, kind, match_key, title, sort_title, year, season_number, episode_number, episode_number_end, created_at, updated_at, tmdb_id, imdb_id, original_title, overview, tagline, release_date, runtime_minutes, rating, genres, cast_members, directors, poster_path, backdrop_path, thumb_path, match_status, metadata_language, metadata_updated_at, genre_ids, actor_ids, creator_ids, keyword_ids, original_language, countries, vote_count, filter_labels, enrichment_version, director_members, logo_path, locked_fields, collection_id, imdb_rating, imdb_votes, fankai_id FROM items WHERE id = $1
 `
 
 func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
@@ -212,6 +212,7 @@ func (q *Queries) GetItem(ctx context.Context, id uuid.UUID) (Item, error) {
 		&i.CollectionID,
 		&i.ImdbRating,
 		&i.ImdbVotes,
+		&i.FankaiID,
 	)
 	return i, err
 }
@@ -331,6 +332,7 @@ func (q *Queries) ListItemFilePaths(ctx context.Context, arg ListItemFilePathsPa
 const listItemsToMatch = `-- name: ListItemsToMatch :many
 SELECT id, kind, title, year, tmdb_id, match_status FROM items i
 WHERE i.library_id = $1 AND i.kind IN ('movie', 'series', 'video')
+  AND i.fankai_id IS NULL
   AND (
     i.match_status = 'pending'
     OR (i.kind IN ('movie', 'series') AND i.match_status IN ('matched', 'manual') AND i.enrichment_version < 4)
@@ -490,6 +492,80 @@ func (q *Queries) SetChildrenMatchStatus(ctx context.Context, arg SetChildrenMat
 	return err
 }
 
+const setFanKaiMetadata = `-- name: SetFanKaiMetadata :exec
+UPDATE items SET
+    fankai_id           = $1,
+    tmdb_id             = NULL,
+    imdb_id             = NULL,
+    title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif($2::text, ''), title) END,
+    sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif($3::text, ''), sort_title) END,
+    original_title      = CASE WHEN 'originalTitle' = ANY(locked_fields) THEN original_title ELSE $4 END,
+    year                = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN year ELSE coalesce($5, year) END,
+    overview            = CASE WHEN 'overview' = ANY(locked_fields) THEN overview ELSE $6 END,
+    tagline             = $7,
+    release_date        = CASE WHEN 'releaseDate' = ANY(locked_fields) THEN release_date ELSE $8 END,
+    runtime_minutes     = NULL,
+    rating              = $9,
+    genres              = coalesce($10::text[], '{}'),
+    cast_members        = '[]',
+    directors           = '{}',
+    director_members    = '[]',
+    poster_path         = CASE WHEN 'poster' = ANY(locked_fields) THEN poster_path ELSE coalesce($11, poster_path) END,
+    backdrop_path       = $12,
+    logo_path           = NULL,
+    genre_ids           = '{}',
+    actor_ids           = '{}',
+    creator_ids         = '{}',
+    keyword_ids         = '{}',
+    original_language   = NULL,
+    countries           = '{}',
+    vote_count          = NULL,
+    filter_labels       = '{}',
+    enrichment_version  = 4,
+    match_status        = 'manual',
+    metadata_language   = NULL,
+    metadata_updated_at = now(),
+    updated_at          = now()
+WHERE id = $13
+`
+
+type SetFanKaiMetadataParams struct {
+	FankaiID      *int32
+	Title         string
+	SortTitle     string
+	OriginalTitle *string
+	Year          *int32
+	Overview      *string
+	Tagline       *string
+	ReleaseDate   *time.Time
+	Rating        *float32
+	Genres        []string
+	PosterPath    *string
+	BackdropPath  *string
+	ID            uuid.UUID
+}
+
+// A manually selected FanKai series stays identified by its own provider ID.
+// FanKai IDs must never be treated as TMDB IDs for grouping, watchlists or subtitles.
+func (q *Queries) SetFanKaiMetadata(ctx context.Context, arg SetFanKaiMetadataParams) error {
+	_, err := q.db.Exec(ctx, setFanKaiMetadata,
+		arg.FankaiID,
+		arg.Title,
+		arg.SortTitle,
+		arg.OriginalTitle,
+		arg.Year,
+		arg.Overview,
+		arg.Tagline,
+		arg.ReleaseDate,
+		arg.Rating,
+		arg.Genres,
+		arg.PosterPath,
+		arg.BackdropPath,
+		arg.ID,
+	)
+	return err
+}
+
 const setItemMatchStatus = `-- name: SetItemMatchStatus :exec
 UPDATE items SET match_status = $2, metadata_updated_at = now() WHERE id = $1
 `
@@ -566,6 +642,7 @@ func (q *Queries) UpdateItemFilters(ctx context.Context, arg UpdateItemFiltersPa
 const updateItemMetadata = `-- name: UpdateItemMetadata :exec
 UPDATE items SET
     tmdb_id             = $1,
+    fankai_id           = NULL,
     imdb_id             = $2,
     title               = CASE WHEN 'title' = ANY(locked_fields) THEN title ELSE coalesce(nullif($3::text, ''), title) END,
     sort_title          = CASE WHEN 'title' = ANY(locked_fields) THEN sort_title ELSE coalesce(nullif($4::text, ''), sort_title) END,

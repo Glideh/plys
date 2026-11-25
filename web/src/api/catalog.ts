@@ -176,6 +176,8 @@ export interface ItemDetail {
   logoUrl?: string | null
   thumbUrl: string | null
   tmdbId: number | null
+  /** FanKai identity is separate from TMDB; absent on older servers. */
+  fankaiId?: number | null
   matchStatus: MatchStatus
   /** Subtitles can be searched online for the versions of this item. */
   subtitleSearch: boolean
@@ -223,7 +225,7 @@ export interface PlayTarget {
   rewatch: boolean
 }
 
-export interface MatchCandidate {
+export interface TMDBMatchCandidate {
   tmdbId: number
   title: string
   originalTitle?: string
@@ -231,6 +233,16 @@ export interface MatchCandidate {
   overview?: string
   posterUrl: string | null
 }
+
+export interface FanKaiMatchCandidate {
+  fankaiId: number
+  title: string
+  originalTitle?: string
+  year?: number
+  overview?: string
+}
+
+export type MatchCandidate = TMDBMatchCandidate | FanKaiMatchCandidate
 
 export const catalogApi = {
   list: (libraryId: string, params: { query?: string; sort?: ItemSort; offset?: number; limit?: number; filters?: CatalogFilters }, signal?: AbortSignal) => {
@@ -262,9 +274,16 @@ export const catalogApi = {
   searchMatch: (id: string, query: string, year?: number) => {
     const qs = new URLSearchParams({ query })
     if (year) qs.set('year', String(year))
-    return api<{ items: MatchCandidate[] }>(`/items/${id}/match/search?${qs}`).then((r) => r.items)
+    return api<{ items: TMDBMatchCandidate[] }>(`/items/${id}/match/search?${qs}`).then((r) => r.items)
+  },
+  searchFanKaiMatch: (id: string, query: string, year?: number) => {
+    const qs = new URLSearchParams({ query })
+    if (year) qs.set('year', String(year))
+    return api<{ items: FanKaiMatchCandidate[] }>(`/items/${id}/match/fankai/search?${qs}`).then((r) => r.items)
   },
   setMatch: (id: string, tmdbId: number) => api<{ merged?: boolean }>(`/items/${id}/match`, { method: 'POST', body: { tmdbId } }),
+  setFanKaiMatch: (id: string, fankaiId: number) =>
+    api<{ merged?: boolean }>(`/items/${id}/match/fankai`, { method: 'POST', body: { fankaiId } }),
   refresh: (id: string) => api<{ merged?: boolean }>(`/items/${id}/refresh`, { method: 'POST' }),
   /** Saves an administrator's changes; the fields sent are locked against metadata refreshes. */
   editMetadata: (id: string, changes: MetadataEdit) => api<unknown>(`/items/${id}/metadata`, { method: 'PATCH', body: changes }),

@@ -68,6 +68,7 @@ erDiagram
         text match_key
         text title
         integer tmdb_id
+        integer fankai_id
         text imdb_id
         real rating
         real imdb_rating
@@ -172,7 +173,7 @@ Maps a library to one or more resolved filesystem paths. A path can belong to on
 
 ### `items`
 
-The catalogue tree. A single table represents movies, series, seasons, episodes, and personal videos. `parent_id` forms the series-to-season-to-episode hierarchy. The `library_id`, sibling identity, kind, and `match_key` prevent duplicate nodes during rescans.
+The catalogue tree. A single table represents movies, series, seasons, episodes, and personal videos. `parent_id` forms the series-to-season-to-episode hierarchy. The `library_id`, sibling identity, kind, and `match_key` prevent duplicate nodes during rescans. `tmdb_id` and `fankai_id` are separate provider identities; FanKai IDs are never used as TMDB IDs for title grouping, watchlists, or subtitles.
 
 Items with the same `collection_id` belong to the same collection; the identifier does not reference a separate table.
 
