@@ -12,8 +12,8 @@ android {
         applicationId = "fr.plys.tv"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "0.7.7"
+        versionCode = 20
+        versionName = "0.7.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // GitHub repository whose latest release the app offers as an update; empty disables the check.
         buildConfigField("String", "UPDATE_REPO", "\"${providers.gradleProperty("plys.updateRepo").getOrElse("Glideh/plys")}\"")
