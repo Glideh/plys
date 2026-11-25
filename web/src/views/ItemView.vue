@@ -356,7 +356,7 @@ async function onMatched(merged: boolean) {
     </div>
 
     <template v-else>
-      <section class="relative isolate overflow-hidden">
+      <section class="relative isolate z-10">
         <img v-if="backdrop" :src="backdrop" alt="" class="absolute inset-0 -z-20 size-full object-cover opacity-40" />
         <div class="absolute inset-0 -z-10 bg-gradient-to-t from-surface-950 via-surface-950/80 to-surface-950/30" />
         <div class="absolute inset-0 -z-10 bg-gradient-to-r from-surface-950 via-surface-950/60 to-transparent" />
