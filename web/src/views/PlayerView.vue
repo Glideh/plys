@@ -95,6 +95,7 @@ function queryIndex(value: unknown): number | null {
 
 const videoEl = useTemplateRef<HTMLVideoElement>('video')
 const stage = useTemplateRef<HTMLElement>('stage')
+const controlsFooter = useTemplateRef<HTMLElement>('controlsFooter')
 
 const player = usePlayback(videoEl, {
   versionId: () => version.value?.id ?? '',
@@ -199,13 +200,32 @@ let hideTimer: ReturnType<typeof setTimeout> | undefined
 
 const controlsVisible = computed(() => awake.value || paused.value || menu.value !== null || status.value !== 'ready')
 
+let subtitleOffsetObserver: ResizeObserver | undefined
+
+function updateSubtitleOffset() {
+  const videoHeight = videoEl.value?.clientHeight ?? 0
+  const footerHeight = controlsVisible.value ? (controlsFooter.value?.getBoundingClientRect().height ?? 0) : 0
+  player.setSubtitleOffset(videoHeight > 0 ? footerHeight / videoHeight : 0)
+}
+
+watch(controlsVisible, updateSubtitleOffset, { flush: 'post' })
+
 function wake() {
   awake.value = true
   clearTimeout(hideTimer)
   hideTimer = setTimeout(() => (awake.value = false), 3000)
 }
-onMounted(wake)
-onBeforeUnmount(() => clearTimeout(hideTimer))
+onMounted(() => {
+  wake()
+  subtitleOffsetObserver = new ResizeObserver(updateSubtitleOffset)
+  if (videoEl.value) subtitleOffsetObserver.observe(videoEl.value)
+  if (controlsFooter.value) subtitleOffsetObserver.observe(controlsFooter.value)
+  updateSubtitleOffset()
+})
+onBeforeUnmount(() => {
+  clearTimeout(hideTimer)
+  subtitleOffsetObserver?.disconnect()
+})
 
 function toggleMenu(name: 'audio' | 'subtitles') {
   menu.value = menu.value === name ? null : name
@@ -427,7 +447,7 @@ function pickExternal(sub: ExternalSubtitle) {
         <span v-if="mode" class="rounded-full bg-white/10 px-3 py-1 text-xs text-slate-200">{{ mode }}</span>
       </header>
 
-      <footer class="pointer-events-auto bg-gradient-to-t from-black/85 to-transparent px-4 pt-12 pb-4 sm:px-6">
+      <footer ref="controlsFooter" class="pointer-events-auto bg-gradient-to-t from-black/85 to-transparent px-4 pt-12 pb-4 sm:px-6">
         <p v-if="subtitleNote" class="mb-2 text-sm text-slate-300">{{ subtitleNote }}</p>
 
         <div class="relative h-5">
@@ -471,7 +491,7 @@ function pickExternal(sub: ExternalSubtitle) {
             </button>
             <input
               type="range"
-              class="seek hidden w-20 sm:block"
+              class="seek volume hidden w-20 sm:block"
               min="0"
               max="1"
               step="0.05"
@@ -633,7 +653,12 @@ function pickExternal(sub: ExternalSubtitle) {
   cursor: pointer;
 }
 .seek::-webkit-slider-runnable-track {
+  height: 0.375rem;
   background: transparent;
+}
+.seek.volume::-webkit-slider-runnable-track {
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.2);
 }
 .seek::-webkit-slider-thumb {
   appearance: none;
@@ -641,10 +666,15 @@ function pickExternal(sub: ExternalSubtitle) {
   height: 0.9rem;
   border-radius: 9999px;
   background: var(--color-accent-300);
-  margin-top: 0.15rem;
+  margin-top: -0.2625rem;
 }
 .seek::-moz-range-track {
+  height: 0.375rem;
   background: transparent;
+}
+.seek.volume::-moz-range-track {
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.2);
 }
 .seek::-moz-range-thumb {
   width: 0.9rem;

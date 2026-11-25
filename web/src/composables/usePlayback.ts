@@ -48,6 +48,8 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   let switching = true
   let failures: number[] = []
   let track: TextTrack | null = null
+  let subtitleCues: VTTCue[] = []
+  let subtitleOffset = 0
   let subtitleAbort: AbortController | null = null
   let subtitleTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -73,6 +75,24 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
 
   function clearCues() {
     if (track?.cues) for (const cue of Array.from(track.cues)) track.removeCue(cue)
+    subtitleCues = []
+  }
+
+  function positionSubtitleCue(cue: VTTCue) {
+    if (subtitleOffset > 0) {
+      cue.snapToLines = false
+      cue.line = 100 - subtitleOffset * 100
+      cue.lineAlign = 'end'
+    } else {
+      cue.snapToLines = true
+      cue.line = 'auto'
+      cue.lineAlign = 'start'
+    }
+  }
+
+  function setSubtitleOffset(offset: number) {
+    subtitleOffset = Math.min(Math.max(offset, 0), 1)
+    for (const cue of subtitleCues) positionSubtitleCue(cue)
   }
 
   function stopSubtitles() {
@@ -106,7 +126,12 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
         if (ctrl.signal.aborted) return
         if (complete) clearCues()
         // While the file grows, only the new cues are added so the one on screen does not flicker.
-        for (const c of cues.slice(complete ? 0 : (t.cues?.length ?? 0))) t.addCue(new VTTCue(c.start, c.end, c.text))
+        for (const c of cues.slice(complete ? 0 : (t.cues?.length ?? 0))) {
+          const cue = new VTTCue(c.start, c.end, c.text)
+          positionSubtitleCue(cue)
+          t.addCue(cue)
+          subtitleCues.push(cue)
+        }
         subtitleLoad.value = 'ready'
         if (!complete) subtitleTimer = setTimeout(run, 10_000)
       } catch {
@@ -394,6 +419,7 @@ export function usePlayback(video: Ref<HTMLVideoElement | null>, options: Option
   return {
     session, status, error, position, buffered, paused, waiting, volume, muted, audioIndex, subtitleIndex, externalSubtitleId,
     subtitleLoad, duration, init, seek, skip, retry, togglePlay, setAudio, setSubtitle, setExternalSubtitle, setVolume,
+    setSubtitleOffset,
     toggleMute,
   }
 }
