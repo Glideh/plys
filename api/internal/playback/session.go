@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"toto/api/internal/scanner"
 )
 
 const (
@@ -106,12 +108,14 @@ type StartRequest struct {
 }
 
 func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error) {
+	m.probeMasteringDisplay(ctx, &req.Source)
 	plan := Decide(req.Source, req.Caps)
 	sess := &Session{
 		UserID: req.UserID, FileID: req.FileID, Plan: plan, done: make(chan struct{}), stderr: &tailBuffer{max: 4096},
 		SourcePath: req.Source.Path, SourceSize: req.Size, TextSubtitles: req.TextSubtitles, LiveSubtitleIndex: -1,
 		ExternalSubtitle: req.ExternalSubtitle,
 	}
+
 	if req.Source.TextSubtitle != nil {
 		sess.LiveSubtitleIndex = req.Source.TextSubtitle.Index
 	}
@@ -165,8 +169,30 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 	m.sessions[sess.ID] = sess
 	m.mu.Unlock()
 	slog.Info("playback session started", "session", sess.ID, "file", req.FileID, "start", start,
-		"copy_video", plan.CopyVideo, "copy_audio", plan.CopyAudio, "tonemap", plan.Tonemap, "burn", plan.BurnSubtitle, "accel", m.Encoder.Accel)
+		"copy_video", plan.CopyVideo, "copy_audio", plan.CopyAudio, "tonemap", plan.Tonemap, "burn", plan.BurnSubtitle,
+		"accel", m.Encoder.VideoAccel(plan, req.Source))
 	return sess, nil
+}
+
+func (m *Manager) probeMasteringDisplay(ctx context.Context, source *Source) {
+	if source.Video == nil || !IsHDR(source.Video) || source.Video.HasMasteringDisplay || !m.Encoder.VAAPITonemap {
+		return
+	}
+	result, err := (scanner.FFProbe{Binary: m.ffprobe}).Probe(ctx, source.Path)
+	if err != nil {
+		slog.Warn("could not inspect HDR mastering metadata; using the validated HDR fallback", "path", source.Path, "err", err)
+		return
+	}
+	for _, stream := range result.Streams {
+		if stream.Index == source.Video.Index {
+			v := *source.Video
+			v.HasMasteringDisplay = stream.HasMasteringDisplay
+			source.Video = &v
+			return
+		}
+	}
+	slog.Warn("HDR video stream missing from metadata probe; using the validated HDR fallback", "path", source.Path,
+		"stream", source.Video.Index)
 }
 
 func (m *Manager) activeVideoTranscodes() int {

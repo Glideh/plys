@@ -2,7 +2,7 @@
 ARG GO_VERSION=1.26
 
 # GPU drivers: Intel iHD (VAAPI) and oneVPL runtime (QSV) are amd64-only and live in non-free; Mesa covers AMD.
-ARG MEDIA_PACKAGES="ffmpeg vainfo mesa-va-drivers"
+ARG MEDIA_PACKAGES="ffmpeg vainfo mesa-va-drivers mesa-vulkan-drivers"
 ARG INTEL_PACKAGES="intel-media-va-driver-non-free libvpl2 libmfx-gen1.2"
 
 FROM golang:${GO_VERSION}-trixie AS dev

@@ -14,6 +14,10 @@ Plys is a self-hosted media library for your own movies, series and other videos
 - **Android TV app**, which updates itself from the GitHub releases.
 - **Languages**: English, French and Brazilian Portuguese.
 
+When the GPU and driver support it, HDR-to-SDR conversion uses hardware HEVC decoding, VAAPI tone mapping
+when mastering metadata is available (otherwise Vulkan), and hardware H.264 encoding. Plys checks these
+capabilities at startup and falls back to software tone mapping if a GPU path fails validation.
+
 ## Installation
 
 You need a machine with [Docker](https://docs.docker.com/engine/install/) and Docker Compose.
@@ -114,7 +118,7 @@ services:
       - /video/path:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
-    # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
+    # Hardware transcoding (Intel or AMD GPU): uncomment these lines and set RENDER_GID in .env
     # (stat -c %g /dev/dri/renderD128). Without a GPU, conversions run on the CPU.
     # devices:
     #   - /dev/dri/renderD128:/dev/dri/renderD128

@@ -52,10 +52,30 @@ func TestParseFFProbeFlagsImageSubtitlesAndSkipsCovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if res.Duration != 5400.5 || res.Bitrate != 8000000 || len(res.Streams) != 4 {
 		t.Fatalf("unexpected result %+v", res)
 	}
 	if !res.Streams[2].ImageBased || !res.Streams[2].Forced || res.Streams[3].ImageBased {
 		t.Errorf("subtitle flags wrong: %+v / %+v", res.Streams[2], res.Streams[3])
+	}
+}
+
+func TestParseFFProbeMasteringDisplay(t *testing.T) {
+	res, err := parseFFProbe([]byte(`{
+		"streams": [{
+			"index": 0, "codec_type": "video", "codec_name": "hevc",
+			"color_transfer": "smpte2084"
+		}],
+		"frames": [{
+			"stream_index": 0,
+			"side_data_list": [{"side_data_type": "Mastering display metadata"}]
+		}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Streams) != 1 || !res.Streams[0].HasMasteringDisplay {
+		t.Fatalf("mastering display metadata not detected: %+v", res.Streams)
 	}
 }

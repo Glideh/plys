@@ -155,7 +155,7 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 
 	dto := playbackSessionDTO{
 		ID: sess.ID, PlaylistURL: "/api/v1/stream/" + sess.ID + "/index.m3u8", Start: sess.Start, Duration: src.Duration,
-		CopyVideo: sess.Plan.CopyVideo, CopyAudio: sess.Plan.CopyAudio, Accel: string(s.Playback.Encoder.Accel),
+		CopyVideo: sess.Plan.CopyVideo, CopyAudio: sess.Plan.CopyAudio, Accel: string(s.Playback.Encoder.VideoAccel(sess.Plan, src)),
 		SubtitleIndex: req.SubtitleIndex, Burned: sess.Plan.BurnSubtitle,
 	}
 	if src.Audio != nil {

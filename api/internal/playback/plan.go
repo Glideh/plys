@@ -126,8 +126,24 @@ func outputSize(w, h, clientMax int) (int, int) {
 }
 
 type Encoder struct {
-	Accel  Accel
-	Device string
+	Accel         Accel
+	Device        string
+	HEVCVAAPI     bool
+	VAAPITonemap  bool
+	VulkanTonemap bool
+}
+
+func gpuHDR(p Plan, src Source, enc Encoder) bool {
+	return p.Tonemap && !p.BurnSubtitle && src.Video != nil && src.Video.Codec == "hevc" &&
+		enc.HEVCVAAPI && ((enc.VAAPITonemap && src.Video.HasMasteringDisplay) || enc.VulkanTonemap) &&
+		(enc.Accel == AccelQSV || enc.Accel == AccelVAAPI)
+}
+
+func (enc Encoder) VideoAccel(p Plan, src Source) Accel {
+	if gpuHDR(p, src, enc) {
+		return AccelVAAPI
+	}
+	return enc.Accel
 }
 
 // Args builds the ffmpeg command line writing an fMP4 HLS stream into outDir, starting at start seconds.
@@ -135,19 +151,30 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}
 
 	transcode := src.Video != nil && !p.CopyVideo
+	hdrGPU := transcode && gpuHDR(p, src, enc)
+	vaapiHDR := hdrGPU && enc.VAAPITonemap && src.Video.HasMasteringDisplay
 	hwFrames := false
 	if transcode {
 		hwDecode := slices.Contains(hwDecodable, src.Video.Codec) && !p.BurnSubtitle
-		switch enc.Accel {
-		case AccelQSV:
+		switch {
+		case hdrGPU:
+			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-filter_hw_device", "va")
+			if !vaapiHDR {
+				args = append(args, "-init_hw_device", "vulkan=vk@va")
+			}
+			args = append(args,
+				"-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
+			hwFrames = true
+		case enc.Accel == AccelQSV:
 			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-init_hw_device", "qsv=qs@va", "-filter_hw_device", "qs")
-			if hwDecode {
+			// Never use the QSV HEVC decoder: it can corrupt pixels and timestamps on Intel drivers.
+			if hwDecode && src.Video.Codec != "hevc" && !p.Tonemap {
 				args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
 				hwFrames = true
 			}
-		case AccelVAAPI:
+		case enc.Accel == AccelVAAPI:
 			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-filter_hw_device", "va")
-			// VAAPI tone mapping needs HDR metadata many files lack, so HDR goes through the CPU.
+			// VAAPI tone mapping needs mastering metadata; other HDR routes use the validated GPU path above.
 			if hwDecode && !p.Tonemap {
 				args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
 				hwFrames = true
@@ -176,12 +203,36 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 		case p.BurnSubtitle:
 			graph := fmt.Sprintf("[%s][0:%d]overlay=eof_action=pass,%s[v]", input, src.Subtitle.Index, videoFilter(p, src.Video, enc.Accel, false))
 			args = append(args, "-filter_complex", graph, "-map", "[v]")
+		case hdrGPU:
+			args = append(args, "-map", input, "-vf", gpuHDRFilter(p, enc, vaapiHDR))
 		default:
-			args = append(args, "-map", input, "-vf", videoFilter(p, src.Video, enc.Accel, hwFrames))
+			filter := videoFilter(p, src.Video, enc.Accel, hwFrames)
+			if hwFrames && enc.Accel == AccelQSV && src.Video.Codec == "hevc" {
+				filter = "hwmap=derive_device=qsv,format=qsv," + filter
+			}
+			args = append(args, "-map", input, "-vf", filter)
 		}
 		if transcode {
-			args = append(args, encoderArgs(enc.Accel)...)
+			videoEncoder := enc.Accel
+			if hdrGPU {
+				videoEncoder = AccelVAAPI
+			}
+			args = append(args, encoderArgs(videoEncoder)...)
+			if hdrGPU {
+				// The output is SDR; remove source HDR SEI after encoding rather than inserting a CPU
+				// metadata filter between Vulkan and VAAPI frames.
+				args = append(args, "-bsf:v", "filter_units=remove_types=6")
+			}
 			args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", SegmentSeconds))
+			if p.Tonemap {
+				args = append(args, "-color_primaries", "bt709", "-color_trc", "bt709")
+				if vaapiHDR {
+					args = append(args, "-color_range", "tv")
+				} else {
+					args = append(args, "-colorspace", "bt709")
+					args = append(args, "-color_range", "tv")
+				}
+			}
 		}
 	}
 
@@ -235,7 +286,23 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 const LiveSubtitleFile = "subs.vtt"
 
 // Software tone mapping: linearize, map with Hable, convert back to BT.709.
-const cpuTonemap = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv"
+const hdrMetadataCleanup = "sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL," +
+	"sidedata=mode=delete:type=DYNAMIC_HDR_PLUS,sidedata=mode=delete:type=DYNAMIC_HDR_VIVID," +
+	"sidedata=mode=delete:type=DOVI_RPU_BUFFER,sidedata=mode=delete:type=DOVI_METADATA"
+
+const cpuTonemap = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv," + hdrMetadataCleanup
+
+func gpuHDRFilter(p Plan, enc Encoder, vaapiHDR bool) string {
+	if vaapiHDR {
+		return fmt.Sprintf("tonemap_vaapi=format=nv12:matrix=bt709:primaries=bt709:transfer=bt709,"+
+			"scale_vaapi=w=%d:h=%d:format=nv12:out_color_matrix=bt709:out_color_primaries=bt709:"+
+			"out_color_transfer=bt709:out_range=tv", p.Width, p.Height)
+	}
+	filter := fmt.Sprintf("hwmap=derive_device=vulkan,libplacebo=w=%d:h=%d:format=nv12:"+
+		"colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv:tonemapping=hable,"+
+		"hwmap=derive_device=vaapi,format=vaapi", p.Width, p.Height)
+	return filter
+}
 
 // cpuTonemapAt downscales to the output size before tone mapping. The tone mapping works on float RGB, so
 // running it on a 4K picture instead of 1080p costs four times as much and cannot keep up with playback.
@@ -252,16 +319,14 @@ func videoFilter(p Plan, v *scanner.Stream, accel Accel, hwFrames bool) string {
 	case AccelQSV:
 		if !hwFrames {
 			upload := "nv12"
-			if is10Bit(v) {
+			if p.Tonemap {
+				chain = append(chain, cpuTonemapAt(p))
+			} else if is10Bit(v) {
 				upload = "p010"
 			}
 			chain = append(chain, "format="+upload, "hwupload=extra_hw_frames=64")
 		}
-		vpp := "vpp_qsv=" + size + ":format=nv12"
-		if p.Tonemap {
-			vpp += ":tonemap=1"
-		}
-		chain = append(chain, vpp)
+		chain = append(chain, "vpp_qsv="+size+":format=nv12")
 	case AccelVAAPI:
 		if !hwFrames {
 			if p.Tonemap {
@@ -284,7 +349,7 @@ func videoFilter(p Plan, v *scanner.Stream, accel Accel, hwFrames bool) string {
 func encoderArgs(accel Accel) []string {
 	switch accel {
 	case AccelQSV:
-		return []string{"-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "24", "-profile:v", "high"}
+		return []string{"-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "24", "-profile:v", "high", "-forced_idr", "1"}
 	case AccelVAAPI:
 		return []string{"-c:v", "h264_vaapi", "-qp", "24", "-profile:v", "high"}
 	default:

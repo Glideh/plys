@@ -3,7 +3,9 @@ package playback
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -425,6 +427,10 @@ func TestToneMappingRunsAtOutputSize(t *testing.T) {
 	if filter = videoFilter(plan, hdr, AccelVAAPI, false); !strings.HasPrefix(filter, "scale=1920:1080,zscale=t=linear") {
 		t.Fatalf("VAAPI tone maps on the CPU, after downscaling: %s", filter)
 	}
+	if filter = videoFilter(plan, hdr, AccelQSV, false); !strings.HasPrefix(filter, "scale=1920:1080,zscale=t=linear") ||
+		strings.Contains(filter, "tonemap=1") || !strings.Contains(filter, "format=nv12,hwupload") {
+		t.Fatalf("QSV must upload SDR frames after software tone mapping: %s", filter)
+	}
 
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -460,5 +466,298 @@ func TestToneMappingRunsAtOutputSize(t *testing.T) {
 	video := probe(t, flat).Video
 	if video == nil || video.Codec != "h264" || video.Width != 320 || video.Height != 180 || video.PixFmt != "yuv420p" {
 		t.Fatalf("output video: %+v", video)
+	}
+}
+
+func TestQSVDecodeAndKeyframeArgs(t *testing.T) {
+	for _, c := range []struct {
+		codec  string
+		hdr    bool
+		burn   bool
+		decode bool
+	}{
+		{"hevc", false, false, false},
+		{"hevc", true, false, false},
+		{"h264", false, false, true},
+		{"av1", false, false, true},
+		{"av1", true, false, false},
+		{"h264", false, true, false},
+	} {
+		t.Run(fmt.Sprintf("%s/hdr=%t/burn=%t", c.codec, c.hdr, c.burn), func(t *testing.T) {
+			v := &scanner.Stream{Codec: c.codec, PixFmt: "yuv420p10le", Width: 3840, Height: 2160}
+			src := Source{Video: v, Subtitle: &scanner.Stream{Index: 2}}
+			plan := Plan{Tonemap: c.hdr, BurnSubtitle: c.burn, Width: 1920, Height: 1080}
+			args := strings.Join(Args(plan, src, 4, Encoder{Accel: AccelQSV, Device: "/dev/dri/renderD128"}, "/out"), " ")
+			if strings.Contains(args, "-hwaccel qsv") != c.decode {
+				t.Fatalf("unexpected decoding path: %s", args)
+			}
+			if !strings.Contains(args, "-forced_idr 1") {
+				t.Fatalf("QSV needs forced IDR frames for independent HLS segments: %s", args)
+			}
+			if c.hdr && !strings.Contains(args, "-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv") {
+				t.Fatalf("tone-mapped output must be tagged SDR: %s", args)
+			}
+		})
+	}
+	src := Source{Video: &scanner.Stream{Codec: "hevc"}}
+	args := strings.Join(Args(Plan{CopyVideo: true}, src, 0, Encoder{Accel: AccelQSV}, "/out"), " ")
+	if strings.Contains(args, "hwaccel") || strings.Contains(args, "forced_idr") || strings.Contains(args, "bt709") {
+		t.Fatalf("copied video must not be changed: %s", args)
+	}
+	src.Video.ColorTransfer = "smpte2084"
+	src.Video.HasMasteringDisplay = true
+	enc := Encoder{Accel: AccelQSV, Device: "/dev/dri/renderD128", HEVCVAAPI: true, VulkanTonemap: true}
+	args = strings.Join(Args(Plan{Tonemap: true, Width: 1920, Height: 1080}, src, 0, enc, "/out"), " ")
+	for _, want := range []string{
+		"-hwaccel vaapi", "libplacebo=w=1920:h=1080", "h264_vaapi", "-bsf:v filter_units=remove_types=6",
+		"-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("GPU HDR path missing %q: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "h264_qsv") || strings.Contains(gpuHDRFilter(Plan{}, enc, false), "sidedata=") {
+		t.Fatalf("GPU HDR path must encode on VAAPI without software frame filters: %s", args)
+	}
+	enc.VAAPITonemap = true
+	args = strings.Join(Args(Plan{Tonemap: true, Width: 1920, Height: 1080}, src, 0, enc, "/out"), " ")
+	if !strings.Contains(args, "tonemap_vaapi=format=nv12:matrix=bt709:primaries=bt709:transfer=bt709") ||
+		strings.Contains(args, "libplacebo") || enc.VideoAccel(Plan{Tonemap: true}, src) != AccelVAAPI {
+		t.Fatalf("HDR10 with mastering metadata should prefer VAAPI VPP: %s", args)
+	}
+	src.Video.HasMasteringDisplay = false
+	enc.VulkanTonemap = false
+	if gpuHDR(Plan{Tonemap: true}, src, enc) {
+		t.Fatal("VAAPI tone mapping must not run without mastering display metadata")
+	}
+	enc.VulkanTonemap = true
+	if !gpuHDR(Plan{Tonemap: true}, src, enc) {
+		t.Fatal("Vulkan tone mapping should handle HDR sources without mastering metadata")
+	}
+	args = strings.Join(Args(Plan{Tonemap: true, Width: 1920, Height: 1080}, src, 0, enc, "/out"), " ")
+	if !strings.Contains(args, "libplacebo") || !strings.Contains(args, "vulkan=vk@va") ||
+		strings.Contains(args, "tonemap_vaapi") {
+		t.Fatalf("HDR without mastering metadata must select the validated Vulkan route: %s", args)
+	}
+}
+
+func TestHDRHLSCadenceColorsAndTiming(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	input := filepath.Join(t.TempDir(), "hdr.mkv")
+	if output, err := exec.Command(ffmpeg, "-v", "error",
+		"-f", "lavfi", "-i", "testsrc2=s=320x180:r=24000/1001",
+		"-f", "lavfi", "-i", "sine=r=48000", "-t", "12.012",
+		"-pix_fmt", "yuv420p10le", "-c:v", "libx265", "-preset", "ultrafast", "-g", "48",
+		"-x265-params", "pools=2:log-level=error:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50):max-cll=1000,400",
+		"-c:a", "ac3", input).CombinedOutput(); err != nil {
+		t.Fatalf("generate HDR input: %v %s", err, output)
+	}
+	source := probe(t, input)
+	if !source.Video.HasMasteringDisplay {
+		t.Fatal("scanner did not detect frame-level HDR mastering metadata")
+	}
+	plan := Decide(source, ClientCaps{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"flac"}})
+	var gpu []Encoder
+	for _, accel := range []Accel{AccelNone, AccelQSV, AccelVAAPI} {
+		t.Run(string(accel), func(t *testing.T) {
+			enc := Encoder{Accel: AccelNone}
+			if accel != AccelNone {
+				enc = DetectEncoder(context.Background(), ffmpeg, string(accel))
+				if enc.Accel != accel {
+					t.Skipf("%s encoder unavailable", accel)
+				}
+			}
+			if enc.HEVCVAAPI && (enc.VAAPITonemap || enc.VulkanTonemap) {
+				gpu = append(gpu, enc)
+			}
+			for _, start := range []float64{0, 4} {
+				t.Run(fmt.Sprintf("start=%.0f", start), func(t *testing.T) {
+					out := t.TempDir()
+					output, err := exec.Command(ffmpeg, Args(plan, source, start, enc, out)...).CombinedOutput()
+					if err != nil || bytes.Contains(output, []byte("Non-monotonic DTS")) {
+						t.Fatalf("HDR transcode: %v %s", err, output)
+					}
+					playlist, err := os.ReadFile(filepath.Join(out, "index.m3u8"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					var durations []float64
+					for _, line := range strings.Split(string(playlist), "\n") {
+						var duration float64
+						if _, err := fmt.Sscanf(line, "#EXTINF:%f,", &duration); err == nil {
+							durations = append(durations, duration)
+						}
+					}
+					if len(durations) != int((12-start)/SegmentSeconds) {
+						t.Fatalf("unexpected segment count: %s", playlist)
+					}
+					for _, duration := range durations {
+						if math.Abs(duration-SegmentSeconds) > 0.05 {
+							t.Fatalf("segments must be ~4 seconds: %s", playlist)
+						}
+					}
+					data, err := os.ReadFile(filepath.Join(out, "init.mp4"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if bytes.Contains(data, []byte("elst")) {
+						t.Fatal("HLS must not rely on edit lists for A/V sync")
+					}
+					for i := range durations {
+						chunk, err := os.ReadFile(filepath.Join(out, fmt.Sprintf("seg_%05d.m4s", i)))
+						if err != nil {
+							t.Fatal(err)
+						}
+						data = append(data, chunk...)
+					}
+					flat := filepath.Join(out, "flat.mp4")
+					if err := os.WriteFile(flat, data, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					output, err = exec.Command("ffprobe", "-v", "error", "-select_streams", "v", "-count_frames",
+						"-show_streams", "-of", "json", flat).CombinedOutput()
+					if err != nil {
+						t.Fatalf("probe video: %v %s", err, output)
+					}
+					var video struct {
+						Streams []struct {
+							Frames    string `json:"nb_read_frames"`
+							Space     string `json:"color_space"`
+							Transfer  string `json:"color_transfer"`
+							Primaries string `json:"color_primaries"`
+							SideData  []struct {
+								Type string `json:"side_data_type"`
+							} `json:"side_data_list"`
+						} `json:"streams"`
+					}
+					if err := json.Unmarshal(output, &video); err != nil {
+						t.Fatal(err)
+					}
+					if len(video.Streams) != 1 {
+						t.Fatalf("unexpected video: %s", output)
+					}
+					v := video.Streams[0]
+					if v.Frames != fmt.Sprint(int(288-start*24)) || v.Space != "bt709" ||
+						v.Transfer != "bt709" || v.Primaries != "bt709" {
+						t.Fatalf("wrong cadence or SDR tags: %s", output)
+					}
+					for _, side := range v.SideData {
+						if strings.Contains(side.Type, "Mastering display") || strings.Contains(side.Type, "Content light") ||
+							strings.Contains(side.Type, "HDR") || strings.Contains(side.Type, "DOVI") {
+							t.Fatalf("SDR must not retain HDR metadata: %s", output)
+						}
+					}
+					output, err = exec.Command("ffprobe", "-v", "error", "-show_entries",
+						"packet=stream_index,pts_time,dts_time", "-of", "json", flat).CombinedOutput()
+					if err != nil {
+						t.Fatalf("probe timestamps: %v %s", err, output)
+					}
+					var packets struct {
+						Packets []struct {
+							Index int    `json:"stream_index"`
+							PTS   string `json:"pts_time"`
+							DTS   string `json:"dts_time"`
+						} `json:"packets"`
+					}
+					if err := json.Unmarshal(output, &packets); err != nil {
+						t.Fatal(err)
+					}
+					lastDTS := [2]float64{math.Inf(-1), math.Inf(-1)}
+					lastPTS := lastDTS
+					for _, packet := range packets.Packets {
+						if packet.Index < 0 || packet.Index > 1 {
+							t.Fatalf("unexpected packet: %+v", packet)
+						}
+						var pts, dts float64
+						if _, err := fmt.Sscan(packet.PTS, &pts); err != nil {
+							t.Fatal(err)
+						}
+						if _, err := fmt.Sscan(packet.DTS, &dts); err != nil {
+							t.Fatal(err)
+						}
+						if dts <= lastDTS[packet.Index] {
+							t.Fatalf("non-monotonic timestamps: %+v", packet)
+						}
+						lastDTS[packet.Index] = dts
+						lastPTS[packet.Index] = max(lastPTS[packet.Index], pts)
+					}
+					if math.IsInf(lastPTS[0], -1) || math.IsInf(lastPTS[1], -1) ||
+						math.Abs(lastPTS[0]-lastPTS[1]) > 0.15 {
+						t.Fatalf("A/V end timestamps diverge: %v", lastPTS)
+					}
+				})
+			}
+		})
+	}
+	if len(gpu) > 0 {
+		t.Run("gpu-tone-map", func(t *testing.T) {
+			source := probe(t, input)
+			plan := Decide(source, ClientCaps{VideoCodecs: []string{"h264"}, AudioCodecs: []string{"aac"}})
+			out := t.TempDir()
+			output, err := exec.Command(ffmpeg, Args(plan, source, 0.5, gpu[0], out)...).CombinedOutput()
+			if err != nil {
+				t.Fatalf("GPU HDR transcode: %v %s", err, output)
+			}
+			playlist, err := os.ReadFile(filepath.Join(out, "index.m3u8"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err = exec.Command(ffmpeg, "-v", "error", "-i", filepath.Join(out, "index.m3u8"),
+				"-map", "0:v:0", "-vf", "format=p010le", "-fps_mode", "passthrough", "-f", "framemd5", "-").Output()
+			if err != nil {
+				t.Fatalf("probe GPU HLS output: %v", err)
+			}
+			frames, err := parseProbeFrames(string(output))
+			if err != nil || len(frames) != 276 {
+				t.Fatalf("GPU HLS frames: got %d: %v\n%s\n%s", len(frames), err, playlist, output)
+			}
+			for i, frame := range frames {
+				if frame.pts != int64(i) {
+					t.Fatalf("GPU HLS timestamps are discontinuous at frame %d: %+v", i, frame)
+				}
+			}
+			var durations []float64
+			for _, line := range strings.Split(string(playlist), "\n") {
+				var duration float64
+				if _, err := fmt.Sscanf(line, "#EXTINF:%f,", &duration); err == nil {
+					durations = append(durations, duration)
+				}
+			}
+			if len(durations) != 3 || math.Abs(durations[0]-SegmentSeconds) > 0.05 ||
+				math.Abs(durations[1]-SegmentSeconds) > 0.05 {
+				t.Fatalf("GPU HLS must segment on four-second IDRs: %s", playlist)
+			}
+			output, err = exec.Command("ffprobe", "-v", "error", "-show_streams", "-of", "json",
+				filepath.Join(out, "index.m3u8")).CombinedOutput()
+			if err != nil {
+				t.Fatalf("probe GPU HLS metadata: %v %s", err, output)
+			}
+			var result struct {
+				Streams []struct {
+					Space     string `json:"color_space"`
+					Transfer  string `json:"color_transfer"`
+					Primaries string `json:"color_primaries"`
+					SideData  []struct {
+						Type string `json:"side_data_type"`
+					} `json:"side_data_list"`
+				} `json:"streams"`
+			}
+			if err := json.Unmarshal(output, &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Streams) == 0 || result.Streams[0].Space != "bt709" ||
+				result.Streams[0].Transfer != "bt709" || result.Streams[0].Primaries != "bt709" {
+				t.Fatalf("GPU output must be tagged SDR BT.709: %s", output)
+			}
+			for _, side := range result.Streams[0].SideData {
+				if strings.Contains(side.Type, "Mastering display") || strings.Contains(side.Type, "Content light") ||
+					strings.Contains(side.Type, "HDR") || strings.Contains(side.Type, "DOVI") {
+					t.Fatalf("GPU SDR output must not retain HDR metadata: %s", output)
+				}
+			}
+		})
 	}
 }
