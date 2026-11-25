@@ -39,7 +39,7 @@ services:
       - /video/path:/media:ro
       # Converted video segments, subtitles and downloaded posters.
       - api-cache:/cache
-    # Hardware transcoding (Intel or AMD GPU): uncomment these four lines and set RENDER_GID in .env
+    # Hardware transcoding (Intel or AMD GPU): uncomment these lines and set RENDER_GID in .env
     # (stat -c %g /dev/dri/renderD128). Without a GPU, conversions run on the CPU.
     # devices:
     #   - /dev/dri/renderD128:/dev/dri/renderD128
