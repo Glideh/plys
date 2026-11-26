@@ -287,6 +287,7 @@ data class ItemDetail(
     val year: Int? = null,
     val posterUrl: String? = null,
     val versions: List<Version>,
+    /** Server sequence: season number, then episode number; do not sort by title. */
     val children: List<ChildItem>,
     val positionSeconds: Double = 0.0,
     val watched: Boolean = false,

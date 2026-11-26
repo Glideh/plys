@@ -178,7 +178,7 @@ SELECT i.id, i.kind, i.title, i.overview, i.year, i.release_date, i.runtime_minu
 FROM items i
 LEFT JOIN playback_progress p ON p.item_id = i.id AND p.user_id = $1
 WHERE i.parent_id = $2
-ORDER BY i.sort_title, i.id
+ORDER BY i.season_number NULLS LAST, i.episode_number NULLS LAST, i.sort_title, i.id
 `
 
 type ListChildItemsParams struct {

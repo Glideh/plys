@@ -461,6 +461,14 @@ class PlysApiTest {
         assertNull(choiceValue(withChoice(filters, "audio", null), "audio"))
     }
 
+    @Test fun `details preserve server sequence instead of sorting children by title`() = runBlocking {
+        login()
+        json("""{"id":"series","kind":"series","title":"Series","versions":[],"children":[{"id":"s0","kind":"season","title":"Zulu","seasonNumber":0},{"id":"s1","kind":"season","title":"Zebra","seasonNumber":1},{"id":"s2","kind":"season","title":"Middle","seasonNumber":2},{"id":"s10","kind":"season","title":"Alpha","seasonNumber":10}]}""")
+        assertEquals(listOf("s0", "s1", "s2", "s10"), api.item("series").children.map { it.id })
+        json("""{"id":"s1","kind":"season","title":"Season","versions":[],"children":[{"id":"e1","kind":"episode","title":"Zebra","episodeNumber":1},{"id":"e2","kind":"episode","title":"Middle","episodeNumber":2},{"id":"e10","kind":"episode","title":"Alpha","episodeNumber":10}]}""")
+        assertEquals(listOf("e1", "e2", "e10"), api.item("s1").children.map { it.id })
+    }
+
     @Test fun `details decode cast directors and media tracks`() = runBlocking {
         login()
         json("""{"id":"film","kind":"movie","title":"Alien","imdbRating":8.5,"cast":[{"name":"Sigourney Weaver","character":"Ripley","photoUrl":null}],"directors":["Ridley Scott"],"versions":[{"id":"version","label":"1080p","audio":[{"index":1,"language":"en","default":true},{"index":7,"language":"fr"}],"subtitles":[{"index":9,"language":"fr","codec":"subrip"}]}],"children":[]}""")

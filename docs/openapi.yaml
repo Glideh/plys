@@ -2206,6 +2206,7 @@ components:
           oneOf: [{ $ref: "#/components/schemas/PlayTarget" }, { type: "null" }]
         children:
           type: array
+          description: Ordered by season number, then episode number ascending (special season 0 first). Missing numbers come last; title and ID break ties. Clients preserve this server order.
           items:
             type: object
             required: [id, kind, title]

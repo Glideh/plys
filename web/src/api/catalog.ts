@@ -186,6 +186,7 @@ export interface ItemDetail {
   episodeNumberEnd?: number
   ancestors: Ancestor[]
   versions: Version[]
+  /** Server sequence: season number, then episode number; do not sort by title. */
   children: ChildItem[]
   watched: boolean
   positionSeconds: number

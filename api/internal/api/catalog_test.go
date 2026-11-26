@@ -161,6 +161,76 @@ func TestCatalogBrowsing(t *testing.T) {
 	}
 }
 
+func TestSeriesChildrenUseSequentialOrder(t *testing.T) {
+	for _, provider := range []string{"tmdb", "fankai"} {
+		t.Run(provider, func(t *testing.T) {
+			e := newTestEnv(t)
+			ctx := context.Background()
+			admin := setupAdmin(t, e.h).body["accessToken"].(string)
+			writeFiles(t, e.root,
+				"series/Show.S00E01.mkv", "series/Show.S01E01.mkv",
+				"series/Show.S01E02.mkv", "series/Show.S01E10.mkv",
+				"series/Show.S02E01.mkv", "series/Show.S10E01.mkv",
+			)
+			lib := e.createScannedLibrary(t, admin, "Series", "series", "series", nil)
+			var root uuid.UUID
+			if err := e.srv.Pool.QueryRow(ctx, `SELECT id FROM items WHERE library_id=$1 AND kind='series'`, lib).Scan(&root); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.srv.Pool.Exec(ctx, `UPDATE items SET
+				tmdb_id=CASE WHEN $2='tmdb' THEN 77 ELSE NULL END,
+				fankai_id=CASE WHEN $2='fankai' THEN 77 ELSE NULL END
+				WHERE id=$1`, root, provider); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.srv.Pool.Exec(ctx, `UPDATE items SET
+				title=CASE COALESCE(season_number,episode_number)
+					WHEN 0 THEN 'Zulu' WHEN 1 THEN 'Zebra' WHEN 2 THEN 'Middle' ELSE 'Alpha' END,
+				sort_title=CASE COALESCE(season_number,episode_number)
+					WHEN 0 THEN 'zulu' WHEN 1 THEN 'zebra' WHEN 2 THEN 'middle' ELSE 'alpha' END
+				WHERE library_id=$1 AND kind IN ('season','episode')`, lib); err != nil {
+				t.Fatal(err)
+			}
+			detail := do(t, e.h, http.MethodGet, "/api/v1/items/"+root.String(), admin, nil)
+			if detail.status != http.StatusOK {
+				t.Fatalf("series detail: %d %v", detail.status, detail.body)
+			}
+			seasons := detail.body["children"].([]any)
+			if len(seasons) != 4 {
+				t.Fatalf("expected four seasons: %v", seasons)
+			}
+			for i, number := range []float64{0, 1, 2, 10} {
+				if seasons[i].(map[string]any)["seasonNumber"] != number {
+					t.Fatalf("seasons must be numeric, not alphabetical: %v", seasons)
+				}
+			}
+			seasonID := seasons[1].(map[string]any)["id"].(string)
+			// An unnumbered child belongs after all numbered episodes.
+			if _, err := e.srv.Pool.Exec(ctx, `INSERT INTO items
+				(library_id,parent_id,kind,match_key,title,sort_title)
+				VALUES ($1,$2,'episode','unknown','Aardvark','aardvark')`, lib, seasonID); err != nil {
+				t.Fatal(err)
+			}
+			detail = do(t, e.h, http.MethodGet, "/api/v1/items/"+seasonID, admin, nil)
+			if detail.status != http.StatusOK {
+				t.Fatalf("season detail: %d %v", detail.status, detail.body)
+			}
+			episodes := detail.body["children"].([]any)
+			if len(episodes) != 4 {
+				t.Fatalf("expected four episodes: %v", episodes)
+			}
+			for i, number := range []float64{1, 2, 10} {
+				if episodes[i].(map[string]any)["episodeNumber"] != number {
+					t.Fatalf("episodes must be numeric, not alphabetical: %v", episodes)
+				}
+			}
+			if _, numbered := episodes[3].(map[string]any)["episodeNumber"]; numbered {
+				t.Fatalf("unnumbered episode must come last: %v", episodes)
+			}
+		})
+	}
+}
+
 func TestLibraryAccessControl(t *testing.T) {
 	e := newTestEnv(t)
 	admin := setupAdmin(t, e.h).body["accessToken"].(string)
