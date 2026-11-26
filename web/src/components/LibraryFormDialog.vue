@@ -28,7 +28,9 @@ const userIds = ref<string[]>([])
 const metadataLanguage = ref('')
 const serverLanguage = ref('')
 const users = ref<User[]>([])
+/** True while the folder picker replaces the form, with its own title and actions. */
 const picking = ref(false)
+const pickedPath = ref<string | null>(null)
 const loading = ref(false)
 const error = ref('')
 
@@ -47,7 +49,7 @@ watch(open, async (isOpen) => {
   restricted.value = props.library?.restricted ?? false
   userIds.value = [...(props.library?.userIds ?? [])]
   metadataLanguage.value = props.library?.metadataLanguage ?? ''
-  picking.value = paths.value.length === 0
+  picking.value = false
   error.value = ''
   try {
     const [userList, settings] = await Promise.all([usersApi.list(), settingsApi.get()])
@@ -58,8 +60,14 @@ watch(open, async (isOpen) => {
   }
 })
 
-function addPath(path: string) {
-  if (!paths.value.includes(path)) paths.value.push(path)
+function startPicking() {
+  pickedPath.value = null
+  picking.value = true
+}
+
+function addPickedPath() {
+  const path = pickedPath.value
+  if (path && !paths.value.includes(path)) paths.value.push(path)
   picking.value = false
 }
 
@@ -82,8 +90,10 @@ async function submit() {
 </script>
 
 <template>
-  <BaseDialog v-model:open="open" :title="library ? t('libraries.edit') : t('libraries.new')" wide>
-    <form id="library-form" class="space-y-6" @submit.prevent="submit">
+  <BaseDialog v-model:open="open" :title="picking ? t('libraries.addFolder') : library ? t('libraries.edit') : t('libraries.new')" wide>
+    <FolderPicker v-if="picking" v-model:path="pickedPath" />
+    <!-- Hidden rather than unmounted while picking, so the fields keep their state. -->
+    <form v-show="!picking" id="library-form" class="space-y-6" @submit.prevent="submit">
       <TextField v-model="name" :label="t('libraries.name')" required :maxlength="100" />
 
       <fieldset>
@@ -141,10 +151,9 @@ async function submit() {
             </button>
           </li>
         </ul>
-        <p v-else-if="!picking" class="mb-3 text-sm text-slate-500">{{ t('libraries.noFolders') }}</p>
+        <p v-else class="mb-3 text-sm text-slate-500">{{ t('libraries.noFolders') }}</p>
 
-        <FolderPicker v-if="picking" @select="addPath" @cancel="picking = false" />
-        <BaseButton v-else @click="picking = true">+ {{ t('libraries.addFolder') }}</BaseButton>
+        <BaseButton @click="startPicking">+ {{ t('libraries.addFolder') }}</BaseButton>
       </fieldset>
 
       <fieldset>
@@ -177,7 +186,13 @@ async function submit() {
       <ErrorAlert v-if="error" :message="error" />
     </form>
 
-    <template #footer>
+    <template v-if="picking" #footer>
+      <BaseButton @click="picking = false">{{ t('picker.back') }}</BaseButton>
+      <BaseButton variant="primary" :disabled="!pickedPath || paths.includes(pickedPath)" @click="addPickedPath">
+        {{ t('picker.choose') }}
+      </BaseButton>
+    </template>
+    <template v-else #footer>
       <BaseButton @click="open = false">{{ t('common.cancel') }}</BaseButton>
       <BaseButton type="submit" form="library-form" variant="primary" :loading="loading" :disabled="paths.length === 0">
         {{ library ? t('common.save') : t('common.create') }}

@@ -3,6 +3,9 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { librariesApi, type Library, type ScanStatus } from '@/api/libraries'
 import { metadataLanguageNames } from '@/api/settings'
+import ActionMenu from '@/components/ActionMenu.vue'
+import AddButton from '@/components/AddButton.vue'
+import AdminSectionHeader from '@/components/AdminSectionHeader.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorAlert from '@/components/ErrorAlert.vue'
@@ -108,10 +111,11 @@ onUnmounted(() => clearTimeout(pollTimer))
 
 <template>
   <section>
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <h2 class="text-lg font-semibold">{{ t('admin.libraries') }}</h2>
-      <BaseButton variant="primary" @click="openForm(null)">+ {{ t('libraries.new') }}</BaseButton>
-    </div>
+    <AdminSectionHeader :title="t('admin.libraries')" :help="t('libraries.help')">
+      <template #actions>
+        <AddButton :label="t('libraries.new')" @click="openForm(null)" />
+      </template>
+    </AdminSectionHeader>
 
     <ErrorAlert v-if="error" :message="error" />
 
@@ -190,8 +194,12 @@ onUnmounted(() => clearTimeout(pollTimer))
 
         <div class="mt-4 flex justify-end gap-2">
           <BaseButton :disabled="isActive(scans[lib.id])" @click="startScan(lib)">{{ t('libraries.scan') }}</BaseButton>
-          <BaseButton @click="openForm(lib)">{{ t('common.edit') }}</BaseButton>
-          <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askDelete(lib)">{{ t('common.delete') }}</BaseButton>
+          <ActionMenu
+            :items="[
+              { label: t('common.edit'), action: () => openForm(lib) },
+              { label: t('common.delete'), action: () => askDelete(lib), danger: true },
+            ]"
+          />
         </div>
       </li>
     </ul>

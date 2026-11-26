@@ -2,10 +2,12 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { User } from '@/api/client'
-import AliasDialog from '@/components/AliasDialog.vue'
 import { invitationsApi, type Invitation } from '@/api/invitations'
 import { settingsApi } from '@/api/settings'
 import { usersApi, type Role } from '@/api/users'
+import ActionMenu from '@/components/ActionMenu.vue'
+import AddButton from '@/components/AddButton.vue'
+import AdminSectionHeader from '@/components/AdminSectionHeader.vue'
 import BaseButton from '@/components/BaseButton.vue'
 import BaseDialog from '@/components/BaseDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -13,6 +15,7 @@ import ErrorAlert from '@/components/ErrorAlert.vue'
 import InviteDialog from '@/components/InviteDialog.vue'
 import TextField from '@/components/TextField.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import UserEditDialog from '@/components/UserEditDialog.vue'
 import { useErrorMessage } from '@/composables/useErrorMessage'
 import { localeLabels, locales, type Locale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -62,17 +65,6 @@ function scheduleSyncReload() {
   syncTimer = setTimeout(load, 2000)
 }
 
-async function changeRole(user: User, role: Role) {
-  error.value = ''
-  notice.value = ''
-  try {
-    Object.assign(user, await usersApi.update(user.id, { role }))
-  } catch (err) {
-    error.value = errorMessage(err)
-    await load()
-  }
-}
-
 const createOpen = ref(false)
 const createForm = ref({ username: '', password: '', role: 'user' as Role, locale: uiLocale.value as Locale })
 const createError = ref('')
@@ -98,44 +90,18 @@ async function create() {
   }
 }
 
-const passwordOpen = ref(false)
-const passwordUser = ref<User | null>(null)
-const newPassword = ref('')
-const passwordError = ref('')
-const savingPassword = ref(false)
+const editOpen = ref(false)
+const editUser = ref<User | null>(null)
 
-function openPassword(user: User) {
-  passwordUser.value = user
-  newPassword.value = ''
-  passwordError.value = ''
-  passwordOpen.value = true
+function openEdit(user: User) {
+  editUser.value = user
+  notice.value = ''
+  editOpen.value = true
 }
 
-async function savePassword() {
-  savingPassword.value = true
-  passwordError.value = ''
-  try {
-    await usersApi.update(passwordUser.value!.id, { password: newPassword.value })
-    passwordOpen.value = false
-    notice.value = t('users.passwordChanged')
-  } catch (err) {
-    passwordError.value = errorMessage(err)
-  } finally {
-    savingPassword.value = false
-  }
-}
-
-const aliasOpen = ref(false)
-const aliasUser = ref<User | null>(null)
-
-function openAlias(user: User) {
-  aliasUser.value = user
-  aliasOpen.value = true
-}
-
-async function saveAlias(alias: string | null) {
-  const updated = await usersApi.setAlias(aliasUser.value!.id, alias)
+async function onEdited(updated: User, passwordChanged: boolean) {
   if (updated.id === auth.user?.id) auth.user = updated
+  if (passwordChanged) notice.value = t('users.passwordChanged')
   await load()
 }
 
@@ -192,16 +158,15 @@ onUnmounted(() => clearTimeout(syncTimer))
 
 <template>
   <section>
-    <div class="mb-6 flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <h2 class="text-lg font-semibold">{{ t('admin.users') }}</h2>
+    <AdminSectionHeader :title="t('admin.users')" :help="t('users.help')">
+      <template #status>
         <span v-if="loading || syncing" role="status" class="text-xs text-slate-500">{{ t('users.syncing') }}</span>
-      </div>
-      <div class="flex gap-2">
+      </template>
+      <template #actions>
         <BaseButton v-if="canInvite" @click="inviteOpen = true">{{ t('invitations.invite') }}</BaseButton>
-        <BaseButton variant="primary" @click="openCreate">+ {{ t('users.new') }}</BaseButton>
-      </div>
-    </div>
+        <AddButton :label="t('users.new')" @click="openCreate" />
+      </template>
+    </AdminSectionHeader>
 
     <ErrorAlert v-if="error" class="mb-4" :message="error" />
     <p v-if="notice" role="status" class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-sm text-emerald-300">
@@ -210,81 +175,49 @@ onUnmounted(() => clearTimeout(syncTimer))
 
     <div v-if="loading && users.length === 0" class="h-40 animate-pulse rounded-2xl bg-surface-800/60" />
 
-    <div v-else class="overflow-x-auto rounded-2xl border border-white/5 bg-surface-900">
-      <table class="w-full text-left text-sm">
-        <thead class="border-b border-white/5 text-xs tracking-wide text-slate-500 uppercase">
-          <tr>
-            <th class="px-5 py-3 font-medium">{{ t('common.username') }}</th>
-            <th class="px-5 py-3 font-medium">{{ t('users.role') }}</th>
-            <th class="hidden px-5 py-3 font-medium sm:table-cell">{{ t('users.createdAt') }}</th>
-            <th class="px-5 py-3"><span class="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          <tr v-for="user in users" :key="user.id">
-            <td class="px-5 py-3">
-              <div class="flex items-center gap-3">
-                <UserAvatar :user="user" class="size-8 shrink-0" />
-                <span class="font-medium">{{ user.displayName }}</span>
-                <span v-if="user.alias" class="text-xs text-slate-500">{{ t('aliases.original', { name: user.username }) }}</span>
-                <span v-if="user.id === auth.user?.id" class="text-xs text-slate-500">({{ t('users.you') }})</span>
-                <span v-if="user.remote" class="text-xs text-slate-500">{{ t('users.remoteFrom', { server: user.originServer }) }}</span>
-              </div>
-            </td>
-            <td class="px-5 py-3">
-              <select
-                :value="user.role"
-                :class="selectClass"
-                :disabled="user.remote"
-                :aria-label="t('users.role')"
-                @change="changeRole(user, ($event.target as HTMLSelectElement).value as Role)"
-              >
-                <option value="user">{{ t('users.roles.user') }}</option>
-                <option value="admin">{{ t('users.roles.admin') }}</option>
-              </select>
-            </td>
-            <td class="hidden px-5 py-3 text-slate-400 sm:table-cell">{{ d(new Date(user.createdAt)) }}</td>
-            <td class="px-5 py-3">
-              <div class="flex justify-end gap-2">
-                <BaseButton @click="openAlias(user)">{{ t('aliases.action') }}</BaseButton>
-                <BaseButton v-if="!user.remote" @click="openPassword(user)">{{ t('users.changePassword') }}</BaseButton>
-                <BaseButton
-                  v-if="!user.remote && user.id !== auth.user?.id"
-                  class="hover:!bg-red-500/15 hover:!text-red-300"
-                  @click="askDelete(user)"
-                >
-                  {{ t('common.delete') }}
-                </BaseButton>
-              </div>
-            </td>
-          </tr>
-          <tr v-for="invitation in invitations" :key="invitation.id" data-testid="pending-invitation">
-            <td class="px-5 py-3">
-              <div class="flex items-center gap-3">
-                <span class="grid size-8 shrink-0 place-items-center rounded-full border border-dashed border-white/20 text-slate-500" aria-hidden="true">?</span>
-                <span class="font-medium text-slate-400 italic">{{ t('invitations.pending') }}</span>
-                <span class="text-xs text-slate-500">{{ t('invitations.expires', { date: d(new Date(invitation.expiresAt), 'long') }) }}</span>
-              </div>
-            </td>
-            <td class="px-5 py-3 text-slate-500">{{ t('users.roles.user') }}</td>
-            <td class="hidden px-5 py-3 text-slate-400 sm:table-cell">{{ d(new Date(invitation.createdAt)) }}</td>
-            <td class="px-5 py-3">
-              <div class="flex justify-end gap-2">
-                <BaseButton class="hover:!bg-red-500/15 hover:!text-red-300" @click="askRevoke(invitation)">
-                  {{ t('common.delete') }}
-                </BaseButton>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- A list rather than a table: rows wrap on small viewports instead of scrolling sideways. -->
+    <ul v-else class="divide-y divide-white/5 rounded-2xl border border-white/5 bg-surface-900">
+      <li v-for="user in users" :key="user.id" class="flex items-center gap-3 px-4 py-3 sm:px-5">
+        <UserAvatar :user="user" class="size-9 shrink-0" />
+        <div class="min-w-0 flex-1">
+          <p class="flex flex-wrap items-baseline gap-x-2">
+            <span class="font-medium wrap-break-word">{{ user.displayName }}</span>
+            <span v-if="user.id === auth.user?.id" class="text-xs text-slate-500">({{ t('users.you') }})</span>
+          </p>
+          <p class="mt-0.5 flex flex-wrap gap-x-2 text-xs text-slate-500">
+            <span v-if="user.alias">{{ t('aliases.original', { name: user.username }) }}</span>
+            <span v-if="user.remote">{{ t('users.remoteFrom', { server: user.originServer }) }}</span>
+            <span>{{ t('users.createdOn', { date: d(new Date(user.createdAt)) }) }}</span>
+          </p>
+        </div>
+        <span
+          :class="user.role === 'admin' ? 'bg-accent-500/10 text-accent-300' : 'bg-white/5 text-slate-300'"
+          class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium"
+        >
+          {{ t(`users.roles.${user.role}`) }}
+        </span>
+        <ActionMenu
+          :items="[
+            { label: t('common.edit'), action: () => openEdit(user) },
+            ...(!user.remote && user.id !== auth.user?.id ? [{ label: t('common.delete'), action: () => askDelete(user), danger: true }] : []),
+          ]"
+        />
+      </li>
+      <li v-for="invitation in invitations" :key="invitation.id" data-testid="pending-invitation" class="flex items-center gap-3 px-4 py-3 sm:px-5">
+        <span class="grid size-9 shrink-0 place-items-center rounded-full border border-dashed border-white/20 text-slate-500" aria-hidden="true">?</span>
+        <div class="min-w-0 flex-1">
+          <p class="font-medium text-slate-400 italic">{{ t('invitations.pending') }}</p>
+          <p class="mt-0.5 text-xs text-slate-500">{{ t('invitations.expires', { date: d(new Date(invitation.expiresAt), 'long') }) }}</p>
+        </div>
+        <ActionMenu :items="[{ label: t('common.delete'), action: () => askRevoke(invitation), danger: true }]" />
+      </li>
+    </ul>
 
     <BaseDialog v-model:open="createOpen" :title="t('users.new')">
       <form id="user-form" class="space-y-5" @submit.prevent="create">
         <TextField v-model="createForm.username" :label="t('common.username')" :hint="t('setup.usernameHint')" autocomplete="off" required :maxlength="32" />
         <TextField v-model="createForm.password" :label="t('common.password')" :hint="t('setup.passwordHint')" type="password" autocomplete="new-password" required :minlength="8" />
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid gap-4 sm:grid-cols-2">
           <label class="block">
             <span class="mb-1.5 block text-sm font-medium text-slate-300">{{ t('users.role') }}</span>
             <select v-model="createForm.role" :class="selectClass" class="w-full">
@@ -307,18 +240,7 @@ onUnmounted(() => clearTimeout(syncTimer))
       </template>
     </BaseDialog>
 
-    <BaseDialog v-model:open="passwordOpen" :title="`${t('users.changePassword')} · ${passwordUser?.displayName ?? ''}`">
-      <form id="password-form" class="space-y-5" @submit.prevent="savePassword">
-        <TextField v-model="newPassword" :label="t('users.newPassword')" :hint="t('setup.passwordHint')" type="password" autocomplete="new-password" required :minlength="8" />
-        <ErrorAlert v-if="passwordError" :message="passwordError" />
-      </form>
-      <template #footer>
-        <BaseButton @click="passwordOpen = false">{{ t('common.cancel') }}</BaseButton>
-        <BaseButton type="submit" form="password-form" variant="primary" :loading="savingPassword">{{ t('common.save') }}</BaseButton>
-      </template>
-    </BaseDialog>
-
-    <AliasDialog v-model:open="aliasOpen" :name="aliasUser?.username ?? ''" :alias="aliasUser?.alias ?? null" :save="saveAlias" />
+    <UserEditDialog v-model:open="editOpen" :user="editUser" @saved="onEdited" />
 
     <InviteDialog v-model:open="inviteOpen" @created="loadInvitations" />
 

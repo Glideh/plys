@@ -1,22 +1,38 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { librariesApi, type BrowseResult } from '@/api/libraries'
 import { useErrorMessage } from '@/composables/useErrorMessage'
+import { FOLDER_PAGE_SIZE, filterFolders } from '@/utils/folders'
 import BaseButton from './BaseButton.vue'
 import ErrorAlert from './ErrorAlert.vue'
 
-const emit = defineEmits<{ select: [path: string]; cancel: [] }>()
+/**
+ * Browses the media folders. The directory being viewed is exposed through v-model:path (null on the roots list),
+ * and the parent dialog owns the buttons that choose it, so only one set of actions is ever visible.
+ */
+const path = defineModel<string | null>('path', { default: null })
+const { t } = useI18n()
 const errorMessage = useErrorMessage()
 
 const current = ref<BrowseResult | null>(null)
 const loading = ref(false)
 const error = ref('')
+const query = ref('')
+const shown = ref(FOLDER_PAGE_SIZE)
 
-async function open(path: string | null) {
+// A media folder can hold thousands of subfolders: they are filtered, then rendered one page at a time.
+const matches = computed(() => filterFolders(current.value?.entries ?? [], query.value))
+const visible = computed(() => matches.value.slice(0, shown.value))
+
+async function open(target: string | null) {
   loading.value = true
   error.value = ''
   try {
-    current.value = await librariesApi.browse(path)
+    current.value = await librariesApi.browse(target)
+    path.value = current.value.path
+    query.value = ''
+    shown.value = FOLDER_PAGE_SIZE
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
@@ -34,8 +50,8 @@ onMounted(() => open(null))
         type="button"
         class="grid size-8 shrink-0 place-items-center rounded-lg text-slate-400 transition hover:bg-white/5 hover:text-slate-100 disabled:opacity-30"
         :disabled="!current?.path || loading"
-        :aria-label="$t('picker.up')"
-        :title="$t('picker.up')"
+        :aria-label="t('picker.up')"
+        :title="t('picker.up')"
         @click="open(current?.parent ?? null)"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" class="size-5" aria-hidden="true">
@@ -43,15 +59,29 @@ onMounted(() => open(null))
         </svg>
       </button>
       <span class="truncate font-mono text-xs text-slate-400" :title="current?.path ?? ''">
-        {{ current?.path ?? $t('picker.roots') }}
+        {{ current?.path ?? t('picker.roots') }}
       </span>
+    </div>
+
+    <div v-if="(current?.entries.length ?? 0) > 10" class="border-b border-white/5 px-3 py-2">
+      <input
+        v-model="query"
+        type="search"
+        :placeholder="t('picker.filter')"
+        :aria-label="t('picker.filter')"
+        class="block w-full rounded-lg border border-white/10 bg-surface-800 px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+        @input="shown = FOLDER_PAGE_SIZE"
+      />
     </div>
 
     <ul class="h-64 overflow-y-auto py-1" :aria-busy="loading">
       <li v-if="!loading && current && current.entries.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
-        {{ current.path ? $t('picker.empty') : $t('picker.noRoots') }}
+        {{ current.path ? t('picker.empty') : t('picker.noRoots') }}
       </li>
-      <li v-for="entry in current?.entries ?? []" :key="entry.path">
+      <li v-else-if="!loading && current && matches.length === 0" class="px-4 py-8 text-center text-sm text-slate-500">
+        {{ t('picker.noMatch') }}
+      </li>
+      <li v-for="entry in visible" :key="entry.path">
         <button
           type="button"
           class="flex w-full items-center gap-3 px-4 py-2 text-left text-sm transition hover:bg-white/5"
@@ -63,14 +93,12 @@ onMounted(() => open(null))
           <span class="truncate">{{ entry.name }}</span>
         </button>
       </li>
+      <li v-if="matches.length > visible.length" class="flex items-center justify-between gap-3 px-4 py-2">
+        <span class="text-xs text-slate-500">{{ t('picker.shown', { shown: visible.length, total: matches.length }) }}</span>
+        <BaseButton class="!px-3 !py-1.5 !text-xs" @click="shown += FOLDER_PAGE_SIZE">{{ t('picker.more') }}</BaseButton>
+      </li>
     </ul>
 
-    <div class="flex items-center justify-end gap-2 border-t border-white/5 px-3 py-2">
-      <ErrorAlert v-if="error" class="mr-auto py-1.5" :message="error" />
-      <BaseButton @click="emit('cancel')">{{ $t('common.cancel') }}</BaseButton>
-      <BaseButton variant="primary" :disabled="!current?.path" @click="current?.path && emit('select', current.path)">
-        {{ $t('picker.choose') }}
-      </BaseButton>
-    </div>
+    <ErrorAlert v-if="error" class="m-3 py-1.5" :message="error" />
   </div>
 </template>
