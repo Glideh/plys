@@ -9,6 +9,12 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -61,21 +67,75 @@ class CatalogJourneyTest {
         output.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
-    @Test fun homeRowsStackVertically() {
+    private fun showHome(data: HomeResponse, width: Dp) {
+        rule.runOnUiThread {
+            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
+            rule.activity.setContent {
+                PlysTheme { Box(Modifier.width(width).fillMaxHeight()) { HomeScreen(data, model, emptyList(), emptyMap()) } }
+            }
+        }
+    }
+
+    @Test fun homeSectionsShareRowWhenTheyFit() {
         val data = HomeResponse(
             continueWatching = listOf(HomeItem("resume", "movie", "Resume fixture", ServerRef("local"))),
             nextUp = listOf(HomeItem("next", "episode", "Next fixture", ServerRef("local"))),
         )
-        rule.runOnUiThread {
-            val model = ViewModelProvider(rule.activity)[CatalogViewModel::class.java]
-            rule.activity.setContent { PlysTheme { HomeScreen(data, model, emptyList(), emptyMap()) } }
-        }
+        showHome(data, 528.dp)
         val continued = rule.onNodeWithText(text(R.string.continue_watching)).getUnclippedBoundsInRoot()
         val next = rule.onNodeWithText(text(R.string.next_up)).getUnclippedBoundsInRoot()
-        // Full-width rows, one under the other: up and down change row, left and right browse it.
+        assertEquals(continued.top, next.top)
+        assertTrue(next.left > continued.left)
+        rule.onNodeWithText("Resume fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        rule.onNodeWithText("Next fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionLeft) }
+        rule.onNodeWithText("Resume fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithText(text(R.string.movies)).assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        rule.onNodeWithText("Resume fixture").assertIsFocused()
+    }
+
+    @Test fun homeSectionsStackWhenTheyDoNotFit() {
+        val data = HomeResponse(
+            continueWatching = listOf(HomeItem("resume", "movie", "Resume fixture", ServerRef("local"))),
+            nextUp = listOf(HomeItem("next", "episode", "Next fixture", ServerRef("local"))),
+        )
+        showHome(data, 527.dp)
+        val continued = rule.onNodeWithText(text(R.string.continue_watching)).getUnclippedBoundsInRoot()
+        val next = rule.onNodeWithText(text(R.string.next_up)).getUnclippedBoundsInRoot()
         assertTrue(next.top > continued.bottom)
         assertEquals(continued.left, next.left)
-        screenshot("home-rows")
+        rule.onNodeWithText("Resume fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithText("Next fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        rule.onNodeWithText("Resume fixture").assertIsFocused()
+    }
+
+    @Test fun homeNavigationDoesNotSkipShorterRow() {
+        val data = HomeResponse(
+            continueWatching = listOf(HomeItem("resume", "movie", "Resume fixture", ServerRef("local"))),
+            nextUp = listOf(
+                HomeItem("next-1", "episode", "Next first", ServerRef("local")),
+                HomeItem("next-2", "episode", "Next second", ServerRef("local")),
+                HomeItem("next-3", "episode", "Next third", ServerRef("local")),
+                HomeItem("next-4", "episode", "Next fourth", ServerRef("local")),
+            ),
+        )
+        showHome(data, 900.dp)
+        val homeList = rule.onNode(hasScrollToNodeAction() and SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
+        homeList.performScrollToNode(hasText(text(R.string.movies)))
+        rule.onNodeWithText(text(R.string.movies)).performSemanticsAction(SemanticsActions.RequestFocus) { it() }
+        rule.onNodeWithText(text(R.string.movies)).performKeyInput { pressKey(Key.DirectionUp) }
+        rule.onNodeWithText("Next first").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        rule.onNodeWithText("Next second").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        rule.onNodeWithText("Next third").assertIsFocused().performKeyInput { pressKey(Key.DirectionRight) }
+        rule.onNodeWithText("Next fourth").assertIsFocused().performKeyInput { pressKey(Key.DirectionUp) }
+        rule.onNodeWithText("Resume fixture").assertIsFocused().performKeyInput { pressKey(Key.DirectionDown) }
+        rule.onNodeWithText("Next first").assertIsFocused()
+    }
+
+    @Test fun homeFocusesNextWhenThereIsNoResume() {
+        val data = HomeResponse(nextUp = listOf(HomeItem("next", "episode", "Next fixture", ServerRef("local"))))
+        showHome(data, 527.dp)
+        rule.onNodeWithText("Next fixture").assertIsFocused()
+        rule.onAllNodesWithText(text(R.string.continue_watching)).assertCountEquals(0)
     }
 
     @Test fun missingHomeStillShowsCatalogCounts() {

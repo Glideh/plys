@@ -2,8 +2,10 @@ package fr.plys.tv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -54,6 +56,8 @@ import fr.plys.tv.data.SearchGroup
 // and every element of the screen starts at the same horizontal gutter.
 val FocusGutter = 16.dp
 val RowFocusPadding = PaddingValues(horizontal = FocusGutter, vertical = FocusGutter)
+private val HomeCardWidth = 232.dp
+private val HomeCardSpacing = 20.dp
 
 fun kindLabel(kind: CatalogKind): Int = when (kind) {
     CatalogKind.MOVIES -> R.string.movies
@@ -74,7 +78,7 @@ private fun recentLabel(kind: CatalogKind): Int = when (kind) {
 }
 
 /**
- * Full-width rows stacked vertically, the TV convention: up and down change row, left and right browse it.
+ * The watching sections share a row when all their cards fit; otherwise they are separate full-width rows.
  * The search field comes first; from [MIN_SEARCH_LENGTH] characters one row per kind of matches replaces the
  * other rows. Otherwise what the viewer was watching comes first, then the libraries and what was added lately,
  * so the home stays useful even before anything has been watched.
@@ -88,41 +92,55 @@ fun HomeScreen(
     var typed by remember { mutableStateOf(false) }
     BackHandler(search.query.isNotEmpty()) { model.clearSearch() }
     val firstRail = data.continueWatching.ifEmpty { data.nextUp }
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)) {
-        item("search") { GlobalSearchField(search) { typed = true; model.search(it) } }
-        if (search.active) {
-            searchResults(search, model, requestInitial = !typed)
-            return@LazyColumn
-        }
-        if (data.unavailableServers > 0) item("partial") {
-            Text(partialResults(data.unavailableServers, data.unavailableServerNames), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = FocusGutter))
-        }
-        if (data.continueWatching.isNotEmpty()) item("continue") {
-            HomeRail(R.string.continue_watching, data.continueWatching, model, requestInitial = !typed)
-        }
-        if (data.nextUp.isNotEmpty()) item("next") {
-            HomeRail(R.string.next_up, data.nextUp, model, requestInitial = !typed && data.continueWatching.isEmpty())
-        }
-        item("libraries") {
-            Column {
-                RailTitle(R.string.libraries)
-                Row(Modifier.padding(horizontal = FocusGutter, vertical = FocusGutter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    CatalogKind.entries.forEach { kind ->
-                        KindTile(kind, catalogCounts[kind], libraries.count { it.kind == kind.value },
-                            Modifier.focusInitially(!typed && firstRail.isEmpty() && kind == CatalogKind.MOVIES)) { model.openKind(kind) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val continueWidth = homeRailWidth(data.continueWatching.size)
+        val nextWidth = homeRailWidth(data.nextUp.size)
+        val shareRow = data.continueWatching.isNotEmpty() && data.nextUp.isNotEmpty() && continueWidth + nextWidth <= maxWidth
+        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 48.dp)) {
+            item("search") { GlobalSearchField(search) { typed = true; model.search(it) } }
+            if (search.active) {
+                searchResults(search, model, requestInitial = !typed)
+                return@LazyColumn
+            }
+            if (data.unavailableServers > 0) item("partial") {
+                Text(partialResults(data.unavailableServers, data.unavailableServerNames), color = Plys.Warning, style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = FocusGutter))
+            }
+            if (shareRow) {
+                item("watching") {
+                    Row {
+                        HomeRail(R.string.continue_watching, data.continueWatching, model, requestInitial = !typed, modifier = Modifier.width(continueWidth))
+                        HomeRail(R.string.next_up, data.nextUp, model, requestInitial = false, modifier = Modifier.width(nextWidth))
+                    }
+                }
+            } else {
+                if (data.continueWatching.isNotEmpty()) item("continue") {
+                    HomeRail(R.string.continue_watching, data.continueWatching, model, requestInitial = !typed)
+                }
+                if (data.nextUp.isNotEmpty()) item("next") {
+                    HomeRail(R.string.next_up, data.nextUp, model, requestInitial = !typed && data.continueWatching.isEmpty())
+                }
+            }
+            item("libraries") {
+                Column {
+                    RailTitle(R.string.libraries)
+                    Row(Modifier.padding(horizontal = FocusGutter, vertical = FocusGutter), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        CatalogKind.entries.forEach { kind ->
+                            KindTile(kind, catalogCounts[kind], libraries.count { it.kind == kind.value },
+                                Modifier.focusInitially(!typed && firstRail.isEmpty() && kind == CatalogKind.MOVIES)) { model.openKind(kind) }
+                        }
                     }
                 }
             }
-        }
-        CatalogKind.entries.forEach { kind ->
-            val cards = recent[kind].orEmpty()
-            if (cards.isNotEmpty()) item("recent-${kind.value}") {
-                Column {
-                    RailTitle(recentLabel(kind))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
-                        items(cards, key = { it.id }) { card ->
-                            MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp), onPlay = { model.playCard(card) }) { model.openCard(card) }
+            CatalogKind.entries.forEach { kind ->
+                val cards = recent[kind].orEmpty()
+                if (cards.isNotEmpty()) item("recent-${kind.value}") {
+                    Column {
+                        RailTitle(recentLabel(kind))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
+                            items(cards, key = { it.id }) { card ->
+                                MediaCard(card, model.api, Modifier.width(if (card.kind == "video") 232.dp else 132.dp), onPlay = { model.playCard(card) }) { model.openCard(card) }
+                            }
                         }
                     }
                 }
@@ -241,14 +259,14 @@ private fun KindTile(kind: CatalogKind, titles: CatalogCount?, libraries: Int, m
 
 @Composable
 private fun HomeRail(title: Int, entries: List<HomeItem>, model: CatalogViewModel, requestInitial: Boolean, modifier: Modifier = Modifier) {
-    Column(modifier) {
+    Column(modifier.fillMaxWidth().focusGroup()) {
         RailTitle(title)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp), contentPadding = RowFocusPadding) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(HomeCardSpacing), contentPadding = RowFocusPadding) {
             items(entries, key = { it.source.serverId + it.id }) { item ->
                 val episode = episodeCode(item.seasonNumber, item.episodeNumber)
                 val left = (item.durationSeconds - item.positionSeconds).takeIf { item.positionSeconds > 0 && item.durationSeconds > 0 }
                 PosterTile(title = item.showTitle.ifBlank { item.title }, image = item.posterUrl, api = model.api, source = item.source,
-                    modifier = Modifier.width(232.dp).focusInitially(requestInitial && item == entries.first()), landscape = true,
+                    modifier = Modifier.width(HomeCardWidth).focusInitially(requestInitial && item == entries.first()), landscape = true,
                     label = episode,
                     subtitle = listOfNotNull(
                         item.title.takeIf { item.showTitle.isNotBlank() },
@@ -262,6 +280,9 @@ private fun HomeRail(title: Int, entries: List<HomeItem>, model: CatalogViewMode
         }
     }
 }
+
+private fun homeRailWidth(count: Int) =
+    FocusGutter * 2 + HomeCardWidth * count + HomeCardSpacing * (count - 1).coerceAtLeast(0)
 
 /** "S1 · E4", or null outside series. */
 fun episodeCode(season: Int?, episode: Int?): String? = when {

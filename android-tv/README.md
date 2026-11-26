@@ -64,6 +64,10 @@ not create them). Do not run builds and instrumented tests concurrently on the s
 Instrumented tests use fixture data. Also check real-media playback, resume and
 background/foreground transitions on the target device.
 
+On the home screen, Continue watching and Next episodes share a row when all
+their cards fit. Otherwise each section has its own horizontally scrollable row,
+so the remote's up and down buttons navigate between them.
+
 ## Run on a TV
 
 Enable ADB debugging on the device, then run from the repository root:
