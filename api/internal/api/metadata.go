@@ -34,7 +34,7 @@ const (
 )
 
 var localThumbRe = regexp.MustCompile(`^[0-9a-f-]{36}\.jpg$`)
-var fanKaiImageRe = regexp.MustCompile(`^[0-9a-f-]{36}-(?:poster|backdrop)\.(?:jpg|png|webp)$`)
+var fanKaiImageRe = regexp.MustCompile(`^[0-9a-f-]{36}-(?:[0-9]+-)?(?:poster|backdrop|thumb)\.(?:jpg|png|webp)$`)
 
 func (s *Server) serverInfo(w http.ResponseWriter, r *http.Request) {
 	name, err := s.Settings.ServerName(r.Context())

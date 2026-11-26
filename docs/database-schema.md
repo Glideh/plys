@@ -175,6 +175,8 @@ Maps a library to one or more resolved filesystem paths. A path can belong to on
 
 The catalogue tree. A single table represents movies, series, seasons, episodes, and personal videos. `parent_id` forms the series-to-season-to-episode hierarchy. The `library_id`, sibling identity, kind, and `match_key` prevent duplicate nodes during rescans. `tmdb_id` and `fankai_id` are separate provider identities; FanKai IDs are never used as TMDB IDs for title grouping, watchlists, or subtitles.
 
+Selecting or manually refreshing a FanKai series imports metadata for its existing seasons and episodes by season/episode number, including season posters and episode thumbnails cached locally. Missing local episodes are not created. Only the root series stores `fankai_id`; automatic library scans do not query FanKai. Newly scanned episodes require a manual series refresh.
+
 Items with the same `collection_id` belong to the same collection; the identifier does not reference a separate table.
 
 This table also stores enriched metadata from TMDB, including identifiers, titles, overview, release data, runtime, rating, cast, crew, artwork paths, genres, and filter dimensions. `locked_fields` preserves administrator edits when metadata is refreshed. `enrichment_version` records the latest completed metadata migration for the item. `imdb_rating` and `imdb_votes` hold the IMDb public rating, refreshed daily from IMDb's free `title.ratings.tsv.gz` dataset through `imdb_id`.

@@ -1,9 +1,39 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"toto/api/internal/metadata"
 )
+
+func TestFanKaiEpisodeThumbnailIsServedFromCache(t *testing.T) {
+	dir := t.TempDir()
+	cache := metadata.NewImageCache(dir, "")
+	file := "00000000-0000-0000-0000-000000000001-501-thumb.png"
+	if err := os.MkdirAll(filepath.Join(dir, "fankai"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("\x89PNG\r\n\x1a\n")
+	if err := os.WriteFile(cache.FanKaiLocal(file), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := "fankai/" + file
+	u := imageURL(&path, "w500")
+	if u == nil || *u != "/api/v1/images/fankai/"+file {
+		t.Fatalf("unexpected episode image URL: %v", u)
+	}
+	h := New(Deps{Images: cache}).Routes()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, *u, nil))
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), data) || w.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("cached thumbnail not served: %d %s", w.Code, w.Header())
+	}
+}
 
 func TestServerInfoIsPublic(t *testing.T) {
 	h := newTestServer(t)

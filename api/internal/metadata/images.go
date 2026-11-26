@@ -26,7 +26,7 @@ const prefetchWorkers = 6
 var ImageSizes = []string{"w92", "w185", "w300", "w342", "w500", "w780", "w1280", "original"}
 
 var imageFileRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}\.(?:jpg|png)$`)
-var fanKaiImageNameRe = regexp.MustCompile(`^[0-9a-f-]{36}-(?:poster|backdrop)$`)
+var fanKaiImageNameRe = regexp.MustCompile(`^[0-9a-f-]{36}-(?:[0-9]+-)?(?:poster|backdrop|thumb)$`)
 
 // ImageCache downloads provider images once and serves them from disk, so browsers never contact providers.
 type ImageCache struct {

@@ -379,6 +379,10 @@ func TestFanKaiMatchStaysSeparateAndOnlyManualTMDBSelectionReplacesIt(t *testing
 
 	var detailRequests atomic.Int32
 	fankai := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/series/77/seasons" {
+			_, _ = w.Write([]byte(`{"seasons":[]}`))
+			return
+		}
 		if r.URL.Path != "/series/77" {
 			t.Errorf("unexpected FanKai request: %s", r.URL.Path)
 		}

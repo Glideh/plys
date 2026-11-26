@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"toto/api/internal/scanner"
 	"toto/api/internal/store"
@@ -48,6 +49,30 @@ type FanKaiSearchResult struct {
 	OriginalTitle string
 	Year          int
 	Overview      string
+}
+
+type fanKaiSeason struct {
+	ID           int    `json:"id"`
+	SeasonNumber *int   `json:"season_number"`
+	Title        string `json:"title"`
+	Plot         string `json:"plot"`
+	Premiered    string `json:"premiered"`
+	Images       struct {
+		Poster string `json:"poster"`
+	} `json:"images"`
+}
+
+type fanKaiEpisode struct {
+	ID            int    `json:"id"`
+	EpisodeNumber *int   `json:"episode_number"`
+	Title         string `json:"title"`
+	Plot          string `json:"plot"`
+	Aired         string `json:"aired"`
+	Duration      int    `json:"duration"`
+	ThumbImage    string `json:"thumb_image"`
+	Links         struct {
+		Thumbnail string `json:"thumbnail"`
+	} `json:"links"`
 }
 
 type fanKaiClient struct {
@@ -212,13 +237,114 @@ func (s *Service) refreshFanKai(ctx context.Context, itemID uuid.UUID, fanKaiID 
 		year, _ = strconv.Atoi(serie.Premiered[:4])
 	}
 	fankaiID32 := int32(fanKaiID)
-	return s.q.SetFanKaiMetadata(ctx, store.SetFanKaiMetadataParams{
+	params := store.SetFanKaiMetadataParams{
 		FankaiID: &fankaiID32, Title: title, SortTitle: scanner.SortTitle(title),
 		OriginalTitle: opt(serie.OriginalTitle), Year: optInt(year),
 		Overview: opt(serie.Plot), Tagline: nil, ReleaseDate: parseDate(serie.Premiered),
 		Rating: optRating(serie.RatingValue), Genres: genres,
 		PosterPath: posterPath, BackdropPath: backdropPath, ID: itemID,
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := s.q.WithTx(tx)
+		if err := q.SetFanKaiMetadata(ctx, params); err != nil {
+			return err
+		}
+		return s.refreshFanKaiChildren(ctx, q, itemID, fanKaiID)
 	})
+}
+
+func (s *Service) refreshFanKaiChildren(ctx context.Context, q *store.Queries, seriesID uuid.UUID, fanKaiID int) error {
+	seasons, err := q.ListChildren(ctx, &seriesID)
+	if err != nil || len(seasons) == 0 {
+		return err
+	}
+	var response struct {
+		Seasons []fanKaiSeason `json:"seasons"`
+	}
+	if err := s.fankai().get(ctx, "series/"+strconv.Itoa(fanKaiID)+"/seasons", &response); err != nil {
+		return err
+	}
+	byNumber := make(map[int]fanKaiSeason)
+	for _, season := range response.Seasons {
+		if season.ID > 0 && season.SeasonNumber != nil {
+			byNumber[*season.SeasonNumber] = season
+		}
+	}
+	for _, localSeason := range seasons {
+		if localSeason.Kind != "season" || localSeason.SeasonNumber == nil {
+			continue
+		}
+		season, ok := byNumber[int(*localSeason.SeasonNumber)]
+		if !ok {
+			continue
+		}
+		poster, err := s.fanKaiChildImage(ctx, localSeason.ID, season.ID, "poster", season.Images.Poster)
+		if err != nil {
+			return err
+		}
+		if err := q.UpdateItemMetadata(ctx, store.UpdateItemMetadataParams{
+			ID: localSeason.ID, Title: season.Title, SortTitle: scanner.SortTitle(season.Title),
+			Overview: opt(season.Plot), Year: optYear(season.Premiered),
+			ReleaseDate: parseDate(season.Premiered), PosterPath: poster, MatchStatus: "matched",
+		}); err != nil {
+			return err
+		}
+		episodes, err := q.ListChildren(ctx, &localSeason.ID)
+		if err != nil {
+			return err
+		}
+		if len(episodes) == 0 {
+			continue
+		}
+		var response struct {
+			Episodes []fanKaiEpisode `json:"episodes"`
+		}
+		if err := s.fankai().get(ctx, "seasons/"+strconv.Itoa(season.ID)+"/episodes", &response); err != nil {
+			return err
+		}
+		byNumber := make(map[int]fanKaiEpisode)
+		for _, episode := range response.Episodes {
+			if episode.ID > 0 && episode.EpisodeNumber != nil {
+				byNumber[*episode.EpisodeNumber] = episode
+			}
+		}
+		for _, localEpisode := range episodes {
+			if localEpisode.Kind != "episode" || localEpisode.EpisodeNumber == nil {
+				continue
+			}
+			episode, ok := byNumber[int(*localEpisode.EpisodeNumber)]
+			if !ok {
+				continue
+			}
+			thumb, err := s.fanKaiChildImage(ctx, localEpisode.ID, episode.ID, "thumb",
+				firstFanKaiValue(episode.Links.Thumbnail, episode.ThumbImage))
+			if err != nil {
+				return err
+			}
+			if err := q.UpdateItemMetadata(ctx, store.UpdateItemMetadataParams{
+				ID: localEpisode.ID, Title: episode.Title, SortTitle: scanner.SortTitle(episode.Title),
+				Overview: opt(episode.Plot), Year: optYear(episode.Aired), ReleaseDate: parseDate(episode.Aired),
+				RuntimeMinutes: optInt(episode.Duration / 60), ThumbPath: thumb, MatchStatus: "matched",
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) fanKaiChildImage(ctx context.Context, itemID uuid.UUID, providerID int, kind, rawURL string) (*string, error) {
+	if rawURL == "" || s.images == nil {
+		return nil, nil
+	}
+	if strings.HasPrefix(rawURL, "/") && !strings.HasPrefix(rawURL, "//") {
+		rawURL = DefaultFanKaiBaseURL + rawURL
+	}
+	path, err := s.images.FanKai(ctx, itemID.String()+"-"+strconv.Itoa(providerID)+"-"+kind, rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("%w: cache %s: %v", ErrFanKaiUnavailable, kind, err)
+	}
+	return &path, nil
 }
 
 func firstFanKaiValue(values ...string) string {
