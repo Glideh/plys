@@ -64,10 +64,6 @@ not create them). Do not run builds and instrumented tests concurrently on the s
 Instrumented tests use fixture data. Also check real-media playback, resume and
 background/foreground transitions on the target device.
 
-On the home screen, Continue watching and Next episodes share a row when all
-their cards fit. Otherwise each section has its own horizontally scrollable row,
-so the remote's up and down buttons navigate between them.
-
 ## Run on a TV
 
 Enable ADB debugging on the device, then run from the repository root:
@@ -91,12 +87,6 @@ runs (with the release's ETag, so an unchanged release costs nothing). A newer
 version shows an entry above "Sign out" in the side rail: selecting it downloads
 the APK and opens the system installer. Android asks once to allow Plys to
 install unknown apps.
-
-The side rail uses 40 dp buttons with 20 dp icons, occupying 52 dp when folded
-and 228 dp when expanded. On shorter displays it scrolls with remote focus
-instead of shrinking the last buttons, including when update instructions appear.
-Icons stay anchored during expansion and collapse; rail focus uses colour and
-a border without scaling, unlike other buttons.
 
 Android only accepts an update signed with the installed app's key. Release APKs
 are signed with the keystore pinned in the `release` environment of the

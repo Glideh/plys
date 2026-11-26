@@ -43,6 +43,8 @@
     line-height: 1.6;
     font-optical-sizing: auto;
     @apply bg-surface-950 text-slate-200 antialiased;
+    background-image: radial-gradient(circle farthest-corner at center, rgb(255 255 255 / 0.035), transparent);
+    background-attachment: fixed;
   }
 
   h1,

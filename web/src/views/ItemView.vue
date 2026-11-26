@@ -357,9 +357,11 @@ async function onMatched(merged: boolean) {
 
     <template v-else>
       <section class="relative isolate z-10">
-        <img v-if="backdrop" :src="backdrop" alt="" class="absolute inset-0 -z-20 size-full object-cover opacity-40" />
-        <div class="absolute inset-0 -z-10 bg-gradient-to-t from-surface-950 via-surface-950/80 to-surface-950/30" />
-        <div class="absolute inset-0 -z-10 bg-gradient-to-r from-surface-950 via-surface-950/60 to-transparent" />
+        <div aria-hidden="true" class="pointer-events-none absolute inset-0 -z-10 [mask-image:linear-gradient(to_bottom,black_50%,transparent)]">
+          <img v-if="backdrop" :src="backdrop" alt="" class="absolute inset-0 size-full object-cover opacity-40" />
+          <div class="absolute inset-0 bg-gradient-to-t from-surface-950 via-surface-950/80 to-surface-950/30" />
+          <div class="absolute inset-0 bg-gradient-to-r from-surface-950 via-surface-950/60 to-transparent" />
+        </div>
 
         <div class="mx-auto flex max-w-screen-xl flex-col gap-8 px-4 pt-10 pb-12 sm:px-8 md:flex-row md:items-end">
           <img

@@ -76,19 +76,21 @@ onMounted(async () => {
 
 <template>
   <main class="mx-auto max-w-screen-2xl space-y-12 px-4 py-10 sm:px-8">
-    <div class="relative max-w-2xl">
-      <svg viewBox="0 0 24 24" class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
-      </svg>
-      <input
-        v-model="query"
-        type="search"
-        :placeholder="t('home.search')"
-        :aria-label="t('home.search')"
-        autocomplete="off"
-        class="w-full rounded-xl border border-white/10 bg-surface-800 py-3 pr-4 pl-12 text-base text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
-        @keydown.esc="query = ''"
-      />
+    <div class="max-w-2xl">
+      <div class="relative">
+        <svg viewBox="0 0 24 24" class="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+        </svg>
+        <input
+          v-model="query"
+          type="search"
+          :placeholder="t('home.search')"
+          :aria-label="t('home.search')"
+          autocomplete="off"
+          class="w-full rounded-xl border border-white/10 bg-surface-800 py-3 pr-4 pl-12 text-base text-slate-100 placeholder-slate-500 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/30 focus:outline-none"
+          @keydown.esc="query = ''"
+        />
+      </div>
       <p v-if="search.term.value && !search.active.value" class="mt-2 text-sm text-slate-500">{{ t('home.searchHint', MIN_SEARCH_LENGTH) }}</p>
     </div>
 
