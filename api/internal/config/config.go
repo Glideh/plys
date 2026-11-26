@@ -29,6 +29,8 @@ type Config struct {
 	MaxTranscodes int
 	// TrustedProxies may set X-Forwarded-For. Defaults to the networks of this host (the compose network).
 	TrustedProxies []netip.Prefix
+	// UpdateCheck reads the latest GitHub release once a day so that clients can show that an update exists.
+	UpdateCheck bool
 }
 
 func Load() (Config, error) {
@@ -58,6 +60,9 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("PLYS_FEDERATION_REQUIRE_HTTPS: %w", err)
 	}
 	c.FederationRequireHTTPS = federationHTTPS
+	if c.UpdateCheck, err = strconv.ParseBool(env("PLYS_UPDATE_CHECK", "true")); err != nil {
+		return c, fmt.Errorf("PLYS_UPDATE_CHECK: %w", err)
+	}
 	if c.MaxTranscodes, err = strconv.Atoi(env("MAX_TRANSCODES", "2")); err != nil || c.MaxTranscodes < 1 {
 		return c, errors.New("MAX_TRANSCODES must be a positive integer")
 	}

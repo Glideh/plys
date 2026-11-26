@@ -113,6 +113,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Proxies allowed to set X-Forwarded-For (CIDRs, comma-separated); empty means the compose network.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Checks GitHub once a day for a newer release, shown in the footer of the web interface.
+      PLYS_UPDATE_CHECK: ${PLYS_UPDATE_CHECK:-true}
     volumes:
       # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
       - /video/path:/media:ro
@@ -195,6 +197,7 @@ Set these in `.env` when needed (complete installation):
 | `MAX_TRANSCODES` | `2` | Videos converted at the same time |
 | `RENDER_GID` | | Group of the GPU render node, for hardware transcoding (see the comment in the compose file) |
 | `TRUSTED_PROXIES` | compose network | Proxies allowed to set `X-Forwarded-For`, as comma-separated CIDRs or addresses (`none` trusts none) |
+| `PLYS_UPDATE_CHECK` | `true` | Checks GitHub once a day for a newer release and shows it in the footer of the web interface; `false` disables it |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 
 ## Android TV

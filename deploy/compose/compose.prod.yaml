@@ -34,6 +34,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Proxies allowed to set X-Forwarded-For (CIDRs, comma-separated); empty means the compose network.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      # Checks GitHub once a day for a newer release, shown in the footer of the web interface.
+      PLYS_UPDATE_CHECK: ${PLYS_UPDATE_CHECK:-true}
     volumes:
       # The videos, set it read-only and mount every folders needed into media which is the root for the library paths.
       - /video/path:/media:ro

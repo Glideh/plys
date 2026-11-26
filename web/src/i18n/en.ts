@@ -1,7 +1,7 @@
 import type fr from './fr'
 
 export default {
-  app: { name: 'Plys', tagline: 'Your personal film library', serverVersion: 'Server {version}' },
+  app: { name: 'Plys', tagline: 'Your personal film library', serverVersion: 'Server {version}', updateAvailable: 'Update available: {version}' },
   common: {
     username: 'Username',
     password: 'Password',

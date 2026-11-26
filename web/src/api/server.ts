@@ -6,6 +6,14 @@ export interface ServerInfo {
   name: string
   version: string
   publicKey: string
+  /** A newer published release of Plys, when the server knows one. */
+  update?: ServerUpdate
+}
+
+export interface ServerUpdate {
+  version: string
+  /** Release page with the notes. */
+  url: string
 }
 
 export const serverApi = {

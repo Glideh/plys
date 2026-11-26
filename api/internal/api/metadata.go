@@ -42,12 +42,16 @@ func (s *Server) serverInfo(w http.ResponseWriter, r *http.Request) {
 		httpx.InternalError(w, r, err)
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{
+	info := map[string]any{
 		"id":        s.Identity.ID,
 		"name":      name,
 		"version":   Version,
 		"publicKey": s.Identity.PublicKey,
-	})
+	}
+	if update := s.Releases.Available(); update != nil {
+		info["update"] = update
+	}
+	httpx.JSON(w, http.StatusOK, info)
 }
 
 type settingsDTO struct {

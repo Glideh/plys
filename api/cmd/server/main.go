@@ -19,6 +19,7 @@ import (
 	"toto/api/internal/metadata"
 	"toto/api/internal/opensubtitles"
 	"toto/api/internal/playback"
+	"toto/api/internal/release"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
@@ -95,6 +96,12 @@ func run() error {
 		return opensubtitles.Credentials{APIKey: v.APIKey, Username: v.Username, Password: v.Password}, err
 	})
 
+	var releases *release.Checker
+	if cfg.UpdateCheck {
+		releases = release.New(release.LatestURL, api.Version)
+		go releases.Run(ctx)
+	}
+
 	server := api.New(api.Deps{
 		Pool:                   pool,
 		Tokens:                 auth.NewIssuer(secret, accessTokenTTL),
@@ -110,6 +117,7 @@ func run() error {
 		OpenSubtitles:          osubs,
 		FederationRequireHTTPS: cfg.FederationRequireHTTPS,
 		TrustedProxies:         cfg.TrustedProxies,
+		Releases:               releases,
 	})
 	go server.RunPeerMonitor(ctx)
 	handler := server.Routes()

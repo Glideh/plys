@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import GlobalSearchResults from '@/components/GlobalSearchResults.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { libraryKinds } from '@/api/libraries'
-import { serverApi } from '@/api/server'
+import { serverApi, type ServerUpdate } from '@/api/server'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import { useAuthStore } from '@/stores/auth'
 
@@ -16,6 +16,7 @@ const auth = useAuthStore()
 
 const menuOpen = ref(false)
 const serverVersion = ref('')
+const serverUpdate = ref<ServerUpdate | null>(null)
 const menu = ref<HTMLElement | null>(null)
 
 // Top bar search. The home page has its own search field, so it is offered everywhere else. The
@@ -84,7 +85,10 @@ onMounted(() => {
   // The footer is informative only: without an answer it simply stays empty.
   serverApi
     .info()
-    .then((info) => (serverVersion.value = info.version))
+    .then((info) => {
+      serverVersion.value = info.version
+      serverUpdate.value = info.update ?? null
+    })
     .catch(() => {})
 })
 
@@ -227,8 +231,19 @@ onUnmounted(() => {
     </div>
 
     <footer class="border-t border-white/5">
-      <div class="mx-auto flex h-12 max-w-screen-2xl items-center justify-end px-4 text-xs text-slate-500 sm:px-8">
+      <div class="mx-auto flex h-12 max-w-screen-2xl items-center justify-end gap-3 px-4 text-xs text-slate-500 sm:px-8">
         <span v-if="serverVersion">{{ t('app.serverVersion', { version: serverVersion }) }}</span>
+        <a
+          v-if="serverUpdate"
+          :href="serverUpdate.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-1.5 rounded-full bg-accent-500/15 px-2.5 py-1 font-medium text-accent-300 transition hover:bg-accent-500/25"
+          data-testid="server-update"
+        >
+          <span class="size-1.5 rounded-full bg-accent-400" aria-hidden="true"></span>
+          {{ t('app.updateAvailable', { version: serverUpdate.version }) }}
+        </a>
       </div>
     </footer>
   </div>

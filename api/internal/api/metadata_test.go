@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"toto/api/internal/metadata"
+	"toto/api/internal/release"
 )
 
 func TestFanKaiEpisodeThumbnailIsServedFromCache(t *testing.T) {
@@ -44,6 +46,28 @@ func TestServerInfoIsPublic(t *testing.T) {
 	again := do(t, h, http.MethodGet, "/api/v1/server", "", nil)
 	if again.body["id"] != r.body["id"] {
 		t.Fatal("server identity must be stable")
+	}
+}
+
+func TestServerInfoReportsUpdate(t *testing.T) {
+	releases := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"99.0.0","html_url":"https://github.com/Glideh/plys/releases/tag/99.0.0"}`))
+	}))
+	defer releases.Close()
+	// Version is 0.2.0-dev in tests, which never sees an update: the checker is given a release version instead.
+	checker := release.New(releases.URL, "0.7.9")
+	if err := checker.Check(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	e := newTestEnvWith(t, func(d *Deps) { d.Releases = checker })
+	r := do(t, e.h, http.MethodGet, "/api/v1/server", "", nil)
+	update, _ := r.body["update"].(map[string]any)
+	if r.status != http.StatusOK || update["version"] != "99.0.0" || update["url"] != "https://github.com/Glideh/plys/releases/tag/99.0.0" {
+		t.Fatalf("server info: %d %v", r.status, r.body)
+	}
+
+	if info := do(t, newTestServer(t), http.MethodGet, "/api/v1/server", "", nil); info.body["update"] != nil {
+		t.Fatalf("update without a checker: %v", info.body)
 	}
 }
 

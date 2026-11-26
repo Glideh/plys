@@ -33,6 +33,15 @@ paths:
                   name: { type: string }
                   version: { type: string }
                   publicKey: { type: string, description: Base64 Ed25519 public key }
+                  update:
+                    type: object
+                    description: >-
+                      A newer published release of Plys. Absent when the server is up to date, runs a development
+                      build, has not reached GitHub yet, or has the check disabled (PLYS_UPDATE_CHECK=false).
+                    required: [version, url]
+                    properties:
+                      version: { type: string, example: "0.8.0" }
+                      url: { type: string, format: uri, description: Release page with the notes }
 
   /setup/status:
     get:

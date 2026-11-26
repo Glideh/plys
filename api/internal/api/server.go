@@ -16,6 +16,7 @@ import (
 	"toto/api/internal/metadata"
 	"toto/api/internal/opensubtitles"
 	"toto/api/internal/playback"
+	"toto/api/internal/release"
 	"toto/api/internal/scanner"
 	"toto/api/internal/settings"
 	"toto/api/internal/store"
@@ -48,6 +49,8 @@ type Deps struct {
 	PeerCacheTTL time.Duration
 	// TrustedProxies may set X-Forwarded-For; the client address is the right-most hop outside them.
 	TrustedProxies []netip.Prefix
+	// Releases reports a newer published release of Plys; nil disables the update indicator.
+	Releases *release.Checker
 }
 
 type Server struct {
