@@ -25,12 +25,14 @@ fun PlysButton(
     transparent: Boolean = false,
     shape: Shape = Plys.Small,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
+    focusedScale: Float = 1.05f,
+    pressedScale: Float = 0.98f,
     content: @Composable RowScope.() -> Unit,
 ) {
     androidx.tv.material3.Button(
         onClick = onClick, modifier = modifier, enabled = enabled,
         shape = ButtonDefaults.shape(shape = shape),
-        scale = ButtonDefaults.scale(focusedScale = 1.05f, pressedScale = 0.98f),
+        scale = ButtonDefaults.scale(focusedScale = focusedScale, pressedScale = pressedScale),
         contentPadding = contentPadding,
         border = ButtonDefaults.border(
             border = Border(BorderStroke(1.dp, if (primary || transparent) Color.Transparent else Plys.Hairline), shape = shape),

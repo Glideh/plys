@@ -88,6 +88,12 @@ version shows an entry above "Sign out" in the side rail: selecting it downloads
 the APK and opens the system installer. Android asks once to allow Plys to
 install unknown apps.
 
+The side rail uses 40 dp buttons with 20 dp icons, occupying 52 dp when folded
+and 228 dp when expanded. On shorter displays it scrolls with remote focus
+instead of shrinking the last buttons, including when update instructions appear.
+Icons stay anchored during expansion and collapse; rail focus uses colour and
+a border without scaling, unlike other buttons.
+
 Android only accepts an update signed with the installed app's key. Release APKs
 are signed with the keystore pinned in the `release` environment of the
 repository (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
