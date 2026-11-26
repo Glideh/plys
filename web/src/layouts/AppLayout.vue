@@ -100,7 +100,7 @@ onUnmounted(() => {
       <nav class="mx-auto flex h-16 max-w-screen-2xl items-center gap-4 px-4 sm:px-8 md:gap-8">
         <RouterLink :to="{ name: 'home' }" :aria-label="t('app.name')" class="flex items-center gap-2.5">
           <img src="/brand-mark.svg" alt="" class="size-8 object-contain" />
-          <span class="text-lg font-bold tracking-tight" :class="{ 'hidden sm:inline': searchOpen && !onHome }">{{ t('app.name') }}</span>
+          <span class="text-lg font-extrabold tracking-tight" :class="{ 'hidden sm:inline': searchOpen && !onHome }">{{ t('app.name') }}</span>
         </RouterLink>
 
         <div class="hidden items-center gap-6 text-sm font-medium md:flex">

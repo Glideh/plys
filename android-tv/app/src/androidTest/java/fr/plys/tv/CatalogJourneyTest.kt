@@ -241,6 +241,7 @@ class CatalogJourneyTest {
         }
         rule.onNodeWithText(text(R.string.brand)).assertIsDisplayed()
         rule.onNodeWithText(text(R.string.sign_in_title)).assertIsDisplayed()
+        screenshot("login")
     }
 
     @Test fun watchlistFromSideRailAndDetail() {
