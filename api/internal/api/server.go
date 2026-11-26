@@ -196,6 +196,7 @@ func (s *Server) Routes() http.Handler {
 				r.Post("/libraries/{id}/scan", s.scanLibrary)
 
 				r.Get("/admin/scans", s.listScans)
+				r.Get("/admin/playback/sessions", s.listPlaybackSessions)
 				r.Get("/admin/fs/browse", s.browseFS)
 				r.Get("/admin/settings", s.getSettings)
 				r.Get("/admin/federation/pairing-code", s.pairingCodeHandler)

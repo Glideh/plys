@@ -166,6 +166,12 @@ POSTGRES_PASSWORD=choose-a-long-random-password
 3. **Subtitles** (optional): with an [OpenSubtitles](https://www.opensubtitles.com/consumers) API key in *Administration → Settings*, viewers can search and download subtitles from the player.
 4. **Users**: in *Administration → Users*, create accounts or send invitation links.
 
+To diagnose playback, open *Administration → Playback sessions*. For each session it compares the
+source tracks, the client's reported capabilities, and the output, lists why audio or video is
+transcoded, shows whether video decoding, tone mapping, subtitle burn-in, scaling, and encoding use
+the CPU or GPU, and shows FFmpeg's current speed: below 1×, the server cannot keep up with playback.
+It only lists sessions handled by this server and reports FFmpeg state, not whether the viewer is paused.
+
 Files are easiest to recognize when named like `Movie Title (2020).mkv` and `Series Name/Season 01/Series Name S01E02.mkv`. A wrong match can be fixed from the title's page.
 
 ### Updating

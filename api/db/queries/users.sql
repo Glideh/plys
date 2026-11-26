@@ -36,6 +36,9 @@ WHERE users.origin_peer_id = EXCLUDED.origin_peer_id;
 -- name: ListUsers :many
 SELECT * FROM users ORDER BY lower(coalesce(alias, username));
 
+-- name: ListPlaybackUsers :many
+SELECT id, username, alias, avatar_updated_at FROM users WHERE id = ANY(@user_ids::uuid[]);
+
 -- name: UpdateUser :one
 UPDATE users
 SET role          = coalesce(sqlc.narg('role'), role),

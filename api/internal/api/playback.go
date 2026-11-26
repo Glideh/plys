@@ -104,6 +104,7 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var textSub *int
+	var selectedSubtitle *scanner.Stream
 	if req.SubtitleIndex != nil && req.ExternalSubtitleID != nil {
 		httpx.Error(w, http.StatusBadRequest, "validation", "subtitleIndex and externalSubtitleId are exclusive")
 		return
@@ -125,13 +126,14 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusBadRequest, "validation", "subtitleIndex is not a subtitle track of this version")
 			return
 		}
-		if streams[idx].ImageBased {
-			src.Subtitle = &streams[idx]
+		selectedSubtitle = &streams[idx]
+		if selectedSubtitle.ImageBased {
+			src.Subtitle = selectedSubtitle
 		} else {
 			textSub = req.SubtitleIndex
 			// Without a cached extraction, the session writes the track while streaming.
 			if _, cached := s.Subtitles.Cached(f.ID, f.Size, *textSub); !cached {
-				src.TextSubtitle = &streams[idx]
+				src.TextSubtitle = selectedSubtitle
 			}
 		}
 	}
@@ -139,6 +141,7 @@ func (s *Server) startPlayback(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(ctx)
 	start := playback.StartRequest{
 		UserID: p.UserID, FileID: f.ID, Source: src, Size: f.Size, TextSubtitles: textSubs, Caps: req.Caps, Start: req.Start,
+		Title: f.Title, Container: f.Container, SelectedSubtitle: selectedSubtitle,
 	}
 	if req.ExternalSubtitleID != nil {
 		start.ExternalSubtitle = *req.ExternalSubtitleID

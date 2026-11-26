@@ -5,6 +5,7 @@ const { t } = useI18n()
 const tabs = [
   { name: 'admin-libraries', label: 'admin.libraries' },
   { name: 'admin-users', label: 'admin.users' },
+  { name: 'admin-playback', label: 'admin.playback' },
   { name: 'admin-servers', label: 'admin.servers' },
   { name: 'admin-settings', label: 'admin.settings' },
 ] as const
@@ -13,7 +14,7 @@ const tabs = [
 <template>
   <main class="mx-auto max-w-screen-xl px-4 py-10 sm:px-8">
     <h1 class="text-2xl font-bold tracking-tight">{{ t('nav.admin') }}</h1>
-    <nav class="mt-6 flex gap-1 border-b border-white/5">
+    <nav class="mt-6 flex flex-wrap gap-1 border-b border-white/5">
       <RouterLink
         v-for="tab in tabs"
         :key="tab.name"

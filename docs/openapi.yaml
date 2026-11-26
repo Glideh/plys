@@ -1780,6 +1780,29 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
 
+  /admin/playback/sessions:
+    get:
+      operationId: listAdminPlaybackSessions
+      summary: List playback diagnostics (admin)
+      description: >
+        Lists sessions handled by this server, newest first. A session can remain
+        available while FFmpeg is paused or has already finished producing the stream.
+        No playback URLs or stream access IDs are included.
+      responses:
+        "200":
+          description: Snapshot of the current playback sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminPlaybackSession" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /admin/system/transcoding:
     get:
       operationId: getTranscodingInfo
@@ -1972,6 +1995,94 @@ components:
         externalSubtitleId: { type: [string, "null"], format: uuid }
         subtitleUrl: { type: [string, "null"], description: WebVTT of the selected text subtitle track or downloaded subtitle }
         burnedSubtitle: { type: boolean }
+    PlaybackSourceTrack:
+      type: object
+      required: [index, type, codec, default, forced]
+      properties:
+        index: { type: integer, description: Index in the source file }
+        type: { type: string, enum: [video, audio, subtitle] }
+        codec: { type: string }
+        profile: { type: string }
+        language: { type: string }
+        title: { type: string }
+        default: { type: boolean }
+        forced: { type: boolean }
+        channels: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        pixFmt: { type: string }
+        colorTransfer: { type: string, example: smpte2084 }
+        hasMasteringDisplay: { type: boolean }
+        imageBased: { type: boolean }
+    AdminPlaybackSession:
+      type: object
+      required: [id, user, source, caps, plan, reasons, process, startedAt, lastAccess]
+      properties:
+        id: { type: string, description: Opaque dashboard identifier, distinct from the stream access ID }
+        user:
+          type: [object, "null"]
+          description: Null if the account no longer exists
+          required: [id, displayName]
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: string }
+            avatarUpdatedAt: { type: string, format: date-time }
+        source:
+          type: object
+          required: [title, container, externalSubtitle]
+          properties:
+            title: { type: string }
+            container: { type: string, example: "matroska,webm" }
+            video: { $ref: "#/components/schemas/PlaybackSourceTrack" }
+            audio: { $ref: "#/components/schemas/PlaybackSourceTrack" }
+            subtitle: { $ref: "#/components/schemas/PlaybackSourceTrack" }
+            externalSubtitle: { type: boolean, description: A downloaded subtitle is selected }
+        caps: { $ref: "#/components/schemas/ClientCaps" }
+        plan:
+          type: object
+          required: [copyVideo, copyAudio, tonemap, burnSubtitle]
+          properties:
+            copyVideo: { type: boolean }
+            copyAudio: { type: boolean }
+            tonemap: { type: boolean }
+            burnSubtitle: { type: boolean }
+            width: { type: integer, description: Width when the video is transcoded }
+            height: { type: integer, description: Height when the video is transcoded }
+            audioChannels: { type: integer, description: Channels when the audio is transcoded }
+            audioCodec: { type: string, description: Non-default audio encoder override }
+        reasons:
+          type: array
+          description: Rules that prevent the selected video or audio from being copied
+          items:
+            type: string
+            enum: [image_subtitle, video_container_codec, video_client_codec, h264_high_bit_depth, hdr_unsupported, height_limit, audio_container_codec, audio_client_codec, preferred_surround]
+        videoAccel:
+          type: string
+          enum: [qsv, vaapi, none]
+          description: Legacy video encoder field (`none` means CPU); prefer videoPipeline
+        videoPipeline:
+          $ref: "#/components/schemas/VideoPipeline"
+        outputAudioCodec: { type: string, description: Output codec when the audio is transcoded }
+        process:
+          type: string
+          enum: [running, buffered, finished, failed]
+          description: FFmpeg process state, not the player state. Buffered means FFmpeg is paused to limit how far it runs ahead.
+        speed:
+          type: number
+          format: double
+          description: Media seconds FFmpeg produced per second over the last few seconds, excluding throttling pauses. Present only while running and measured; below 1, FFmpeg cannot keep up with playback.
+        startedAt: { type: string, format: date-time }
+        lastAccess: { type: string, format: date-time, description: Last playlist or segment request, or session start before the first request }
+    VideoPipeline:
+      type: object
+      description: Processing stages selected for the FFmpeg command; present only when video is transcoded.
+      required: [decode, scale, encode]
+      properties:
+        decode: { type: string, enum: [cpu, qsv, vaapi] }
+        toneMap: { type: string, enum: [cpu, vaapi, vulkan] }
+        burnSubtitle: { type: string, enum: [cpu] }
+        scale: { type: string, enum: [cpu, qsv, vaapi, vulkan] }
+        encode: { type: string, enum: [cpu, qsv, vaapi] }
     Role:
       type: string
       enum: [admin, user]

@@ -7,6 +7,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -146,6 +147,42 @@ func (q *Queries) ListLocalUsers(ctx context.Context) ([]ListLocalUsersRow, erro
 	for rows.Next() {
 		var i ListLocalUsersRow
 		if err := rows.Scan(&i.ID, &i.Username); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPlaybackUsers = `-- name: ListPlaybackUsers :many
+SELECT id, username, alias, avatar_updated_at FROM users WHERE id = ANY($1::uuid[])
+`
+
+type ListPlaybackUsersRow struct {
+	ID              uuid.UUID
+	Username        string
+	Alias           *string
+	AvatarUpdatedAt *time.Time
+}
+
+func (q *Queries) ListPlaybackUsers(ctx context.Context, userIds []uuid.UUID) ([]ListPlaybackUsersRow, error) {
+	rows, err := q.db.Query(ctx, listPlaybackUsers, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPlaybackUsersRow
+	for rows.Next() {
+		var i ListPlaybackUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Alias,
+			&i.AvatarUpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

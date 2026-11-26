@@ -191,6 +191,18 @@ func TestSessionsWithFFmpeg(t *testing.T) {
 			if !copied.Plan.CopyVideo || !copied.Plan.CopyAudio {
 				t.Errorf("H.264/AAC must be copied: %+v", copied.Plan)
 			}
+			select {
+			case <-copied.done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("FFmpeg did not finish producing a short copied stream")
+			}
+			if items := m.Diagnostics(); len(items) != 1 || items[0].Process != ProcessFinished ||
+				len(items[0].Reasons) != 0 || items[0].VideoAccel != "" || items[0].OutputAudioCodec != "" {
+				t.Errorf("unexpected copy diagnostics: %+v", items)
+			}
+			if !copied.progress.sampled() {
+				t.Error("FFmpeg progress was not parsed")
+			}
 
 			resumed := play(t, m, probe(t, h264), 5.2)
 			if resumed.Start != 4 {
@@ -201,6 +213,10 @@ func TestSessionsWithFFmpeg(t *testing.T) {
 			transcoded := play(t, m, src, 3)
 			if transcoded.Plan.CopyVideo || transcoded.Plan.CopyAudio || transcoded.Start != 3 {
 				t.Errorf("Xvid/AC3 must be transcoded from 3 s exactly: %+v start=%.3f", transcoded.Plan, transcoded.Start)
+			}
+			if d := transcoded.diagnostic(); d.VideoAccel != enc.Accel || d.OutputAudioCodec != "aac" ||
+				d.Source.Video.Codec != "mpeg4" || d.Source.Audio.Codec != "ac3" || len(d.Reasons) != 3 {
+				t.Errorf("unexpected transcode diagnostics: %+v", d)
 			}
 
 			dir := transcoded.dir
@@ -466,6 +482,108 @@ func TestToneMappingRunsAtOutputSize(t *testing.T) {
 	video := probe(t, flat).Video
 	if video == nil || video.Codec != "h264" || video.Width != 320 || video.Height != 180 || video.PixFmt != "yuv420p" {
 		t.Fatalf("output video: %+v", video)
+	}
+}
+
+func TestVideoPipelineMatchesFFmpegRoute(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   Source
+		plan     Plan
+		encoder  Encoder
+		want     VideoPipeline
+		wantArgs []string
+	}{
+		{
+			name:     "software",
+			source:   Source{Video: &scanner.Stream{Codec: "h264"}},
+			plan:     Plan{Width: 1280, Height: 720},
+			encoder:  Encoder{Accel: AccelNone},
+			want:     VideoPipeline{Decode: ProcessingCPU, Scale: ProcessingCPU, Encode: ProcessingCPU},
+			wantArgs: []string{"-c:v libx264"},
+		},
+		{
+			name:     "qsv hardware decode",
+			source:   Source{Video: &scanner.Stream{Codec: "h264"}},
+			plan:     Plan{Width: 1280, Height: 720},
+			encoder:  Encoder{Accel: AccelQSV},
+			want:     VideoPipeline{Decode: ProcessingQSV, Scale: ProcessingQSV, Encode: ProcessingQSV},
+			wantArgs: []string{"-hwaccel qsv", "-c:v h264_qsv"},
+		},
+		{
+			name:     "qsv software hevc decode",
+			source:   Source{Video: &scanner.Stream{Codec: "hevc"}},
+			plan:     Plan{Width: 1280, Height: 720},
+			encoder:  Encoder{Accel: AccelQSV},
+			want:     VideoPipeline{Decode: ProcessingCPU, Scale: ProcessingQSV, Encode: ProcessingQSV},
+			wantArgs: []string{"-c:v h264_qsv"},
+		},
+		{
+			name:     "software tone mapping with qsv encode",
+			source:   Source{Video: &scanner.Stream{Codec: "hevc"}},
+			plan:     Plan{Tonemap: true, Width: 1280, Height: 720},
+			encoder:  Encoder{Accel: AccelQSV},
+			want:     VideoPipeline{Decode: ProcessingCPU, ToneMap: ProcessingCPU, Scale: ProcessingCPU, Encode: ProcessingQSV},
+			wantArgs: []string{"zscale=t=linear", "-c:v h264_qsv"},
+		},
+		{
+			name: "vaapi hdr route",
+			source: Source{Video: &scanner.Stream{
+				Codec: "hevc", HasMasteringDisplay: true,
+			}},
+			plan: Plan{Tonemap: true, Width: 1280, Height: 720},
+			encoder: Encoder{
+				Accel: AccelVAAPI, HEVCVAAPI: true, VAAPITonemap: true,
+			},
+			want: VideoPipeline{
+				Decode: ProcessingVAAPI, ToneMap: ProcessingVAAPI, Scale: ProcessingVAAPI, Encode: ProcessingVAAPI,
+			},
+			wantArgs: []string{"-hwaccel vaapi", "tonemap_vaapi", "-c:v h264_vaapi"},
+		},
+		{
+			name:    "vulkan hdr fallback",
+			source:  Source{Video: &scanner.Stream{Codec: "hevc"}},
+			plan:    Plan{Tonemap: true, Width: 1280, Height: 720},
+			encoder: Encoder{Accel: AccelVAAPI, HEVCVAAPI: true, VulkanTonemap: true},
+			want: VideoPipeline{
+				Decode: ProcessingVAAPI, ToneMap: ProcessingVulkan, Scale: ProcessingVulkan, Encode: ProcessingVAAPI,
+			},
+			wantArgs: []string{"-hwaccel vaapi", "libplacebo", "-c:v h264_vaapi"},
+		},
+		{
+			name: "subtitle burn-in",
+			source: Source{
+				Video: &scanner.Stream{Codec: "h264"}, Subtitle: &scanner.Stream{Index: 2},
+			},
+			plan:     Plan{BurnSubtitle: true, Width: 1280, Height: 720},
+			encoder:  Encoder{Accel: AccelQSV},
+			want:     VideoPipeline{Decode: ProcessingCPU, BurnSubtitle: ProcessingCPU, Scale: ProcessingQSV, Encode: ProcessingQSV},
+			wantArgs: []string{"overlay=eof_action=pass", "-c:v h264_qsv"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.encoder.VideoPipeline(tt.plan, tt.source)
+			if got == nil {
+				t.Fatal("pipeline is nil")
+			}
+			if got.Decode != tt.want.Decode || got.ToneMap != tt.want.ToneMap ||
+				got.BurnSubtitle != tt.want.BurnSubtitle || got.Scale != tt.want.Scale ||
+				got.Encode != tt.want.Encode {
+				t.Fatalf("pipeline = %+v, want %+v", *got, tt.want)
+			}
+			args := strings.Join(Args(tt.plan, tt.source, 0, tt.encoder, "/out"), " ")
+			for _, fragment := range tt.wantArgs {
+				if !strings.Contains(args, fragment) {
+					t.Errorf("FFmpeg args missing %q: %s", fragment, args)
+				}
+			}
+		})
+	}
+
+	if got := (Encoder{Accel: AccelVAAPI}).VideoPipeline(Plan{CopyVideo: true}, Source{Video: &scanner.Stream{Codec: "h264"}}); got != nil {
+		t.Errorf("copied video must not have a transcode pipeline: %+v", got)
 	}
 }
 

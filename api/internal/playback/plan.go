@@ -71,6 +71,20 @@ type Plan struct {
 	AudioCodec string `json:"audioCodec,omitempty"`
 }
 
+type Reason string
+
+const (
+	ReasonImageSubtitle       Reason = "image_subtitle"
+	ReasonVideoContainerCodec Reason = "video_container_codec"
+	ReasonVideoClientCodec    Reason = "video_client_codec"
+	ReasonH264HighBitDepth    Reason = "h264_high_bit_depth"
+	ReasonHDRUnsupported      Reason = "hdr_unsupported"
+	ReasonHeightLimit         Reason = "height_limit"
+	ReasonAudioContainerCodec Reason = "audio_container_codec"
+	ReasonAudioClientCodec    Reason = "audio_client_codec"
+	ReasonPreferredSurround   Reason = "preferred_surround"
+)
+
 func IsHDR(v *scanner.Stream) bool {
 	return v != nil && (v.ColorTransfer == "smpte2084" || v.ColorTransfer == "arib-std-b67")
 }
@@ -81,13 +95,26 @@ func is10Bit(v *scanner.Stream) bool {
 
 // Decide copies streams the client can play and transcodes the others.
 func Decide(src Source, caps ClientCaps) Plan {
+	p, _ := decide(src, caps)
+	return p
+}
+
+func decide(src Source, caps ClientCaps) (Plan, []Reason) {
 	var p Plan
+	var reasons []Reason
+	add := func(blocked bool, reason Reason) {
+		if blocked {
+			reasons = append(reasons, reason)
+		}
+	}
 	if v := src.Video; v != nil {
-		p.CopyVideo = src.Subtitle == nil &&
-			slices.Contains(copyableVideo, v.Codec) && slices.Contains(caps.VideoCodecs, v.Codec) &&
-			!(v.Codec == "h264" && is10Bit(v)) &&
-			(!IsHDR(v) || caps.HDR) &&
-			(caps.MaxHeight == 0 || v.Height <= caps.MaxHeight)
+		add(src.Subtitle != nil, ReasonImageSubtitle)
+		add(!slices.Contains(copyableVideo, v.Codec), ReasonVideoContainerCodec)
+		add(!slices.Contains(caps.VideoCodecs, v.Codec), ReasonVideoClientCodec)
+		add(v.Codec == "h264" && is10Bit(v), ReasonH264HighBitDepth)
+		add(IsHDR(v) && !caps.HDR, ReasonHDRUnsupported)
+		add(caps.MaxHeight != 0 && v.Height > caps.MaxHeight, ReasonHeightLimit)
+		p.CopyVideo = len(reasons) == 0
 		if !p.CopyVideo {
 			p.Tonemap = IsHDR(v)
 			p.BurnSubtitle = src.Subtitle != nil
@@ -96,8 +123,11 @@ func Decide(src Source, caps ClientCaps) Plan {
 	}
 	if a := src.Audio; a != nil {
 		preferSurround := a.Channels > 2 && slices.Contains([]string{"ac3", "eac3"}, caps.PreferredAudioCodec) && slices.Contains(caps.AudioCodecs, caps.PreferredAudioCodec)
-		p.CopyAudio = slices.Contains(copyableAudio, a.Codec) && slices.Contains(caps.AudioCodecs, a.Codec) &&
-			(!preferSurround || a.Codec == "ac3" || a.Codec == "eac3")
+		videoReasons := len(reasons)
+		add(!slices.Contains(copyableAudio, a.Codec), ReasonAudioContainerCodec)
+		add(!slices.Contains(caps.AudioCodecs, a.Codec), ReasonAudioClientCodec)
+		add(preferSurround && a.Codec != "ac3" && a.Codec != "eac3", ReasonPreferredSurround)
+		p.CopyAudio = len(reasons) == videoReasons
 		if !p.CopyAudio {
 			p.AudioChannels = min(max(a.Channels, 2), 6)
 			if preferSurround {
@@ -107,7 +137,14 @@ func Decide(src Source, caps ClientCaps) Plan {
 			}
 		}
 	}
-	return p
+	return p, reasons
+}
+
+func (p Plan) audioEncoder() string {
+	if p.AudioCodec == "ac3" || p.AudioCodec == "eac3" || p.AudioCodec == "flac" {
+		return p.AudioCodec
+	}
+	return "aac"
 }
 
 // outputSize caps the height at 1080 (or the client limit) and keeps the aspect ratio with even dimensions.
@@ -133,10 +170,103 @@ type Encoder struct {
 	VulkanTonemap bool
 }
 
+type ProcessingDevice string
+
+const (
+	ProcessingCPU    ProcessingDevice = "cpu"
+	ProcessingQSV    ProcessingDevice = "qsv"
+	ProcessingVAAPI  ProcessingDevice = "vaapi"
+	ProcessingVulkan ProcessingDevice = "vulkan"
+)
+
+type VideoPipeline struct {
+	Decode       ProcessingDevice `json:"decode"`
+	ToneMap      ProcessingDevice `json:"toneMap,omitempty"`
+	BurnSubtitle ProcessingDevice `json:"burnSubtitle,omitempty"`
+	Scale        ProcessingDevice `json:"scale"`
+	Encode       ProcessingDevice `json:"encode"`
+
+	hdrGPU   bool
+	vaapiHDR bool
+	hwFrames bool
+	encoder  Accel
+	filter   Accel
+}
+
 func gpuHDR(p Plan, src Source, enc Encoder) bool {
 	return p.Tonemap && !p.BurnSubtitle && src.Video != nil && src.Video.Codec == "hevc" &&
 		enc.HEVCVAAPI && ((enc.VAAPITonemap && src.Video.HasMasteringDisplay) || enc.VulkanTonemap) &&
 		(enc.Accel == AccelQSV || enc.Accel == AccelVAAPI)
+}
+
+// VideoPipeline is the single source of truth for both the FFmpeg arguments and the admin diagnostics.
+func (enc Encoder) VideoPipeline(p Plan, src Source) *VideoPipeline {
+	if src.Video == nil || p.CopyVideo {
+		return nil
+	}
+
+	pipeline := &VideoPipeline{
+		Decode:  ProcessingCPU,
+		hdrGPU:  gpuHDR(p, src, enc),
+		filter:  enc.Accel,
+		encoder: enc.Accel,
+	}
+	pipeline.vaapiHDR = pipeline.hdrGPU && enc.VAAPITonemap && src.Video.HasMasteringDisplay
+	hwDecode := slices.Contains(hwDecodable, src.Video.Codec) && !p.BurnSubtitle
+
+	switch {
+	case pipeline.hdrGPU:
+		pipeline.Decode = ProcessingVAAPI
+	case enc.Accel == AccelQSV && hwDecode && src.Video.Codec != "hevc" && !p.Tonemap:
+		pipeline.Decode = ProcessingQSV
+	case enc.Accel == AccelVAAPI && hwDecode && !p.Tonemap:
+		pipeline.Decode = ProcessingVAAPI
+	}
+	pipeline.hwFrames = pipeline.Decode != ProcessingCPU
+
+	if p.Tonemap {
+		pipeline.ToneMap = ProcessingCPU
+		if pipeline.hdrGPU {
+			pipeline.ToneMap = ProcessingVulkan
+			if pipeline.vaapiHDR {
+				pipeline.ToneMap = ProcessingVAAPI
+			}
+		}
+	}
+	if p.BurnSubtitle {
+		pipeline.BurnSubtitle = ProcessingCPU
+	}
+
+	switch {
+	case pipeline.hdrGPU:
+		pipeline.Scale = pipeline.ToneMap
+	case p.Tonemap:
+		// Software tone mapping scales to the output size before processing HDR pixels.
+		pipeline.Scale = ProcessingCPU
+	default:
+		switch enc.Accel {
+		case AccelQSV:
+			pipeline.Scale = ProcessingQSV
+		case AccelVAAPI:
+			pipeline.Scale = ProcessingVAAPI
+		default:
+			pipeline.Scale = ProcessingCPU
+		}
+	}
+
+	switch enc.Accel {
+	case AccelQSV:
+		pipeline.Encode = ProcessingQSV
+	case AccelVAAPI:
+		pipeline.Encode = ProcessingVAAPI
+	default:
+		pipeline.Encode = ProcessingCPU
+	}
+	if pipeline.hdrGPU {
+		pipeline.Encode = ProcessingVAAPI
+		pipeline.encoder = AccelVAAPI
+	}
+	return pipeline
 }
 
 func (enc Encoder) VideoAccel(p Plan, src Source) Accel {
@@ -151,11 +281,11 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y"}
 
 	transcode := src.Video != nil && !p.CopyVideo
-	hdrGPU := transcode && gpuHDR(p, src, enc)
-	vaapiHDR := hdrGPU && enc.VAAPITonemap && src.Video.HasMasteringDisplay
-	hwFrames := false
+	pipeline := enc.VideoPipeline(p, src)
+	hdrGPU := pipeline != nil && pipeline.hdrGPU
+	vaapiHDR := pipeline != nil && pipeline.vaapiHDR
+	hwFrames := pipeline != nil && pipeline.hwFrames
 	if transcode {
-		hwDecode := slices.Contains(hwDecodable, src.Video.Codec) && !p.BurnSubtitle
 		switch {
 		case hdrGPU:
 			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-filter_hw_device", "va")
@@ -164,20 +294,17 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 			}
 			args = append(args,
 				"-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
-			hwFrames = true
-		case enc.Accel == AccelQSV:
+		case pipeline.encoder == AccelQSV:
 			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-init_hw_device", "qsv=qs@va", "-filter_hw_device", "qs")
 			// Never use the QSV HEVC decoder: it can corrupt pixels and timestamps on Intel drivers.
-			if hwDecode && src.Video.Codec != "hevc" && !p.Tonemap {
+			if pipeline.Decode == ProcessingQSV {
 				args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
-				hwFrames = true
 			}
-		case enc.Accel == AccelVAAPI:
+		case pipeline.encoder == AccelVAAPI:
 			args = append(args, "-init_hw_device", "vaapi=va:"+enc.Device, "-filter_hw_device", "va")
 			// VAAPI tone mapping needs mastering metadata; other HDR routes use the validated GPU path above.
-			if hwDecode && !p.Tonemap {
+			if pipeline.Decode == ProcessingVAAPI {
 				args = append(args, "-hwaccel", "vaapi", "-hwaccel_device", "va", "-hwaccel_output_format", "vaapi")
-				hwFrames = true
 			}
 		}
 	}
@@ -201,23 +328,19 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 				args = append(args, "-tag:v", "hvc1")
 			}
 		case p.BurnSubtitle:
-			graph := fmt.Sprintf("[%s][0:%d]overlay=eof_action=pass,%s[v]", input, src.Subtitle.Index, videoFilter(p, src.Video, enc.Accel, false))
+			graph := fmt.Sprintf("[%s][0:%d]overlay=eof_action=pass,%s[v]", input, src.Subtitle.Index, videoFilter(p, src.Video, pipeline.filter, false))
 			args = append(args, "-filter_complex", graph, "-map", "[v]")
 		case hdrGPU:
 			args = append(args, "-map", input, "-vf", gpuHDRFilter(p, enc, vaapiHDR))
 		default:
-			filter := videoFilter(p, src.Video, enc.Accel, hwFrames)
-			if hwFrames && enc.Accel == AccelQSV && src.Video.Codec == "hevc" {
+			filter := videoFilter(p, src.Video, pipeline.filter, hwFrames)
+			if hwFrames && pipeline.filter == AccelQSV && src.Video.Codec == "hevc" {
 				filter = "hwmap=derive_device=qsv,format=qsv," + filter
 			}
 			args = append(args, "-map", input, "-vf", filter)
 		}
 		if transcode {
-			videoEncoder := enc.Accel
-			if hdrGPU {
-				videoEncoder = AccelVAAPI
-			}
-			args = append(args, encoderArgs(videoEncoder)...)
+			args = append(args, encoderArgs(pipeline.encoder)...)
 			if hdrGPU {
 				// The output is SDR; remove source HDR SEI after encoding rather than inserting a CPU
 				// metadata filter between Vulkan and VAAPI frames.
@@ -238,18 +361,19 @@ func Args(p Plan, src Source, start float64, enc Encoder, outDir string) []strin
 
 	if src.Audio != nil {
 		args = append(args, "-map", fmt.Sprintf("0:%d", src.Audio.Index))
-		if p.CopyAudio {
+		switch codec := p.audioEncoder(); {
+		case p.CopyAudio:
 			args = append(args, "-c:a", "copy")
-		} else if p.AudioCodec == "ac3" || p.AudioCodec == "eac3" {
-			args = append(args, "-c:a", p.AudioCodec, "-b:a", "640k", "-ac", strconv.Itoa(p.AudioChannels))
-		} else if p.AudioCodec == "flac" {
-			args = append(args, "-c:a", "flac", "-ac", strconv.Itoa(p.AudioChannels))
-		} else {
+		case codec == "ac3" || codec == "eac3":
+			args = append(args, "-c:a", codec, "-b:a", "640k", "-ac", strconv.Itoa(p.AudioChannels))
+		case codec == "flac":
+			args = append(args, "-c:a", codec, "-ac", strconv.Itoa(p.AudioChannels))
+		default:
 			bitrate := "192k"
 			if p.AudioChannels > 2 {
 				bitrate = "384k"
 			}
-			args = append(args, "-c:a", "aac", "-b:a", bitrate, "-ac", strconv.Itoa(p.AudioChannels))
+			args = append(args, "-c:a", codec, "-b:a", bitrate, "-ac", strconv.Itoa(p.AudioChannels))
 		}
 	}
 

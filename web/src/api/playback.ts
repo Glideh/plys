@@ -7,6 +7,7 @@ export interface ClientCaps {
   audioCodecs: string[]
   hdr: boolean
   maxHeight: number
+  preferredAudioCodec?: string
 }
 
 export interface PlaybackSession {

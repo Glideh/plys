@@ -58,8 +58,10 @@ func (q *Queries) ClearLibraryAccess(ctx context.Context, libraryID uuid.UUID) e
 }
 
 const getPlaybackFile = `-- name: GetPlaybackFile :one
-SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id
+SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id,
+       coalesce(i.title, '')::text AS title, coalesce(f.container, '')::text AS container
 FROM media_files f
+LEFT JOIN items i ON i.id = f.item_id
 WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL
 `
 
@@ -71,6 +73,8 @@ type GetPlaybackFileRow struct {
 	Streams         []byte
 	ItemID          *uuid.UUID
 	LibraryID       uuid.UUID
+	Title           string
+	Container       string
 }
 
 func (q *Queries) GetPlaybackFile(ctx context.Context, id uuid.UUID) (GetPlaybackFileRow, error) {
@@ -84,6 +88,8 @@ func (q *Queries) GetPlaybackFile(ctx context.Context, id uuid.UUID) (GetPlaybac
 		&i.Streams,
 		&i.ItemID,
 		&i.LibraryID,
+		&i.Title,
+		&i.Container,
 	)
 	return i, err
 }

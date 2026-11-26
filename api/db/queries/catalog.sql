@@ -231,8 +231,10 @@ WHERE i.parent_id = @parent_id
 ORDER BY i.season_number NULLS LAST, i.episode_number NULLS LAST, i.sort_title, i.id;
 
 -- name: GetPlaybackFile :one
-SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id
+SELECT f.id, f.path, f.size, f.duration_seconds, f.streams, f.item_id, f.library_id,
+       coalesce(i.title, '')::text AS title, coalesce(f.container, '')::text AS container
 FROM media_files f
+LEFT JOIN items i ON i.id = f.item_id
 WHERE f.id = $1 AND f.missing_since IS NULL AND f.probe_error IS NULL;
 
 -- name: ListItemTreeFilePaths :many

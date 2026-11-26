@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,17 @@ type Session struct {
 	cmd    *exec.Cmd
 	done   chan struct{}
 	stderr *tailBuffer
+	// Paused and resumed under mu, together with paused.
+	progress *progress
+
+	source    SessionSource
+	caps      ClientCaps
+	reasons   []Reason
+	accel     Accel
+	pipeline  *VideoPipeline
+	startedAt time.Time
+	// Written before closing done; read only after observing that close.
+	failed bool
 
 	mu            sync.Mutex
 	lastAccess    time.Time
@@ -105,15 +117,20 @@ type StartRequest struct {
 	ExternalSubtitle uuid.UUID
 	Caps             ClientCaps
 	Start            float64
+	Title            string
+	Container        string
+	SelectedSubtitle *scanner.Stream
 }
 
 func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error) {
 	m.probeMasteringDisplay(ctx, &req.Source)
-	plan := Decide(req.Source, req.Caps)
+	plan, reasons := decide(req.Source, req.Caps)
 	sess := &Session{
-		UserID: req.UserID, FileID: req.FileID, Plan: plan, done: make(chan struct{}), stderr: &tailBuffer{max: 4096},
+		UserID: req.UserID, FileID: req.FileID, Plan: plan, done: make(chan struct{}), stderr: &tailBuffer{max: 4096}, progress: newProgress(),
 		SourcePath: req.Source.Path, SourceSize: req.Size, TextSubtitles: req.TextSubtitles, LiveSubtitleIndex: -1,
 		ExternalSubtitle: req.ExternalSubtitle,
+		source:           sessionSource(req), caps: cloneCaps(req.Caps), reasons: reasons,
+		accel: m.Encoder.VideoAccel(plan, req.Source),
 	}
 
 	if req.Source.TextSubtitle != nil {
@@ -138,6 +155,7 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 		start = m.keyframeBefore(ctx, req.Source.Path, req.Source.Video.Index, start)
 	}
 	sess.Start = start
+	sess.pipeline = m.Encoder.VideoPipeline(plan, req.Source)
 
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
@@ -149,7 +167,8 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 		return nil, err
 	}
 
-	sess.cmd = exec.Command(m.ffmpeg, Args(plan, req.Source, start, m.Encoder, sess.dir)...)
+	sess.cmd = exec.Command(m.ffmpeg, append(slices.Clone(progressArgs), Args(plan, req.Source, start, m.Encoder, sess.dir)...)...)
+	sess.cmd.Stdout = sess.progress
 	sess.cmd.Stderr = sess.stderr
 	sess.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := sess.cmd.Start(); err != nil {
@@ -158,19 +177,21 @@ func (m *Manager) Start(ctx context.Context, req StartRequest) (*Session, error)
 	}
 	go func() {
 		err := sess.cmd.Wait()
+		sess.failed = err != nil
 		if err != nil && !strings.Contains(err.Error(), "signal: killed") {
 			slog.Warn("ffmpeg stopped with an error", "session", sess.ID, "err", err, "stderr", sess.stderr.String())
 		}
 		close(sess.done)
 	}()
-	sess.lastAccess = time.Now()
+	sess.startedAt = time.Now()
+	sess.lastAccess = sess.startedAt
 
 	m.mu.Lock()
 	m.sessions[sess.ID] = sess
 	m.mu.Unlock()
 	slog.Info("playback session started", "session", sess.ID, "file", req.FileID, "start", start,
 		"copy_video", plan.CopyVideo, "copy_audio", plan.CopyAudio, "tonemap", plan.Tonemap, "burn", plan.BurnSubtitle,
-		"accel", m.Encoder.VideoAccel(plan, req.Source))
+		"accel", sess.accel)
 	return sess, nil
 }
 
@@ -245,6 +266,16 @@ func (m *Manager) Count() int {
 	return len(m.sessions)
 }
 
+func (m *Manager) listSessions() []*Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sessions := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		sessions = append(sessions, s)
+	}
+	return sessions
+}
+
 func (s *Session) kill() {
 	if s.cmd.Process == nil {
 		return
@@ -266,13 +297,7 @@ func (m *Manager) Run(ctx context.Context) {
 			return
 		case <-t.C:
 		}
-		m.mu.Lock()
-		sessions := make([]*Session, 0, len(m.sessions))
-		for _, s := range m.sessions {
-			sessions = append(sessions, s)
-		}
-		m.mu.Unlock()
-		for _, s := range sessions {
+		for _, s := range m.listSessions() {
 			s.mu.Lock()
 			idle := time.Since(s.lastAccess) > idleTimeout
 			s.mu.Unlock()
@@ -300,10 +325,12 @@ func (s *Session) throttle() {
 	case !s.paused && ahead > pauseAhead:
 		if syscall.Kill(-s.cmd.Process.Pid, syscall.SIGSTOP) == nil {
 			s.paused = true
+			s.progress.reset()
 		}
 	case s.paused && ahead < resumeAhead:
 		if syscall.Kill(-s.cmd.Process.Pid, syscall.SIGCONT) == nil {
 			s.paused = false
+			s.progress.reset()
 		}
 	}
 }
@@ -334,6 +361,7 @@ func (s *Session) File(ctx context.Context, name string) (string, error) {
 		if s.paused {
 			_ = syscall.Kill(-s.cmd.Process.Pid, syscall.SIGCONT)
 			s.paused = false
+			s.progress.reset()
 		}
 	}
 	s.mu.Unlock()
