@@ -471,7 +471,7 @@ export default {
     unknownVersion: 'Version inconnue',
     versionMismatch: 'Version locale : {local}. La version majeure doit être identique.',
     status: { compatible: 'Compatible', incompatible: 'Incompatible', unverified: 'Non vérifié', offline: 'Hors ligne', paused: 'En pause' },
-    offlineSince: 'Ne répond plus depuis le {date}. Nouvelle vérification automatique.',
+    offlineHelp: 'Vérification automatique en arrière-plan.',
     lastSeen: 'Vu pour la dernière fois le {date}',
     pausedHelp: 'Exclu du catalogue, de l\'accueil et des recherches jusqu\'à la reprise.',
     pause: 'Mettre en pause',

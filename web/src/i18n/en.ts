@@ -472,7 +472,7 @@ export default {
     unknownVersion: 'Unknown version',
     versionMismatch: 'Local version: {local}. The major version must match.',
     status: { compatible: 'Compatible', incompatible: 'Incompatible', unverified: 'Unverified', offline: 'Offline', paused: 'Paused' },
-    offlineSince: 'Not answering since {date}. Checked again automatically.',
+    offlineHelp: 'Checked automatically in the background.',
     lastSeen: 'Last seen {date}',
     pausedHelp: 'Left out of the catalog, the home page and searches until resumed.',
     pause: 'Pause',

@@ -134,8 +134,8 @@ onMounted(load)
             {{ t('servers.versionMismatch', { local: peer.localVersion }) }}
           </p>
           <p v-if="peer.paused" class="mt-1 text-xs text-slate-400">{{ t('servers.pausedHelp') }}</p>
-          <p v-else-if="peer.offlineSince" class="mt-1 text-xs text-slate-400">
-            {{ t('servers.offlineSince', { date: formatDate(peer.offlineSince) }) }}
+          <p v-else-if="peer.status === 'offline'" class="mt-1 text-xs text-slate-400">
+            {{ t('servers.offlineHelp') }}
           </p>
           <p v-if="peer.lastSeenAt && peer.status !== 'compatible'" class="mt-1 text-xs text-slate-500">
             {{ t('servers.lastSeen', { date: formatDate(peer.lastSeenAt) }) }}
