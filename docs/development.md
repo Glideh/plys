@@ -26,6 +26,7 @@ The Go module and the development Compose project still use the old internal nam
 docker compose exec api go test ./...         # API unit + integration tests (uses the toto_test database)
 docker compose exec api go test ./internal/api -run TestCatalogBrowsing   # a single test
 docker compose exec api go vet ./...
+docker compose exec api go run ./cmd/server reset-password admin   # set a new password for a local account
 docker compose run --rm sqlc generate          # after editing api/db/queries or api/db/migrations
 docker compose exec web npm test               # front-end tests
 docker compose exec web npm run typecheck

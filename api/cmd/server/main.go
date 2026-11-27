@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,6 +29,13 @@ import (
 const accessTokenTTL = 15 * time.Minute
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		if err := resetPassword(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)

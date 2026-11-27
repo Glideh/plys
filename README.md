@@ -185,6 +185,16 @@ docker compose up -d
 
 The database is migrated automatically at startup. To stay on a given release, set `PLYS_VERSION` in `.env`. A major version can break the compatibility between paired servers: their versions are shown in *Administration → Servers*.
 
+### Lost password
+
+Another administrator can set a new password in *Administration → Users*. If no administrator can sign in anymore, run this on the server, in the folder of `compose.yaml`:
+
+```sh
+docker compose exec api server reset-password <username>
+```
+
+It asks for the new password twice without displaying it, then closes the sessions of that account. Without a username, it lists the local administrators. Accounts of paired servers are refused: reset them on their own server.
+
 ### Options
 
 Set these in `.env` when needed (complete installation):
