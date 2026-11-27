@@ -86,7 +86,7 @@ services:
       LOCAL_GID: ${GID:-1000}
     volumes:
       - ./android-tv:/workspace
-      - android-gradle:/root/.gradle
+      - ${ANDROID_GRADLE_CACHE:-android-gradle}:/root/.gradle
       - android-home:/root/.android
     security_opt: ["no-new-privileges:true"]
 
