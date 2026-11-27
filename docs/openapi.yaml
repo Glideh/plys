@@ -994,6 +994,10 @@ paths:
     post:
       operationId: syncPeer
       summary: Synchronize users from a compatible peer (admin)
+      description: >
+        Also records whether the peer answered, even if synchronization fails. A reachable peer
+        can come back online; an unreachable peer is marked offline after two consecutive failures.
+        Re-read the peer list after the attempt to obtain its updated status.
       responses:
         "200":
           description: Synchronized users

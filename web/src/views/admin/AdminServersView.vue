@@ -30,13 +30,13 @@ const editing = ref<Peer | null>(null)
 const removeOpen = ref(false)
 const removing = ref<Peer | null>(null)
 
-async function load() {
+async function load(preserveError = false) {
   loading.value = peers.value.length === 0
-  error.value = ''
+  if (!preserveError) error.value = ''
   try {
     peers.value = await peersApi.list()
   } catch (err) {
-    error.value = errorMessage(err)
+    error.value = [error.value, errorMessage(err)].filter(Boolean).join('\n')
   } finally {
     loading.value = false
   }
@@ -54,11 +54,10 @@ async function sync(peer: Peer) {
   try {
     const res = await peersApi.sync(peer.id)
     notice.value = t('servers.synced', res.users)
-    // A sync is also a manual check: an offline server that answers is back online.
-    if (peer.status === 'offline') await load()
   } catch (err) {
     error.value = errorMessage(err)
   } finally {
+    await load(true)
     syncingId.value = null
   }
 }
