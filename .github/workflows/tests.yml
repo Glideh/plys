@@ -78,8 +78,6 @@ jobs:
   android:
     name: Android TV (unit tests, lint)
     runs-on: ubuntu-24.04
-    env:
-      ANDROID_GRADLE_CACHE: ${{ runner.temp }}/android-gradle
     steps:
       - uses: actions/checkout@v7
       - name: Run as the runner user
@@ -91,6 +89,8 @@ jobs:
           restore-keys: android-gradle-v1-
       - run: docker compose --profile android build android-build
       - name: Run unit tests and lint
+        env:
+          ANDROID_GRADLE_CACHE: ${{ runner.temp }}/android-gradle
         run: |
           for attempt in 1 2 3; do
             if docker compose --profile android run --rm android-build :app:testDebugUnitTest :app:testReleaseUnitTest :app:lintDebug :app:lintRelease 2>&1 | tee "$RUNNER_TEMP/android-gradle.log"; then
